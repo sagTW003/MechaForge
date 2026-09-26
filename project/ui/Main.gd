@@ -25,6 +25,19 @@ var selected_part: PartInstance = null
 var placing: bool = false
 var _pending_transform: Dictionary = {}  # para deshacer movimientos
 
+# --- Física / simulación (Fase 2) ---
+var simulator: Simulator
+var sim_root: Node3D
+var connections_root: Node3D
+var connections: Array = []               # Array[Connection]
+var connect_mode: bool = false
+var connect_first: PartInstance = null
+var sim_button: Button
+var reset_button: Button
+var connect_button: Button
+var conn_dialog: Panel
+var _conn_widgets: Dictionary = {}
+
 # --- Deshacer / rehacer (basado en comandos) ---
 var _undo: Array = []
 var _redo: Array = []
@@ -55,6 +68,20 @@ func _ready() -> void:
 	parts_root = Node3D.new()
 	parts_root.name = "Piezas"
 	add_child(parts_root)
+
+	sim_root = Node3D.new()
+	sim_root.name = "Simulacion"
+	add_child(sim_root)
+	connections_root = Node3D.new()
+	connections_root.name = "MarcadoresUniones"
+	add_child(connections_root)
+	simulator = Simulator.new()
+	simulator.name = "Simulador"
+	add_child(simulator)
+	simulator.setup(parts_root, sim_root)
+	simulator.simulation_started.connect(_on_sim_started)
+	simulator.simulation_stopped.connect(_on_sim_stopped)
+
 	_build_ui()
 	GraphicsProfiles.apply_auto(world_env.environment, get_viewport())
 	_refresh_profile_option()
@@ -68,6 +95,124 @@ func _ready() -> void:
 		call_deferred("_run_screenshot")
 	elif "mftest" in OS.get_cmdline_user_args():
 		call_deferred("_run_tests")
+	elif "mfphys" in OS.get_cmdline_user_args():
+		call_deferred("_run_phys_tests")
+	elif "mfshot2" in OS.get_cmdline_user_args():
+		call_deferred("_run_physics_shot")
+
+func _run_physics_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot2")
+	var out_path := "user://mechaforge_fase2.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	# Base pesada + poste fijo + brazo motorizado con bisagra.
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var post := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.154, 0))
+	var arm := _spawn("perfil_2020_400", "aluminio", Vector3(0.2, 0.29, 0), Vector3(0, 0, PI / 2.0))
+	var weight := _spawn("eje_acero_d10_150", "acero_inox", Vector3(0.39, 0.29, 0), Vector3(PI / 2.0, 0, 0))
+	# Uniones.
+	var c1 := Connection.new(); c1.a_uid = base.uid; c1.b_uid = post.uid; c1.tipo = Connection.Tipo.FIJA
+	c1.anchor = Vector3(0, 0.02, 0)
+	var c2 := Connection.new(); c2.a_uid = post.uid; c2.b_uid = arm.uid; c2.tipo = Connection.Tipo.BISAGRA
+	c2.axis = 2; c2.anchor = Vector3(0, 0.29, 0)
+	c2.motor_enabled = true; c2.motor_target_speed = 2.5; c2.motor_stall_torque = 6.0; c2.motor_noload_speed = 5.0
+	var c3 := Connection.new(); c3.a_uid = arm.uid; c3.b_uid = weight.uid; c3.tipo = Connection.Tipo.FIJA
+	c3.anchor = Vector3(0.39, 0.29, 0)
+	connections = [c1, c2, c3]
+	_redraw_connection_markers()
+	_update_counts()
+	camera.target = Vector3(0.1, 0.2, 0)
+	camera.distance = 1.3
+	simulator.start(connections)
+	_select(weight)
+	await get_tree().create_timer(1.6).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(out_path)
+	print("[SHOT2] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+#region PRUEBAS DE FÍSICA (Fase 2) ----------------------------------------------
+
+func _pcheck(cond: bool, nombre: String) -> void:
+	if cond:
+		_test_ok += 1
+		print("  [OK]   %s" % nombre)
+	else:
+		_test_fail += 1
+		print("  [FALLO] %s" % nombre)
+
+func _spawn(def_id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
+	return _spawn_from_dict({"def_id": def_id, "material": mat, "pos": [pos.x, pos.y, pos.z], "rot": [rot.x, rot.y, rot.z]})
+
+func _phys_wait(frames: int) -> void:
+	for i in range(frames):
+		await get_tree().physics_frame
+
+func _run_phys_tests() -> void:
+	print("[TEST] Pruebas de física (Fase 2)...")
+
+	# --- 1) Gravedad + reinicio al estado inicial ---
+	_on_new()
+	var caida := _spawn("eje_acero_d10_150", "acero_inox", Vector3(0, 0.5, 0))
+	var y0 := caida.position.y
+	simulator.start([])
+	await _phys_wait(80)
+	var b := simulator.get_body(caida.uid)
+	_pcheck(b != null and b.global_position.y < 0.45, "La pieza cae por gravedad (y baja)")
+	simulator.stop()
+	_pcheck(absf(caida.position.y - y0) < 1.0e-5, "Al detener, la pieza vuelve al estado inicial")
+
+	# --- 2) Unión fija: mantiene la distancia entre piezas ---
+	_on_new()
+	var f1 := _spawn("perfil_2020_200", "aluminio", Vector3(-0.03, 0.5, 0))
+	var f2 := _spawn("perfil_2020_200", "aluminio", Vector3(0.03, 0.5, 0))
+	var cf := Connection.new(); cf.a_uid = f1.uid; cf.b_uid = f2.uid; cf.tipo = Connection.Tipo.FIJA
+	cf.anchor = (f1.global_position + f2.global_position) * 0.5
+	simulator.start([cf])
+	var d0 := simulator.get_body(f1.uid).global_position.distance_to(simulator.get_body(f2.uid).global_position)
+	await _phys_wait(100)
+	var d1 := simulator.get_body(f1.uid).global_position.distance_to(simulator.get_body(f2.uid).global_position)
+	_pcheck(absf(d1 - d0) < 0.005, "Unión fija conserva la distancia (%.4f→%.4f m)" % [d0, d1])
+	simulator.stop()
+
+	# --- 3) Motor de bisagra en espacio libre: velocidad RELATIVA no nula ---
+	_on_new()
+	var base := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
+	var arm := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
+	var cm := Connection.new(); cm.a_uid = base.uid; cm.b_uid = arm.uid
+	cm.tipo = Connection.Tipo.BISAGRA; cm.axis = 2
+	cm.anchor = (base.global_position + arm.global_position) * 0.5
+	cm.motor_enabled = true; cm.motor_target_speed = 6.0
+	cm.motor_stall_torque = 3.0; cm.motor_noload_speed = 8.0
+	simulator.start([cm])
+	await _phys_wait(150)
+	var ba := simulator.get_body(base.uid)
+	var bb := simulator.get_body(arm.uid)
+	var rel := absf((bb.angular_velocity - ba.angular_velocity).dot(cm.axis_vector()))
+	_pcheck(rel > 0.2, "El motor genera giro relativo entre piezas (Δω=%.2f rad/s)" % rel)
+	simulator.stop()
+
+	# --- 4) Engranaje: acoplamiento cinemático ω_b = -ratio·ω_a ---
+	_on_new()
+	var g1 := _spawn("eje_acero_d10_150", "acero", Vector3(-0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
+	var g2 := _spawn("eje_acero_d10_150", "acero", Vector3(0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
+	var cg := Connection.new(); cg.a_uid = g1.uid; cg.b_uid = g2.uid
+	cg.tipo = Connection.Tipo.ENGRANAJE; cg.axis = 1; cg.gear_ratio = 2.0
+	simulator.start([cg])
+	simulator.get_body(g1.uid).angular_velocity = Vector3.UP * 2.0
+	await _phys_wait(5)
+	var wb := simulator.get_body(g2.uid).angular_velocity.dot(Vector3.UP)
+	_pcheck(absf(wb - (-4.0)) < 0.6, "Engranaje ratio 2: ω_b ≈ -4 rad/s (obtenido %.2f)" % wb)
+	simulator.stop()
+
+	_on_new()
+	print("[TEST] Física: %d OK, %d FALLOS" % [_test_ok, _test_fail])
+	get_tree().quit(1 if _test_fail > 0 else 0)
+
+#endregion
 
 #region PRUEBAS AUTOMATIZADAS (Fase 1) ------------------------------------------
 
@@ -381,6 +526,15 @@ func _build_topbar() -> Control:
 	hb.add_child(_button("Rehacer", redo))
 	hb.add_child(_vsep())
 
+	sim_button = _button("▶  Simular", _toggle_simulation)
+	hb.add_child(sim_button)
+	reset_button = _button("⟲  Reiniciar", _reset_simulation)
+	hb.add_child(reset_button)
+	connect_button = _button("🔗  Conectar", _toggle_connect_mode)
+	connect_button.toggle_mode = true
+	hb.add_child(connect_button)
+	hb.add_child(_vsep())
+
 	snap_check = CheckButton.new()
 	snap_check.text = "Snapping"
 	snap_check.button_pressed = Config.snap_enabled
@@ -503,15 +657,22 @@ func _build_help_panel() -> void:
 	t.add_theme_font_size_override("font_size", 16)
 	vb.add_child(t)
 	var help := """
+CONSTRUCCIÓN
 [Clic izquierdo]      Colocar pieza / seleccionar
-[Clic derecho / Esc]  Cancelar colocación / deseleccionar
-[R]                   Rotar la pieza seleccionada (paso configurable)
+[Clic derecho / Esc]  Cancelar / deseleccionar
+[R]                   Rotar la pieza seleccionada
 [Supr]                Eliminar la pieza seleccionada
 [Ctrl+D]              Duplicar la pieza seleccionada
 [Ctrl+Z] / [Ctrl+Y]   Deshacer / Rehacer
-[Ctrl+S]              Guardar proyecto
-[Ctrl+O]              Abrir proyecto
 [G]                   Alternar snapping a la rejilla
+
+SIMULACIÓN Y UNIONES
+[Espacio]             Iniciar / detener la simulación
+[⟲ Reiniciar]         Volver al estado inicial
+[🔗 Conectar]         Unir dos piezas (bisagra, fija, etc.)
+
+PROYECTO / CÁMARA
+[Ctrl+S] / [Ctrl+O]   Guardar / Abrir proyecto
 [F]                   Centrar la cámara
 [Rueda]               Zoom
 [Botón central]       Orbitar cámara
@@ -555,6 +716,9 @@ func _vsep() -> VSeparator:
 
 func _refresh_properties() -> void:
 	if prop_container == null:
+		return
+	if simulator and simulator.is_running():
+		_build_telemetry_panel()
 		return
 	for c in prop_container.get_children():
 		c.queue_free()
@@ -627,6 +791,10 @@ func _on_material_changed(i: int) -> void:
 #region COLOCACIÓN Y SELECCIÓN --------------------------------------------------
 
 func _on_part_tree_selected() -> void:
+	if editing_locked:
+		return
+	if connect_mode:
+		_set_connect_mode(false)
 	var it := parts_tree.get_selected()
 	if it == null:
 		return
@@ -679,6 +847,11 @@ func _process(_delta: float) -> void:
 	GraphicsProfiles.update_dynamic(_delta)
 	if _bench_active:
 		_bench_tick(_delta)
+	if simulator and simulator.is_running():
+		_tele_accum += _delta
+		if _tele_accum >= 0.1:
+			_tele_accum = 0.0
+			_update_telemetry()
 	if placing and ghost:
 		var p = _ground_point(get_viewport().get_mouse_position())
 		if p != null:
@@ -693,11 +866,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if placing:
 				_confirm_placement()
+			elif connect_mode:
+				_connect_pick(mb.position)
 			else:
 				_try_select(mb.position)
 		elif mb.button_index == MOUSE_BUTTON_RIGHT:
 			if placing:
 				_cancel_placing()
+			elif connect_mode:
+				_set_connect_mode(false)
 			else:
 				_select(null)
 	elif event is InputEventKey and event.pressed and not event.echo:
@@ -730,6 +907,9 @@ func _try_select(screen_pos: Vector2) -> void:
 		_select(null)
 		return
 	var collider: Node = hit["collider"]
+	if collider is RigidBody3D and collider.has_meta("part_uid"):
+		_select(_find_part(collider.get_meta("part_uid")))
+		return
 	var part := collider.get_parent()
 	if part is PartInstance:
 		_select(part)
@@ -753,25 +933,28 @@ func _handle_key(k: InputEventKey) -> void:
 	match k.keycode:
 		KEY_ESCAPE:
 			if placing: _cancel_placing()
+			elif connect_mode: _set_connect_mode(false)
 			else: _select(null)
 		KEY_H, KEY_F1:
 			help_panel.visible = not help_panel.visible
+		KEY_SPACE:
+			_toggle_simulation()
 		KEY_G:
 			Config.snap_enabled = not Config.snap_enabled
 			snap_check.button_pressed = Config.snap_enabled
-		KEY_R:
+		KEY_R when not editing_locked:
 			_rotate_selected()
-		KEY_DELETE:
+		KEY_DELETE when not editing_locked:
 			_delete_selected()
-		KEY_Z when ctrl:
+		KEY_Z when ctrl and not editing_locked:
 			undo()
-		KEY_Y when ctrl:
+		KEY_Y when ctrl and not editing_locked:
 			redo()
 		KEY_S when ctrl:
 			_on_save()
 		KEY_O when ctrl:
 			_on_open()
-		KEY_D when ctrl:
+		KEY_D when ctrl and not editing_locked:
 			_duplicate_selected()
 
 func _rotate_selected() -> void:
@@ -908,7 +1091,7 @@ func _update_counts() -> void:
 		if c is PartInstance:
 			n += 1
 			total_mass += (c as PartInstance).mass_kg()
-	counts_label.text = "Piezas: %d   Masa total: %s     " % [n, Units.fmt_mass(total_mass)]
+	counts_label.text = "Piezas: %d   Uniones: %d   Masa total: %s     " % [n, connections.size(), Units.fmt_mass(total_mass)]
 
 #endregion
 
@@ -932,8 +1115,12 @@ func _on_status(text: String, _seconds: float) -> void:
 		status_label.text = text
 
 func _on_new() -> void:
+	if simulator.is_running():
+		simulator.stop()
 	for c in parts_root.get_children():
 		c.queue_free()
+	connections.clear()
+	_redraw_connection_markers()
 	_undo.clear()
 	_redo.clear()
 	_select(null)
@@ -946,7 +1133,7 @@ func _on_save() -> void:
 	if Config.current_project_path == "":
 		_on_save_as()
 		return
-	var err := ProjectSerializer.save(parts_root, Config.current_project_path)
+	var err := ProjectSerializer.save(parts_root, Config.current_project_path, connections)
 	if err == OK:
 		Config.project_dirty = false
 		Config.notify("Guardado en %s" % Config.current_project_path, 4.0)
@@ -970,7 +1157,10 @@ func _on_open() -> void:
 		if doc.is_empty():
 			Config.notify("No se pudo abrir el archivo.", 5.0)
 			return
+		if simulator.is_running(): simulator.stop()
 		var n := ProjectSerializer.apply_document(doc, parts_root)
+		connections = ProjectSerializer.parse_connections(doc)
+		_redraw_connection_markers()
 		_undo.clear(); _redo.clear(); _select(null)
 		Config.current_project_path = path
 		Config.project_dirty = false
@@ -989,5 +1179,270 @@ func _connect_dialog(cb: Callable) -> void:
 func _dialog_relay(path: String) -> void:
 	if _dialog_cb.is_valid():
 		_dialog_cb.call(path)
+
+#endregion
+
+#region SIMULACIÓN Y UNIONES (Fase 2) -------------------------------------------
+
+var editing_locked: bool = false
+var _tele_labels: Dictionary = {}
+var _tele_accum: float = 0.0
+
+func _toggle_simulation() -> void:
+	if simulator.is_running():
+		simulator.stop()
+	else:
+		_cancel_placing()
+		_set_connect_mode(false)
+		simulator.start(connections)
+
+func _reset_simulation() -> void:
+	if simulator.is_running():
+		simulator.stop()
+		await get_tree().process_frame
+		simulator.start(connections)
+		Config.notify("Simulación reiniciada al estado inicial.")
+
+func _on_sim_started() -> void:
+	sim_button.text = "⏸  Editar"
+	_select(null)
+	_set_editing_enabled(false)
+	connections_root.visible = false
+	Config.notify("Simulación en marcha. Selecciona una pieza para ver su telemetría.", 4.0)
+
+func _on_sim_stopped() -> void:
+	sim_button.text = "▶  Simular"
+	_select(null)
+	_set_editing_enabled(true)
+	connections_root.visible = true
+	_refresh_properties()
+	Config.notify("Modo edición.")
+
+func _set_editing_enabled(en: bool) -> void:
+	editing_locked = not en
+	if connect_button: connect_button.disabled = not en
+	if parts_tree and not en: parts_tree.deselect_all()
+
+# --- Modo conexión ---
+func _toggle_connect_mode() -> void:
+	_set_connect_mode(not connect_mode)
+
+func _set_connect_mode(on: bool) -> void:
+	if simulator.is_running():
+		on = false
+	connect_mode = on
+	if connect_button: connect_button.button_pressed = on
+	if connect_first and is_instance_valid(connect_first):
+		connect_first.set_selected(false)
+	connect_first = null
+	if on:
+		_cancel_placing()
+		_select(null)
+		Config.notify("Conexión: clic en la 1.ª pieza y luego en la 2.ª para unirlas.", 6.0)
+
+func _connect_pick(screen_pos: Vector2) -> void:
+	var part := _pick_part(screen_pos)
+	if part == null:
+		return
+	if connect_first == null:
+		connect_first = part
+		part.set_selected(true)
+		Config.notify("1.ª pieza: %s. Ahora elige la 2.ª." % part.def.get("nombre", part.def_id))
+	elif part == connect_first:
+		Config.notify("Elige una pieza distinta para conectar.")
+	else:
+		var a := connect_first
+		connect_first = null
+		a.set_selected(false)
+		_open_connection_dialog(a, part)
+
+func _pick_part(screen_pos: Vector2) -> PartInstance:
+	var ray := camera.screen_ray(screen_pos)
+	var space := get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(
+		ray["origin"], ray["origin"] + ray["dir"] * 1000.0, PartInstance.PICK_LAYER)
+	var hit := space.intersect_ray(params)
+	if hit.is_empty():
+		return null
+	var collider: Node = hit["collider"]
+	if collider is RigidBody3D and collider.has_meta("part_uid"):
+		return _find_part(collider.get_meta("part_uid"))
+	var p := collider.get_parent()
+	return p if p is PartInstance else null
+
+# --- Diálogo de configuración de unión ---
+func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "Nueva unión"
+	dlg.ok_button_text = "Crear"
+	dlg.get_cancel_button().text = "Cancelar"
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	dlg.add_child(vb)
+
+	vb.add_child(_label("Unir:  %s  ↔  %s" % [a.def.get("nombre", a.def_id), b.def.get("nombre", b.def_id)]))
+
+	vb.add_child(_label("Tipo de unión:"))
+	var tipo_opt := OptionButton.new()
+	for t in [Connection.Tipo.FIJA, Connection.Tipo.BISAGRA, Connection.Tipo.DESLIZADERA, Connection.Tipo.ROTULA, Connection.Tipo.ENGRANAJE]:
+		tipo_opt.add_item(Connection.TIPO_NOMBRE[t])
+	tipo_opt.select(1)
+	vb.add_child(tipo_opt)
+
+	vb.add_child(_label("Eje (mundo):"))
+	var eje_opt := OptionButton.new()
+	for ax in Connection.AXIS_NOMBRE:
+		eje_opt.add_item(ax)
+	eje_opt.select(1)
+	vb.add_child(eje_opt)
+
+	var lim_check := CheckBox.new(); lim_check.text = "Con límites (grados / mm)"
+	vb.add_child(lim_check)
+	var lim_hb := HBoxContainer.new()
+	var low_spin := _spin(-360, 360, 1, -45)
+	var high_spin := _spin(-360, 360, 1, 45)
+	lim_hb.add_child(_label("inf")); lim_hb.add_child(low_spin)
+	lim_hb.add_child(_label("sup")); lim_hb.add_child(high_spin)
+	vb.add_child(lim_hb)
+
+	var motor_check := CheckBox.new(); motor_check.text = "Motor (solo bisagra)"
+	vb.add_child(motor_check)
+	var motor_vb := VBoxContainer.new()
+	var speed_spin := _spin(-50, 50, 0.5, 4.0)
+	var torque_spin := _spin(0, 100, 0.1, 0.8)
+	var noload_spin := _spin(0.1, 100, 0.5, 8.0)
+	motor_vb.add_child(_label("Vel. objetivo (rad/s)")); motor_vb.add_child(speed_spin)
+	motor_vb.add_child(_label("Torque de arranque (N·m)")); motor_vb.add_child(torque_spin)
+	motor_vb.add_child(_label("Vel. sin carga (rad/s)")); motor_vb.add_child(noload_spin)
+	vb.add_child(motor_vb)
+
+	vb.add_child(_label("Relación (engranaje):"))
+	var ratio_spin := _spin(-10, 10, 0.1, 1.0)
+	vb.add_child(ratio_spin)
+
+	ui_layer.add_child(dlg)
+	dlg.confirmed.connect(func():
+		var c := Connection.new()
+		c.a_uid = a.uid; c.b_uid = b.uid
+		c.tipo = [Connection.Tipo.FIJA, Connection.Tipo.BISAGRA, Connection.Tipo.DESLIZADERA, Connection.Tipo.ROTULA, Connection.Tipo.ENGRANAJE][tipo_opt.selected]
+		c.axis = eje_opt.selected
+		c.anchor = (a.global_position + b.global_position) * 0.5
+		c.limit_enabled = lim_check.button_pressed
+		if c.tipo == Connection.Tipo.DESLIZADERA:
+			c.limit_lower = low_spin.value / 1000.0
+			c.limit_upper = high_spin.value / 1000.0
+		else:
+			c.limit_lower = deg_to_rad(low_spin.value)
+			c.limit_upper = deg_to_rad(high_spin.value)
+		c.motor_enabled = motor_check.button_pressed
+		c.motor_target_speed = speed_spin.value
+		c.motor_stall_torque = torque_spin.value
+		c.motor_noload_speed = noload_spin.value
+		c.gear_ratio = ratio_spin.value
+		connections.append(c)
+		Config.project_dirty = true
+		_redraw_connection_markers()
+		_update_counts()
+		Config.notify("Unión creada: %s (%s)." % [c.tipo_nombre(), Connection.AXIS_NOMBRE[c.axis]])
+		dlg.queue_free())
+	dlg.canceled.connect(func(): dlg.queue_free())
+	dlg.popup_centered(Vector2i(380, 460))
+
+func _spin(mn: float, mx: float, step: float, val: float) -> SpinBox:
+	var s := SpinBox.new()
+	s.min_value = mn; s.max_value = mx; s.step = step; s.value = val
+	s.custom_minimum_size = Vector2(90, 0)
+	return s
+
+# --- Marcadores de uniones (modo edición) ---
+func _redraw_connection_markers() -> void:
+	for c in connections_root.get_children():
+		c.queue_free()
+	var colors := {
+		Connection.Tipo.FIJA: Color(0.7, 0.7, 0.7), Connection.Tipo.BISAGRA: Color(0.96, 0.65, 0.14),
+		Connection.Tipo.DESLIZADERA: Color(0.3, 0.6, 1.0), Connection.Tipo.ROTULA: Color(0.3, 0.9, 0.5),
+		Connection.Tipo.ENGRANAJE: Color(0.7, 0.4, 1.0),
+	}
+	for conn in connections:
+		var a := _find_part(conn.a_uid)
+		var b := _find_part(conn.b_uid)
+		if a == null or b == null:
+			continue
+		connections_root.add_child(_make_link_marker(a.global_position, b.global_position, colors.get(conn.tipo, Color.WHITE)))
+
+func _make_link_marker(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
+	var holder := Node3D.new()
+	var mid := (p1 + p2) * 0.5
+	var dist := p1.distance_to(p2)
+	var cyl := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.004; mesh.bottom_radius = 0.004
+	mesh.height = maxf(0.001, dist)
+	cyl.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.emission_enabled = true; mat.emission = color; mat.emission_energy_multiplier = 0.6
+	cyl.material_override = mat
+	holder.add_child(cyl)
+	holder.global_position = mid
+	if dist > 0.0001:
+		# Orienta el eje Y del cilindro a lo largo de p1->p2.
+		var dir := (p2 - p1).normalized()
+		if absf(dir.dot(Vector3.UP)) < 0.999:
+			holder.look_at(mid + dir, Vector3.UP)
+			holder.rotate_object_local(Vector3.RIGHT, PI / 2.0)
+	# Esfera en el anclaje.
+	var sph := MeshInstance3D.new()
+	var sm := SphereMesh.new(); sm.radius = 0.012; sm.height = 0.024
+	sph.mesh = sm; sph.material_override = mat
+	sph.position = Vector3.ZERO
+	holder.add_child(sph)
+	return holder
+
+# --- Telemetría en vivo durante la simulación ---
+func _build_telemetry_panel() -> void:
+	for c in prop_container.get_children():
+		c.queue_free()
+	_tele_labels.clear()
+	if selected_part == null:
+		var info := _label("Simulación en marcha.\nSelecciona una pieza para ver\nsu telemetría en vivo.")
+		info.add_theme_color_override("font_color", Color(0.6, 0.62, 0.66))
+		prop_container.add_child(info)
+		_add_com_labels()
+		return
+	_add_prop_row("Pieza", selected_part.def.get("nombre", selected_part.def_id))
+	for key in ["Posición", "Velocidad", "Rapidez", "Vel. angular", "Masa"]:
+		var hb := HBoxContainer.new()
+		var kl := _label(key + ":"); kl.custom_minimum_size = Vector2(96, 0)
+		kl.add_theme_color_override("font_color", Color(0.6, 0.63, 0.68))
+		hb.add_child(kl)
+		var vl := _label("—"); vl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hb.add_child(vl)
+		prop_container.add_child(hb)
+		_tele_labels[key] = vl
+	prop_container.add_child(HSeparator.new())
+	_add_com_labels()
+
+func _add_com_labels() -> void:
+	var hb := HBoxContainer.new()
+	var kl := _label("Centro de masa:"); kl.add_theme_color_override("font_color", Color(1.0, 0.4, 0.6))
+	hb.add_child(kl)
+	var vl := _label("—"); vl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(vl)
+	prop_container.add_child(hb)
+	_tele_labels["COM"] = vl
+
+func _update_telemetry() -> void:
+	if selected_part and _tele_labels.has("Posición"):
+		var t := simulator.telemetry(selected_part.uid)
+		if not t.is_empty():
+			_tele_labels["Posición"].text = "X %.3f  Y %.3f  Z %.3f m" % [t["pos"].x, t["pos"].y, t["pos"].z]
+			_tele_labels["Velocidad"].text = "%.3f, %.3f, %.3f m/s" % [t["vel"].x, t["vel"].y, t["vel"].z]
+			_tele_labels["Rapidez"].text = Units.fmt_speed(t["speed"])
+			_tele_labels["Vel. angular"].text = "%.2f rad/s" % t["ang_speed"]
+			_tele_labels["Masa"].text = Units.fmt_mass(t["mass"])
+	if _tele_labels.has("COM"):
+		var com := simulator.center_of_mass()
+		_tele_labels["COM"].text = "X %.3f Y %.3f Z %.3f m  ·  %s" % [com["pos"].x, com["pos"].y, com["pos"].z, Units.fmt_mass(com["mass"])]
 
 #endregion

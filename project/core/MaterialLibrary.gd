@@ -70,6 +70,12 @@ func display_name(id: String) -> String:
 func density(id: String) -> float:
 	return get_data(id).get("densidad", 1000.0)
 
+func friction(id: String) -> float:
+	return get_data(id).get("friccion", 0.5)
+
+func restitution(id: String) -> float:
+	return get_data(id).get("restitucion", 0.1)
+
 func yield_strength_pa(id: String) -> float:
 	return get_data(id).get("limite_mpa", 100.0) * 1.0e6
 

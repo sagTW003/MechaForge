@@ -5,11 +5,15 @@ ingeniería" para diseñar, ensamblar, programar y probar mecanismos, robots,
 vehículos, grúas, estructuras, transmisiones y sistemas de control, con física
 realista y gráficos de alta calidad.
 
-> Estado: **Fase 1 completada** (base del proyecto, entorno 3D, cámara orbital,
-> perfiles gráficos automáticos, colocación de piezas con snapping, guardar/cargar).
+> Estado: **Fases 1 y 2 completadas** — base + construcción (Fase 1) y **física**
+> (Fase 2: cuerpos rígidos Jolt, uniones, motores, centro de masa, telemetría).
 > Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
 
 ![Demostración Fase 1](docs/demo_fase1.png)
+*Fase 1 — construcción.*
+
+![Demostración Fase 2](docs/demo_fase2.png)
+*Fase 2 — simulación física: brazo motorizado, centro de masa (esfera rosa) y telemetría en vivo.*
 
 ---
 
@@ -69,9 +73,36 @@ tools\godot\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64.exe --
 | Deshacer / Rehacer | `Ctrl+Z` / `Ctrl+Y` |
 | Guardar / Abrir | `Ctrl+S` / `Ctrl+O` |
 | Snapping a rejilla | `G` |
+| **Simular / detener** | `Espacio` |
+| **Conectar dos piezas** | Botón `🔗 Conectar` |
+| **Reiniciar simulación** | Botón `⟲ Reiniciar` |
 | Ayuda | `H` o `F1` |
 
 Lista completa en [docs/ATAJOS.md](docs/ATAJOS.md).
+
+### Física (Fase 2)
+
+Pulsa **▶ Simular** (o `Espacio`) para activar la física (Jolt, 120 Hz). Las
+piezas se vuelven cuerpos rígidos con su masa real, gravedad, fricción y
+colisiones. Con **🔗 Conectar** unes dos piezas mediante:
+
+- **Fija** — soldadura rígida.
+- **Bisagra** — giro sobre un eje, con límites opcionales y **motor** (curva
+  torque–velocidad de motor DC: velocidad objetivo, torque de arranque, velocidad
+  sin carga).
+- **Deslizadera** — desplazamiento lineal sobre un eje, con límites.
+- **Rótula** — giro libre en los tres ejes.
+- **Engranaje** — acoplamiento cinemático por relación de transmisión.
+
+Durante la simulación, al seleccionar una pieza se muestra su **telemetría en
+vivo** y el **centro de masa** del conjunto (esfera rosa). **⟲ Reiniciar**
+devuelve todo al estado inicial exacto.
+
+### Verificación de física
+```bat
+...\Godot_...mono_win64.exe --headless --path project -- mfphys
+```
+Ejecuta las pruebas de física (gravedad, reinicio, unión fija, motor, engranaje).
 
 ## Arquitectura
 
@@ -79,8 +110,8 @@ Modular por carpetas dentro de `project/`:
 
 | Módulo | Responsabilidad |
 |---|---|
-| `core/` | Escena, piezas (definidas por datos), materiales, unidades SI, cálculo (C#) |
-| `physics/` | *(Fase 2)* Uniones, motores, engranajes |
+| `core/` | Escena, piezas (definidas por datos), materiales, uniones, unidades SI, cálculo (C#) |
+| `physics/` | Simulador Jolt: cuerpos rígidos, uniones, motores, engranajes, centro de masa |
 | `electronics/` | *(Fase 3)* Cableado y solver eléctrico |
 | `control/` | *(Fase 3)* Microcontrolador virtual, PID, scripts |
 | `rendering/` | Perfiles gráficos, entorno, shaders |

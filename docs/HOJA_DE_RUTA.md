@@ -20,12 +20,19 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [x] Interfaz en español, tema oscuro, atajos documentados.
 - [x] Verificado: 101.8 FPS promedio con 200 piezas en perfil Ultra (RTX 5060).
 
-## ⏳ Fase 2 — Física
-- [ ] Cuerpos rígidos (Jolt) para las piezas; modo edición ↔ simulación.
-- [ ] Uniones (bisagra, rótula, deslizadera, eje) con límites, rigidez, amortiguación.
-- [ ] Motores con curva torque–velocidad; engranajes/correas acoplados.
-- [ ] Gravedad, fricción, centro de masa visible, reinicio al estado inicial.
-- [ ] Telemetría básica (posición, velocidad, torque).
+## ✅ Fase 2 — Física (completada)
+- [x] Cuerpos rígidos (Jolt) para las piezas; modo edición ↔ simulación con reinicio.
+- [x] Uniones: **fija**, **bisagra** (con límites y motor), **deslizadera** (con
+      límites) y **rótula**, creadas con el modo "Conectar".
+- [x] Motores de bisagra con **curva torque–velocidad** de motor DC (HingeJoint3D).
+- [x] Engranajes **acoplados cinemáticamente** (relación de transmisión).
+- [x] Gravedad, fricción por material, colisiones, **centro de masa visible**.
+- [x] Telemetría en vivo (posición, velocidad, velocidad angular, masa, COM).
+- [x] Serialización de uniones (formato v2).
+- [x] Pruebas de física automatizadas (5/5 OK): gravedad, reinicio, unión fija,
+      motor y engranaje.
+- [ ] Pendiente para 2.1: correas/poleas, amortiguación/rigidez ajustables por
+      unión, y "anclaje al mundo" para bancos de prueba fijos.
 
 ## ⏳ Fase 3 — Electrónica y control
 - [ ] Cableado visual (alimentación/señal/tierra).

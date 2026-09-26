@@ -10,6 +10,8 @@ var def_id: String = ""
 var def: Dictionary = {}
 var material_id: String = "aluminio"
 var uid: String = ""
+## Transformación al iniciar la simulación (para reiniciar al estado original).
+var initial_transform: Transform3D = Transform3D.IDENTITY
 
 var _mesh_instance: MeshInstance3D
 var _pick_body: StaticBody3D
@@ -82,6 +84,38 @@ func _make_mesh() -> Mesh:
 ## Masa en kg = densidad(material) * volumen.
 func mass_kg() -> float:
 	return MaterialLibrary.density(material_id) * PartLibrary.volume_m3(def)
+
+func friction() -> float:
+	return MaterialLibrary.friction(material_id)
+
+func restitution() -> float:
+	return MaterialLibrary.restitution(material_id)
+
+## Crea la forma de colisión que corresponde a la geometría de la pieza.
+func make_collision_shape() -> Shape3D:
+	var forma: String = def.get("forma", "caja")
+	if forma == "cilindro" or forma == "tubo":
+		var d: Dictionary = def.get("dimensiones_mm", {})
+		var s := CylinderShape3D.new()
+		s.radius = float(d.get("radio", 10.0)) / 1000.0
+		s.height = float(d.get("altura", 100.0)) / 1000.0
+		return s
+	var s2 := BoxShape3D.new()
+	s2.size = PartLibrary.dims_m(def)
+	return s2
+
+## Crea una MeshInstance3D independiente con la misma malla y material,
+## para usarla en el cuerpo rígido durante la simulación.
+func make_visual_clone() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _make_mesh()
+	mi.material_override = MaterialLibrary.get_visual(material_id)
+	return mi
+
+## Activa/desactiva el cuerpo de selección (se apaga durante la simulación).
+func set_pick_enabled(value: bool) -> void:
+	if _pick_body:
+		_pick_body.collision_layer = PICK_LAYER if value else 0
 
 func set_selected(value: bool) -> void:
 	_selected = value

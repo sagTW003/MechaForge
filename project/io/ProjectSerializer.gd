@@ -12,14 +12,17 @@ extends RefCounted
 ## }
 
 const FORMAT_ID := "mechaforge"
-const FORMAT_VERSION := 1
+const FORMAT_VERSION := 2
 
-## Construye el diccionario del proyecto a partir del nodo raíz de piezas.
-static func build_document(parts_root: Node3D) -> Dictionary:
+## Construye el diccionario del proyecto a partir de las piezas y las uniones.
+static func build_document(parts_root: Node3D, connections: Array = []) -> Dictionary:
 	var piezas := []
 	for child in parts_root.get_children():
 		if child is PartInstance:
 			piezas.append((child as PartInstance).to_dict())
+	var uniones := []
+	for c in connections:
+		uniones.append((c as Connection).to_dict())
 	return {
 		"formato": FORMAT_ID,
 		"version": FORMAT_VERSION,
@@ -27,11 +30,20 @@ static func build_document(parts_root: Node3D) -> Dictionary:
 		"app_version": Config.APP_VERSION,
 		"grid_mm": Config.grid_size_mm(),
 		"piezas": piezas,
+		"uniones": uniones,
 	}
 
+## Reconstruye las uniones de un documento como Array[Connection].
+static func parse_connections(doc: Dictionary) -> Array:
+	var out := []
+	for u in doc.get("uniones", []):
+		if typeof(u) == TYPE_DICTIONARY:
+			out.append(Connection.from_dict(u))
+	return out
+
 ## Guarda a disco. Devuelve OK o un código de error de Godot.
-static func save(parts_root: Node3D, path: String) -> int:
-	var doc := build_document(parts_root)
+static func save(parts_root: Node3D, path: String, connections: Array = []) -> int:
+	var doc := build_document(parts_root, connections)
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()

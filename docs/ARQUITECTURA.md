@@ -22,6 +22,18 @@
   de selección, calcula su masa y se serializa.
 - `MassProperties.cs` — cálculo de masa e inercia (módulo C#).
 
+### `physics/` — Simulación (Fase 2)
+- `Simulator.gd` — convierte las piezas en `RigidBody3D` (Jolt), crea las uniones
+  y las gobierna cada paso físico. Uniones: **fija/deslizadera/rótula** con
+  `Generic6DOFJoint3D` (límites), **bisagra** con `HingeJoint3D` (motor con curva
+  torque–velocidad y límites) y **engranaje** por acoplamiento cinemático de
+  velocidad. Calcula y muestra el **centro de masa** y expone **telemetría**.
+- `core/Connection.gd` — modelo de datos serializable de una unión.
+
+> Nota técnica: el motor angular de `Generic6DOFJoint3D` no es fiable con Jolt,
+> por eso las bisagras motorizadas usan `HingeJoint3D` (su eje de giro es el eje
+> **X local** del joint).
+
 ### `rendering/` — Gráficos
 - `GraphicsProfiles.gd` *(autoload)* — detecta la GPU, elige perfil
   (Bajo/Medio/Alto/Ultra), aplica ajustes al `Environment` y `Viewport`, y hace
@@ -37,7 +49,6 @@
 - `ProjectSerializer.gd` — guardar/cargar proyectos en JSON (`.mforge`).
 
 ### Pendientes (fases siguientes)
-- `physics/` — uniones, motores, engranajes (Jolt).
 - `electronics/` — cableado y solver eléctrico.
 - `control/` — microcontrolador virtual, PID.
 - `ai_bridge/` — puente con OpenClaw.

@@ -19,6 +19,16 @@
 | `Ctrl+D` | Duplicar la pieza seleccionada |
 | `G` | Activar/desactivar snapping a la rejilla |
 
+## Simulación y uniones (Fase 2)
+| Control | Acción |
+|---|---|
+| `Espacio` | Iniciar / detener la simulación |
+| Botón `⟲ Reiniciar` | Volver al estado inicial |
+| Botón `🔗 Conectar` | Unir dos piezas: clic en la 1.ª y luego en la 2.ª, elige el tipo (fija/bisagra/deslizadera/rótula/engranaje), límites y motor |
+
+Durante la simulación, selecciona una pieza para ver su **telemetría en vivo**
+(posición, velocidad, velocidad angular, masa) y el **centro de masa** del conjunto.
+
 ## Proyecto
 | Control | Acción |
 |---|---|
