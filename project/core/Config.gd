@@ -14,6 +14,9 @@ signal status_message(text: String, seconds: float)
 ## Tamaño de celda de la rejilla en metros (por defecto 10 mm = 0.01 m).
 var grid_size_m: float = 0.01
 var snap_enabled: bool = true
+## Encaje por superficie: al arrastrar/colocar una pieza sobre otra, se posa
+## automáticamente sobre la cara que toca (apilado sin ajustar en 3 ejes).
+var surface_snap_enabled: bool = true
 ## Paso de rotación en grados al rotar piezas.
 var rotation_step_deg: float = 15.0
 

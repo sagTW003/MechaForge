@@ -62,6 +62,10 @@ tools\godot\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64.exe --
 | Acción | Control |
 |---|---|
 | Colocar pieza / seleccionar | Clic izquierdo |
+| Mover pieza colocada | Arrastrar (X/Z) |
+| **Encajar sobre otra pieza** | Arrastrar encima (opción `Encajar`) |
+| Mover en altura | Mantener `Z` + arrastrar |
+| Ajuste fino por rejilla | Flechas · `Re/Av Pág` (altura) |
 | Cancelar / deseleccionar | Clic derecho o `Esc` |
 | Orbitar cámara | Botón central del ratón |
 | Desplazar (pan) | `Mayús` + botón central |

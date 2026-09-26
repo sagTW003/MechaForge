@@ -60,6 +60,7 @@ var prop_container: VBoxContainer
 var mat_option: OptionButton
 var profile_option: OptionButton
 var snap_check: CheckButton
+var encaje_check: CheckButton
 var grid_option: OptionButton
 var rot_option: OptionButton
 var help_panel: Control
@@ -214,6 +215,25 @@ func _run_phys_tests() -> void:
 	var wb := simulator.get_body(g2.uid).angular_velocity.dot(Vector3.UP)
 	_pcheck(absf(wb - (-4.0)) < 0.6, "Engranaje ratio 2: ω_b ≈ -4 rad/s (obtenido %.2f)" % wb)
 	simulator.stop()
+
+	# --- 5) Encaje por superficie: posar una pieza encima de otra ---
+	_on_new()
+	Config.surface_snap_enabled = true
+	var mesa := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))  # cara superior en y=0.008
+	await _phys_wait(3)
+	camera.target = Vector3(0, 0.004, 0)
+	camera._yaw = 0.0
+	camera._pitch = deg_to_rad(-89.0)
+	camera.distance = 1.0
+	camera._update_transform()
+	await get_tree().process_frame
+	var centro := get_viewport().get_visible_rect().size * 0.5
+	var dims := PartLibrary.dims_m(PartLibrary.get_def("perfil_2020_100"))  # y=0.1
+	var snap := _try_surface_snap(centro, dims, null)
+	_pcheck(not snap.is_empty() and snap.get("target") == mesa, "Encaje detecta la pieza bajo el cursor")
+	if not snap.is_empty():
+		var esperado := 0.008 + dims.y * 0.5
+		_pcheck(absf(snap["pos"].y - esperado) < 0.02, "Encaje posa la pieza encima (y=%.3f, esperado %.3f)" % [snap["pos"].y, esperado])
 
 	_on_new()
 	print("[TEST] Física: %d OK, %d FALLOS" % [_test_ok, _test_fail])
@@ -557,6 +577,12 @@ func _build_topbar() -> Control:
 	snap_check.toggled.connect(func(v): Config.snap_enabled = v; Config.notify("Snapping: %s" % ("activado" if v else "desactivado")))
 	hb.add_child(snap_check)
 
+	encaje_check = CheckButton.new()
+	encaje_check.text = "Encajar"
+	encaje_check.button_pressed = Config.surface_snap_enabled
+	encaje_check.toggled.connect(func(v): Config.surface_snap_enabled = v; Config.notify("Encaje por superficie: %s" % ("activado" if v else "desactivado")))
+	hb.add_child(encaje_check)
+
 	hb.add_child(_label("Rejilla:"))
 	grid_option = OptionButton.new()
 	for mm in GRID_SIZE_OPTIONS:
@@ -676,6 +702,7 @@ func _build_help_panel() -> void:
 CONSTRUCCIÓN
 [Clic izquierdo]      Colocar pieza / seleccionar
 [Arrastrar pieza]     Mover en el suelo (X/Z)
+[Sobre otra pieza]    Encaja automáticamente encima (opción "Encajar")
 [Z + arrastrar]       Mover en altura (vertical)
 [Flechas]             Mover por rejilla (X/Z)
 [Re Pág] / [Av Pág]   Subir / bajar (altura)
@@ -783,7 +810,7 @@ func _refresh_properties() -> void:
 	hb.add_child(_button("Duplicar", _duplicate_selected))
 	hb.add_child(_button("Eliminar", _delete_selected))
 	prop_container.add_child(hb)
-	var hint := _label("Arrastra para mover (X/Z).\nMantén Z + arrastra para la altura.\nFlechas y Re/Av Pág mueven por rejilla.")
+	var hint := _label("Arrastra para mover (X/Z).\nSobre otra pieza, ENCAJA sola encima.\nMantén Z + arrastra para la altura.\nFlechas y Re/Av Pág mueven por rejilla.")
 	hint.add_theme_color_override("font_color", Color(0.55, 0.58, 0.62))
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -866,6 +893,36 @@ func _ground_point(screen_pos: Vector2) -> Variant:
 	var hit = plane.intersects_ray(ray["origin"], ray["dir"])
 	return hit
 
+## Encaje por superficie: si el rayo del ratón toca otra pieza, devuelve la
+## posición para posar una pieza de dimensiones "dims" sobre la cara tocada.
+## Devuelve {} si el encaje está desactivado o no hay pieza bajo el cursor.
+func _try_surface_snap(screen_pos: Vector2, dims: Vector3, exclude: PartInstance) -> Dictionary:
+	if not Config.surface_snap_enabled:
+		return {}
+	var ray := camera.screen_ray(screen_pos)
+	var space := get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(
+		ray["origin"], ray["origin"] + ray["dir"] * 1000.0, PartInstance.PICK_LAYER)
+	var hit := space.intersect_ray(params)
+	if hit.is_empty():
+		return {}
+	var target: Node = hit["collider"].get_parent()
+	if not (target is PartInstance) or target == exclude:
+		return {}
+	var P: Vector3 = hit["position"]
+	var N: Vector3 = hit["normal"]
+	var pos: Vector3
+	if absf(N.y) >= absf(N.x) and absf(N.y) >= absf(N.z):
+		# Cara superior/inferior -> apilar en vertical, alineado a la rejilla.
+		pos = Config.snap_vector(Vector3(P.x, 0.0, P.z))
+		pos.y = P.y + signf(N.y) * dims.y * 0.5
+	else:
+		# Cara lateral -> pegar al lado desplazando media dimensión en ese eje.
+		var half := absf(N.x) * dims.x * 0.5 + absf(N.z) * dims.z * 0.5
+		pos = Config.snap_vector(P + N * half)
+		pos.y = maxf(dims.y * 0.5, P.y)
+	return {"pos": pos, "target": target}
+
 func _process(_delta: float) -> void:
 	if fps_label:
 		fps_label.text = "FPS: %d  (x%.2f)" % [Engine.get_frames_per_second(), GraphicsProfiles.current_scale()]
@@ -878,12 +935,17 @@ func _process(_delta: float) -> void:
 			_tele_accum = 0.0
 			_update_telemetry()
 	if placing and ghost:
-		var p = _ground_point(get_viewport().get_mouse_position())
-		if p != null:
-			var pos: Vector3 = Config.snap_vector(p)
-			# Apoya la pieza sobre el suelo (su centro sube media altura).
-			pos.y = PartLibrary.dims_m(ghost.def).y * 0.5
-			ghost.position = pos
+		var dims := PartLibrary.dims_m(ghost.def)
+		var mouse := get_viewport().get_mouse_position()
+		var snap := _try_surface_snap(mouse, dims, null)
+		if not snap.is_empty():
+			ghost.position = snap["pos"]
+		else:
+			var p = _ground_point(mouse)
+			if p != null:
+				var pos: Vector3 = Config.snap_vector(p)
+				pos.y = dims.y * 0.5  # apoya sobre el suelo
+				ghost.position = pos
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -968,6 +1030,7 @@ func _begin_pointer(screen_pos: Vector2) -> void:
 	drag_start_pos = part.position
 	drag_start_rot = part.rotation
 	drag_moved = false
+	part.set_pick_enabled(false)  # evita que la pieza se detecte a sí misma al encajar
 	var gp = _ground_point(screen_pos)
 	if gp != null:
 		drag_grab_offset = part.global_position - (gp as Vector3)
@@ -980,20 +1043,30 @@ func _update_drag(event: InputEventMouseMotion) -> void:
 	if dragging_part == null:
 		return
 	if Input.is_key_pressed(KEY_Z):
+		# Movimiento vertical (altura), sin encaje.
 		var sens := 0.0022 * maxf(0.25, camera.distance)
 		var new_y := dragging_part.position.y - event.relative.y * sens
 		dragging_part.position.y = maxf(0.0, Config.snap_scalar(new_y))
+		_show_drag_status()
 	else:
-		var gp = _ground_point(event.position)
-		if gp != null:
-			var target: Vector3 = (gp as Vector3) + drag_grab_offset
-			var snapped := Config.snap_vector(Vector3(target.x, 0.0, target.z))
-			dragging_part.position.x = snapped.x
-			dragging_part.position.z = snapped.z
+		var dims := PartLibrary.dims_m(dragging_part.def)
+		var snap := _try_surface_snap(event.position, dims, dragging_part)
+		if not snap.is_empty():
+			dragging_part.position = snap["pos"]
+			if status_label:
+				var tgt: PartInstance = snap["target"]
+				status_label.text = "Encajando sobre %s   ·   suelta para fijar" % tgt.def.get("nombre", "")
+		else:
+			var gp = _ground_point(event.position)
+			if gp != null:
+				var target: Vector3 = (gp as Vector3) + drag_grab_offset
+				var snapped := Config.snap_vector(Vector3(target.x, 0.0, target.z))
+				dragging_part.position.x = snapped.x
+				dragging_part.position.z = snapped.z
+			_show_drag_status()
 	drag_moved = true
 	if connections.size() > 0:
 		_redraw_connection_markers()
-	_show_drag_status()
 
 func _show_drag_status() -> void:
 	if status_label and dragging_part:
@@ -1006,6 +1079,7 @@ func _end_drag() -> void:
 		return
 	var part := dragging_part
 	dragging_part = null
+	part.set_pick_enabled(true)  # reactiva la selección de la pieza
 	if drag_moved and part.position.distance_to(drag_start_pos) > 1.0e-6:
 		_do({
 			"type": "transform", "uid": part.uid,

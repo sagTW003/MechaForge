@@ -13,6 +13,11 @@
 | Control | Acción |
 |---|---|
 | Clic izquierdo | Colocar la pieza elegida / seleccionar una pieza |
+| Arrastrar una pieza | Moverla sobre el suelo (X/Z) |
+| Arrastrar **sobre otra pieza** | **Encaja** automáticamente encima o contra su cara (opción "Encajar" de la barra) |
+| Mantener `Z` + arrastrar | Mover en altura (vertical) |
+| Flechas | Mover por rejilla (X/Z) |
+| `Re Pág` / `Av Pág` | Subir / bajar (altura) |
 | Clic derecho / `Esc` | Cancelar colocación / deseleccionar |
 | `R` | Rotar la pieza seleccionada (paso configurable en la barra) |
 | `Supr` | Eliminar la pieza seleccionada |
