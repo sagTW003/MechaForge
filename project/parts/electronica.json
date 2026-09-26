@@ -1,0 +1,84 @@
+{
+  "piezas": [
+    {
+      "id": "bateria_lipo_3s",
+      "nombre": "Batería LiPo 3S (11.1 V)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 105, "y": 25, "z": 34 }
+    },
+    {
+      "id": "microcontrolador",
+      "nombre": "Microcontrolador (placa)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "placa",
+      "dimensiones_mm": { "x": 68, "y": 6, "z": 53 }
+    },
+    {
+      "id": "driver_motor",
+      "nombre": "Driver de motor",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "placa",
+      "dimensiones_mm": { "x": 43, "y": 8, "z": 43 }
+    },
+    {
+      "id": "led",
+      "nombre": "LED 5 mm",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "cilindro",
+      "dimensiones_mm": { "radio": 2.5, "altura": 8 }
+    },
+    {
+      "id": "motor_dc",
+      "nombre": "Motor DC (Ø25)",
+      "categoria": "actuador",
+      "material": "acero",
+      "forma": "cilindro",
+      "dimensiones_mm": { "radio": 12.5, "altura": 50 }
+    },
+    {
+      "id": "servo",
+      "nombre": "Servomotor estándar",
+      "categoria": "actuador",
+      "material": "abs",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 40, "y": 38, "z": 20 }
+    },
+    {
+      "id": "actuador_lineal",
+      "nombre": "Actuador lineal (100 mm)",
+      "categoria": "actuador",
+      "material": "aluminio",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 30, "y": 180, "z": 30 }
+    },
+    {
+      "id": "sensor_ultrasonido",
+      "nombre": "Sensor ultrasónico",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 45, "y": 20, "z": 15 }
+    },
+    {
+      "id": "encoder",
+      "nombre": "Encoder rotativo",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "cilindro",
+      "dimensiones_mm": { "radio": 15, "altura": 20 }
+    },
+    {
+      "id": "imu",
+      "nombre": "Sensor IMU",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "placa",
+      "dimensiones_mm": { "x": 25, "y": 4, "z": 18 }
+    }
+  ]
+}

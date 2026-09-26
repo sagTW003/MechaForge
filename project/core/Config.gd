@@ -20,6 +20,10 @@ var surface_snap_enabled: bool = true
 ## Paso de rotación en grados al rotar piezas.
 var rotation_step_deg: float = 15.0
 
+# --- Batería del sistema (Fase 3) ---
+var battery_voltage: float = 12.0        # V
+var battery_capacity_mah: float = 2200.0 # mAh
+
 # --- Estado de proyecto ---
 var current_project_path: String = ""
 var project_dirty: bool = false

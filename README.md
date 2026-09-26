@@ -5,15 +5,19 @@ ingeniería" para diseñar, ensamblar, programar y probar mecanismos, robots,
 vehículos, grúas, estructuras, transmisiones y sistemas de control, con física
 realista y gráficos de alta calidad.
 
-> Estado: **Fases 1 y 2 completadas** — base + construcción (Fase 1) y **física**
-> (Fase 2: cuerpos rígidos Jolt, uniones, motores, centro de masa, telemetría).
+> Estado: **Fases 1, 2 y 3 completadas** — construcción (1), **física** (2:
+> cuerpos rígidos Jolt, uniones, motores) y **electrónica y control** (3: solver
+> eléctrico en C#, PID, gráficas, consumo/autonomía).
 > Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
 
 ![Demostración Fase 1](docs/demo_fase1.png)
 *Fase 1 — construcción.*
 
 ![Demostración Fase 2](docs/demo_fase2.png)
-*Fase 2 — simulación física: brazo motorizado, centro de masa (esfera rosa) y telemetría en vivo.*
+*Fase 2 — simulación física: brazo motorizado, centro de masa (esfera rosa) y telemetría.*
+
+![Demostración Fase 3](docs/demo_fase3.png)
+*Fase 3 — control PID de posición con gráfica en vivo y panel de consumo/autonomía.*
 
 ---
 
@@ -107,6 +111,23 @@ devuelve todo al estado inicial exacto.
 ...\Godot_...mono_win64.exe --headless --path project -- mfphys
 ```
 Ejecuta las pruebas de física (gravedad, reinicio, unión fija, motor, engranaje).
+
+### Electrónica y control (Fase 3)
+
+Al crear una **bisagra con motor**, en el diálogo puedes activar un **control PID**
+(posición o velocidad) con su consigna y ganancias Kp/Ki/Kd. Durante la simulación
+aparece el panel **Electrónica y control** (abajo a la izquierda) con:
+
+- **Batería** editable (voltaje y capacidad en mAh).
+- **Consumo** calculado por el solver eléctrico en C# (corriente, potencia) y la
+  **autonomía** estimada.
+- **Osciloscopio en vivo** (consigna vs medida) de la unión controlada elegida.
+- **Exportar CSV** de la telemetría de control.
+
+Pruebas de electrónica y control:
+```bat
+...\Godot_...mono_win64.exe --headless --path project -- mfelec
+```
 
 ## Arquitectura
 

@@ -34,6 +34,17 @@
 > por eso las bisagras motorizadas usan `HingeJoint3D` (su eje de giro es el eje
 > **X local** del joint).
 
+### `electronics/` y `control/` — Electrónica y control (Fase 3, C#)
+- `electronics/ElectricalSolver.cs` — solver de circuitos DC por Análisis Nodal
+  Modificado (Ohm/Kirchhoff): tensiones, corrientes, potencia, autonomía.
+- `control/PidController.cs` — PID discreto con anti-windup y límites.
+- `electronics/Electronics.cs` — **autoload** que expone ambos a GDScript con
+  tipos simples (GDScript no puede referenciar clases C# por nombre de forma
+  fiable, así que toda la interop pasa por este servicio).
+- `ui/LiveGraph.gd` — osciloscopio/gráfica dibujada con `_draw()`.
+- La integración vive en `Simulator`: cada bisagra motorizada puede llevar un PID
+  (posición/velocidad); el consumo se calcula tratando cada motor como carga.
+
 ### `rendering/` — Gráficos
 - `GraphicsProfiles.gd` *(autoload)* — detecta la GPU, elige perfil
   (Bajo/Medio/Alto/Ultra), aplica ajustes al `Environment` y `Viewport`, y hace

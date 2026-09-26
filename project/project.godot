@@ -25,6 +25,7 @@ Config="*res://core/Config.gd"
 MaterialLibrary="*res://core/MaterialLibrary.gd"
 PartLibrary="*res://core/PartLibrary.gd"
 GraphicsProfiles="*res://rendering/GraphicsProfiles.gd"
+Electronics="*res://electronics/Electronics.cs"
 
 [display]
 

@@ -22,6 +22,20 @@ var _connections: Array = []          # Array[Connection] activas
 var _com_marker: MeshInstance3D
 var _ground: StaticBody3D
 
+# --- Control y electrónica (Fase 3) ---
+var _pid_ids: Dictionary = {}       # conn.uid -> id de PID (autoload Electronics)
+var _ctrl_angle: Dictionary = {}    # conn.uid -> ángulo acumulado (rad)
+var _runtime_target: Dictionary = {} # conn.uid -> velocidad objetivo efectiva
+var _motor_frac: Dictionary = {}    # conn.uid -> fracción de par (0..1) => corriente
+var _ctrl_meas: Dictionary = {}     # conn.uid -> medida actual (ángulo o velocidad)
+var _history: Dictionary = {}       # conn.uid -> {t:[], sp:[], meas:[]}
+var _sim_time: float = 0.0
+var _hist_accum: float = 0.0
+var _elec: Dictionary = {}          # último resultado eléctrico
+var _elec_accum: float = 0.0
+const HIST_MAX := 300
+const HIST_PERIOD := 0.033          # ~30 Hz de muestreo para las gráficas
+
 const WORLD_LAYER := 1
 
 func setup(parts_root: Node3D, sim_root: Node3D) -> void:
@@ -52,6 +66,19 @@ func start(connections: Array) -> void:
 	# 3) Marcador de centro de masa.
 	_com_marker = _make_com_marker()
 	_sim_root.add_child(_com_marker)
+	# 4) Control: crea un PID por bisagra con control de posición.
+	_sim_time = 0.0
+	for conn in _connections:
+		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
+			_ctrl_angle[conn.uid] = 0.0
+			if conn.control_mode != Connection.ControlMode.NINGUNO:
+				var pid: int = Electronics.PidCreate()
+				Electronics.PidConfigure(pid, conn.ctrl_kp, conn.ctrl_ki, conn.ctrl_kd)
+				Electronics.PidSetLimits(pid, -conn.motor_noload_speed, conn.motor_noload_speed)
+				Electronics.PidSetSetpoint(pid, conn.ctrl_setpoint)
+				_pid_ids[conn.uid] = pid
+				_history[conn.uid] = {"t": [], "sp": [], "meas": []}
+	_compute_electrical()
 	_running = true
 	set_physics_process(true)
 	simulation_started.emit()
@@ -70,6 +97,10 @@ func stop() -> void:
 	_bodies.clear()
 	if _com_marker: _com_marker.queue_free()
 	if _ground: _ground.queue_free()
+	for uid in _pid_ids:
+		Electronics.PidDestroy(_pid_ids[uid])
+	_pid_ids.clear(); _ctrl_angle.clear(); _runtime_target.clear()
+	_motor_frac.clear(); _history.clear(); _elec = {}
 	# Restaurar piezas a su estado inicial.
 	for child in _parts_root.get_children():
 		if child is PartInstance:
@@ -239,14 +270,45 @@ func _axis_basis_z(dir: Vector3) -> Basis:
 
 #region PASO FÍSICO: MOTORES, ENGRANAJES, COM -----------------------------------
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	_sim_time += delta
 	for jd in _joints:
 		var conn: Connection = jd["conn"]
 		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
+			_update_control(jd, delta)
 			_drive_motor(jd)
 		elif conn.tipo == Connection.Tipo.ENGRANAJE:
 			_drive_gear(jd)
 	_update_com()
+	# Registro para gráficas y cálculo eléctrico periódico.
+	_hist_accum += delta
+	if _hist_accum >= HIST_PERIOD:
+		_hist_accum = 0.0
+		_record_history()
+	_elec_accum += delta
+	if _elec_accum >= 0.1:
+		_elec_accum = 0.0
+		_compute_electrical()
+
+## Aplica el controlador PID a una bisagra motorizada (posición o velocidad).
+func _update_control(jd: Dictionary, delta: float) -> void:
+	var conn: Connection = jd["conn"]
+	var a: RigidBody3D = jd["a"]
+	var b: RigidBody3D = jd["b"]
+	var axis := conn.axis_vector().normalized()
+	var omega: float = (b.angular_velocity - a.angular_velocity).dot(axis)
+	# Ángulo relativo acumulado (integración de la velocidad).
+	_ctrl_angle[conn.uid] = _ctrl_angle.get(conn.uid, 0.0) + omega * delta
+	if conn.control_mode == Connection.ControlMode.NINGUNO:
+		return
+	var pid: int = _pid_ids.get(conn.uid, -1)
+	if pid < 0:
+		return
+	Electronics.PidSetSetpoint(pid, conn.ctrl_setpoint)
+	var meas: float = _ctrl_angle[conn.uid] if conn.control_mode == Connection.ControlMode.POSICION else omega
+	_ctrl_meas[conn.uid] = meas
+	var cmd: float = Electronics.PidUpdate(pid, meas, delta)
+	_runtime_target[conn.uid] = clampf(cmd, -conn.motor_noload_speed, conn.motor_noload_speed)
 
 ## Motor de bisagra con curva torque–velocidad de motor DC:
 ##   torque disponible = stall * (1 - |ω| / ω_sin_carga), acotado a [0, stall].
@@ -260,8 +322,11 @@ func _drive_motor(jd: Dictionary) -> void:
 	var omega: float = (b.angular_velocity - a.angular_velocity).dot(axis)
 	var frac := clampf(1.0 - absf(omega) / maxf(0.001, conn.motor_noload_speed), 0.0, 1.0)
 	var torque := conn.motor_stall_torque * frac
+	_motor_frac[conn.uid] = frac
 	var step := 1.0 / float(Engine.physics_ticks_per_second)
-	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, conn.motor_target_speed)
+	# Objetivo efectivo: el del controlador si hay control, si no el fijo.
+	var target: float = _runtime_target.get(conn.uid, conn.motor_target_speed)
+	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, target)
 	hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque * step)
 
 ## Engranaje acoplado cinemáticamente: ω_b(eje) = -ratio * ω_a(eje).
@@ -324,5 +389,61 @@ func telemetry(uid: String) -> Dictionary:
 		"ang_speed": b.angular_velocity.length(),
 		"mass": b.mass,
 	}
+
+#endregion
+
+#region ELECTRÓNICA Y CONTROL (Fase 3) ------------------------------------------
+
+## Calcula el consumo del sistema: cada motor activo es una carga en paralelo
+## sobre la batería; el solver (C#) devuelve corriente y potencia totales.
+func _compute_electrical() -> void:
+	var v := maxf(0.1, Config.battery_voltage)
+	var resistors := []
+	for conn in _connections:
+		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
+			var frac: float = _motor_frac.get(conn.uid, 0.0)
+			var i_motor: float = conn.elec_current_noload + (conn.elec_current_stall - conn.elec_current_noload) * frac
+			resistors.append([1, 0, v / maxf(0.001, i_motor)])
+	if resistors.is_empty():
+		_elec = {"voltage": v, "current": 0.0, "power": 0.0, "autonomy_h": INF, "motors": 0}
+		return
+	var res: Dictionary = Electronics.SolveCircuit(2, resistors, [[1, 0, v]])
+	var cur: float = res.get("main_current", 0.0)
+	_elec = {
+		"voltage": v, "current": cur, "power": res.get("total_power", 0.0),
+		"autonomy_h": Electronics.Autonomy(cur, Config.battery_capacity_mah),
+		"motors": resistors.size(),
+	}
+
+func _record_history() -> void:
+	for uid in _history:
+		var conn := _conn_by_uid(uid)
+		if conn == null:
+			continue
+		var h: Dictionary = _history[uid]
+		h["t"].append(_sim_time)
+		h["sp"].append(conn.ctrl_setpoint)
+		h["meas"].append(_ctrl_meas.get(uid, 0.0))
+		if h["t"].size() > HIST_MAX:
+			h["t"].pop_front(); h["sp"].pop_front(); h["meas"].pop_front()
+
+func _conn_by_uid(uid: String) -> Connection:
+	for c in _connections:
+		if c.uid == uid:
+			return c
+	return null
+
+func electrical() -> Dictionary:
+	return _elec
+
+## Lista de uniones con control activo (para elegir en la gráfica).
+func controlled_uids() -> Array:
+	return _history.keys()
+
+func history(uid: String) -> Dictionary:
+	return _history.get(uid, {})
+
+func control_measure(uid: String) -> float:
+	return _ctrl_meas.get(uid, 0.0)
 
 #endregion

@@ -45,6 +45,16 @@ var connect_button: Button
 var conn_dialog: Panel
 var _conn_widgets: Dictionary = {}
 
+# --- Panel de electrónica y control (Fase 3) ---
+var elec_panel: PanelContainer
+var elec_info_label: Label
+var graph: LiveGraph
+var graph_selector: OptionButton
+var battery_v_spin: SpinBox
+var battery_cap_spin: SpinBox
+var graph_uid: String = ""
+var _elec_accum: float = 0.0
+
 # --- Deshacer / rehacer (basado en comandos) ---
 var _undo: Array = []
 var _redo: Array = []
@@ -105,8 +115,54 @@ func _ready() -> void:
 		call_deferred("_run_tests")
 	elif "mfphys" in OS.get_cmdline_user_args():
 		call_deferred("_run_phys_tests")
+	elif "mfelec" in OS.get_cmdline_user_args():
+		call_deferred("_run_elec_tests")
 	elif "mfshot2" in OS.get_cmdline_user_args():
 		call_deferred("_run_physics_shot")
+	elif "mfshot3" in OS.get_cmdline_user_args():
+		call_deferred("_run_control_shot")
+
+#region PRUEBAS DE ELECTRÓNICA Y CONTROL (Fase 3) -------------------------------
+
+func _run_elec_tests() -> void:
+	print("[TEST] Pruebas de electrónica y control (Fase 3)...")
+
+	# 1) Resistencia única: 12 V / 6 Ω = 2 A, 24 W.
+	var r1: Dictionary = Electronics.SolveCircuit(2, [[1, 0, 6.0]], [[1, 0, 12.0]])
+	_check(r1["ok"], "Solver resuelve circuito simple")
+	_check(absf(float(r1["main_current"]) - 2.0) < 1.0e-6, "Ley de Ohm: I = 2 A")
+	_check(absf(float(r1["total_power"]) - 24.0) < 1.0e-6, "Potencia = 24 W")
+
+	# 2) Serie 4 Ω + 8 Ω a 12 V: I = 1 A, nodo medio a 8 V.
+	var r2: Dictionary = Electronics.SolveCircuit(3, [[1, 2, 4.0], [2, 0, 8.0]], [[1, 0, 12.0]])
+	var volts: PackedFloat64Array = r2["node_voltages"]
+	_check(absf(float(r2["main_current"]) - 1.0) < 1.0e-6, "Serie: I = 1 A")
+	_check(absf(volts[2] - 8.0) < 1.0e-6, "Divisor de tensión: nodo medio = 8 V")
+
+	# 3) Paralelo 6 Ω || 12 Ω a 12 V: I = 3 A.
+	var r3: Dictionary = Electronics.SolveCircuit(2, [[1, 0, 6.0], [1, 0, 12.0]], [[1, 0, 12.0]])
+	_check(absf(float(r3["main_current"]) - 3.0) < 1.0e-6, "Paralelo: I = 3 A")
+
+	# 4) Autonomía: 2 A con 2000 mAh = 1 h.
+	_check(absf(Electronics.Autonomy(2.0, 2000.0) - 1.0) < 1.0e-6, "Autonomía = 1 h")
+
+	# 5) PID converge a la consigna con una planta de primer orden.
+	var pid: int = Electronics.PidCreate()
+	Electronics.PidConfigure(pid, 2.0, 1.0, 0.05)
+	Electronics.PidSetLimits(pid, -10.0, 10.0)
+	Electronics.PidSetSetpoint(pid, 5.0)
+	var y := 0.0
+	var dt := 0.02
+	for i in range(600):
+		var u: float = Electronics.PidUpdate(pid, y, dt)
+		y += (u - 0.5 * y) * dt          # planta: dy/dt = u - 0.5 y
+	Electronics.PidDestroy(pid)
+	_check(absf(y - 5.0) < 0.2, "PID lleva la planta a la consigna (y=%.2f)" % y)
+
+	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
+	get_tree().quit(1 if _test_fail > 0 else 0)
+
+#endregion
 
 func _run_physics_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -140,6 +196,39 @@ func _run_physics_shot() -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_path)
 	print("[SHOT2] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+func _run_control_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot3")
+	var out_path := "user://mechaforge_fase3.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var post := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.154, 0))
+	var arm := _spawn("perfil_2020_400", "aluminio", Vector3(0.2, 0.29, 0), Vector3(0, 0, PI / 2.0))
+	var c1 := Connection.new(); c1.a_uid = base.uid; c1.b_uid = post.uid; c1.tipo = Connection.Tipo.FIJA
+	c1.anchor = Vector3(0, 0.02, 0)
+	var c2 := Connection.new(); c2.a_uid = post.uid; c2.b_uid = arm.uid; c2.tipo = Connection.Tipo.BISAGRA
+	c2.axis = 2; c2.anchor = Vector3(0, 0.29, 0)
+	c2.motor_enabled = true; c2.motor_stall_torque = 8.0; c2.motor_noload_speed = 8.0
+	c2.control_mode = Connection.ControlMode.POSICION; c2.ctrl_setpoint = deg_to_rad(55.0)
+	c2.ctrl_kp = 10.0; c2.ctrl_ki = 2.0; c2.ctrl_kd = 0.5
+	c2.elec_current_noload = 0.3; c2.elec_current_stall = 3.0
+	connections = [c1, c2]
+	_redraw_connection_markers()
+	_update_counts()
+	camera.target = Vector3(0.1, 0.2, 0)
+	camera.distance = 1.35
+	simulator.start(connections)
+	_select(arm)
+	await get_tree().create_timer(3.5).timeout
+	_update_elec_panel()
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(out_path)
+	print("[SHOT3] Guardado en %s" % ProjectSettings.globalize_path(out_path))
 	get_tree().quit()
 
 #region PRUEBAS DE FÍSICA (Fase 2) ----------------------------------------------
@@ -214,6 +303,24 @@ func _run_phys_tests() -> void:
 	await _phys_wait(5)
 	var wb := simulator.get_body(g2.uid).angular_velocity.dot(Vector3.UP)
 	_pcheck(absf(wb - (-4.0)) < 0.6, "Engranaje ratio 2: ω_b ≈ -4 rad/s (obtenido %.2f)" % wb)
+	simulator.stop()
+
+	# --- Control PID de posición: la bisagra alcanza el ángulo consigna ---
+	_on_new()
+	var cb := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
+	var ca := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
+	var cc := Connection.new(); cc.a_uid = cb.uid; cc.b_uid = ca.uid
+	cc.tipo = Connection.Tipo.BISAGRA; cc.axis = 2
+	cc.anchor = (cb.global_position + ca.global_position) * 0.5
+	cc.motor_enabled = true; cc.motor_stall_torque = 4.0; cc.motor_noload_speed = 10.0
+	cc.control_mode = Connection.ControlMode.POSICION; cc.ctrl_setpoint = 1.0
+	cc.ctrl_kp = 8.0; cc.ctrl_ki = 1.0; cc.ctrl_kd = 0.4
+	simulator.start([cc])
+	await _phys_wait(400)
+	var ang := simulator.control_measure(cc.uid)
+	_pcheck(absf(ang - 1.0) < 0.3, "Control PID alcanza el ángulo consigna (%.2f rad)" % ang)
+	var elec := simulator.electrical()
+	_pcheck(float(elec.get("current", 0.0)) > 0.0, "El motor consume corriente (%.2f A)" % float(elec.get("current", 0.0)))
 	simulator.stop()
 
 	# --- 5) Encaje por superficie: posar una pieza encima de otra ---
@@ -534,6 +641,7 @@ func _build_ui() -> void:
 
 	_build_help_panel()
 	_build_file_dialog()
+	_build_elec_panel()
 
 func _panel(min_size: Vector2) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -934,6 +1042,7 @@ func _process(_delta: float) -> void:
 		if _tele_accum >= 0.1:
 			_tele_accum = 0.0
 			_update_telemetry()
+			_update_elec_panel()
 	if placing and ghost:
 		var dims := PartLibrary.dims_m(ghost.def)
 		var mouse := get_viewport().get_mouse_position()
@@ -1401,13 +1510,16 @@ func _on_sim_started() -> void:
 	_select(null)
 	_set_editing_enabled(false)
 	connections_root.visible = false
-	Config.notify("Simulación en marcha. Selecciona una pieza para ver su telemetría.", 4.0)
+	elec_panel.visible = true
+	_populate_graph_selector()
+	Config.notify("Simulación en marcha. Panel de electrónica y control abajo a la izquierda.", 4.0)
 
 func _on_sim_stopped() -> void:
 	sim_button.text = "▶  Simular"
 	_select(null)
 	_set_editing_enabled(true)
 	connections_root.visible = true
+	if elec_panel: elec_panel.visible = false
 	_refresh_properties()
 	Config.notify("Modo edición.")
 
@@ -1509,6 +1621,23 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 	motor_vb.add_child(_label("Vel. sin carga (rad/s)")); motor_vb.add_child(noload_spin)
 	vb.add_child(motor_vb)
 
+	vb.add_child(_label("Control del motor:"))
+	var ctrl_opt := OptionButton.new()
+	for cn in Connection.CONTROL_NOMBRE:
+		ctrl_opt.add_item(cn)
+	vb.add_child(ctrl_opt)
+	var setpoint_spin := _spin(-360, 360, 1, 45)
+	vb.add_child(_label("Consigna (° si posición, rad/s si velocidad)"))
+	vb.add_child(setpoint_spin)
+	var pid_hb := HBoxContainer.new()
+	var kp_spin := _spin(0, 200, 0.1, 6.0)
+	var ki_spin := _spin(0, 200, 0.1, 0.5)
+	var kd_spin := _spin(0, 200, 0.05, 0.3)
+	pid_hb.add_child(_label("Kp")); pid_hb.add_child(kp_spin)
+	pid_hb.add_child(_label("Ki")); pid_hb.add_child(ki_spin)
+	pid_hb.add_child(_label("Kd")); pid_hb.add_child(kd_spin)
+	vb.add_child(pid_hb)
+
 	vb.add_child(_label("Relación (engranaje):"))
 	var ratio_spin := _spin(-10, 10, 0.1, 1.0)
 	vb.add_child(ratio_spin)
@@ -1532,6 +1661,12 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		c.motor_stall_torque = torque_spin.value
 		c.motor_noload_speed = noload_spin.value
 		c.gear_ratio = ratio_spin.value
+		c.control_mode = ctrl_opt.selected
+		if c.control_mode == Connection.ControlMode.POSICION:
+			c.ctrl_setpoint = deg_to_rad(setpoint_spin.value)
+		else:
+			c.ctrl_setpoint = setpoint_spin.value
+		c.ctrl_kp = kp_spin.value; c.ctrl_ki = ki_spin.value; c.ctrl_kd = kd_spin.value
 		connections.append(c)
 		Config.project_dirty = true
 		_redraw_connection_markers()
@@ -1637,5 +1772,122 @@ func _update_telemetry() -> void:
 	if _tele_labels.has("COM"):
 		var com := simulator.center_of_mass()
 		_tele_labels["COM"].text = "X %.3f Y %.3f Z %.3f m  ·  %s" % [com["pos"].x, com["pos"].y, com["pos"].z, Units.fmt_mass(com["mass"])]
+
+#endregion
+
+#region PANEL DE ELECTRÓNICA Y CONTROL (Fase 3) ---------------------------------
+
+func _build_elec_panel() -> void:
+	elec_panel = _panel(Vector2(400, 300))
+	elec_panel.anchor_top = 1.0; elec_panel.anchor_bottom = 1.0
+	elec_panel.offset_left = 252; elec_panel.offset_right = 252 + 400
+	elec_panel.offset_top = -352; elec_panel.offset_bottom = -44
+	elec_panel.visible = false
+	ui_layer.add_child(elec_panel)
+
+	var vb := VBoxContainer.new()
+	elec_panel.add_child(vb)
+	var title := _label("Electrónica y control")
+	title.add_theme_font_size_override("font_size", 14)
+	vb.add_child(title)
+
+	var bh := HBoxContainer.new()
+	bh.add_child(_label("Batería V:"))
+	battery_v_spin = _spin(1, 60, 0.5, Config.battery_voltage)
+	battery_v_spin.value_changed.connect(func(v): Config.battery_voltage = v)
+	bh.add_child(battery_v_spin)
+	bh.add_child(_label("mAh:"))
+	battery_cap_spin = _spin(100, 50000, 100, Config.battery_capacity_mah)
+	battery_cap_spin.value_changed.connect(func(v): Config.battery_capacity_mah = v)
+	bh.add_child(battery_cap_spin)
+	vb.add_child(bh)
+
+	elec_info_label = _label("—")
+	elec_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vb.add_child(elec_info_label)
+
+	var gh := HBoxContainer.new()
+	gh.add_child(_label("Gráfica:"))
+	graph_selector = OptionButton.new()
+	graph_selector.item_selected.connect(_on_graph_selected)
+	gh.add_child(graph_selector)
+	gh.add_child(_button("Exportar CSV", _export_csv))
+	vb.add_child(gh)
+
+	graph = LiveGraph.new()
+	graph.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(graph)
+
+func _find_conn(uid: String) -> Connection:
+	for c in connections:
+		if c.uid == uid:
+			return c
+	return null
+
+func _on_graph_selected(i: int) -> void:
+	graph_uid = graph_selector.get_item_metadata(i)
+
+func _populate_graph_selector() -> void:
+	graph_selector.clear()
+	var uids: Array = simulator.controlled_uids()
+	var idx := 0
+	for uid in uids:
+		var c := _find_conn(uid)
+		var nombre := "Unión %d" % (idx + 1)
+		if c:
+			nombre += "  (%s)" % Connection.CONTROL_NOMBRE[c.control_mode]
+		graph_selector.add_item(nombre)
+		graph_selector.set_item_metadata(idx, uid)
+		idx += 1
+	if uids.size() > 0:
+		graph_uid = uids[0]
+		graph_selector.select(0)
+	else:
+		graph_uid = ""
+
+func _update_elec_panel() -> void:
+	if elec_panel == null or not elec_panel.visible:
+		return
+	var e := simulator.electrical()
+	var auto = e.get("autonomy_h", INF)
+	var auto_txt := "∞ (sin consumo)" if (auto == INF or auto > 1.0e6) else ("%.2f h" % auto)
+	elec_info_label.text = "Batería: %.1f V   ·   Corriente: %.2f A   ·   Potencia: %.1f W\nAutonomía estimada: %s   ·   Motores activos: %d" % [
+		e.get("voltage", 0.0), e.get("current", 0.0), e.get("power", 0.0), auto_txt, e.get("motors", 0)]
+
+	if graph_uid != "":
+		var h := simulator.history(graph_uid)
+		if h.has("t"):
+			var c := _find_conn(graph_uid)
+			var is_pos := c != null and c.control_mode == Connection.ControlMode.POSICION
+			var sp_vals := []
+			var me_vals := []
+			for v in h["sp"]:
+				sp_vals.append(rad_to_deg(v) if is_pos else v)
+			for v in h["meas"]:
+				me_vals.append(rad_to_deg(v) if is_pos else v)
+			graph.set_title("Control de %s" % ("posición [°]" if is_pos else "velocidad [rad/s]"))
+			graph.set_series(h["t"], [
+				{"nombre": "Consigna", "color": Color(0.96, 0.65, 0.14), "valores": sp_vals},
+				{"nombre": "Medida", "color": Color(0.35, 0.8, 1.0), "valores": me_vals},
+			])
+
+func _export_csv() -> void:
+	if graph_uid == "":
+		Config.notify("No hay una unión con control seleccionada.")
+		return
+	var h := simulator.history(graph_uid)
+	if not h.has("t") or (h["t"] as Array).is_empty():
+		Config.notify("Aún no hay datos que exportar.")
+		return
+	var path := "user://telemetria_%s.csv" % graph_uid
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		Config.notify("No se pudo crear el CSV.")
+		return
+	f.store_line("tiempo_s,consigna,medida")
+	for i in range((h["t"] as Array).size()):
+		f.store_line("%f,%f,%f" % [h["t"][i], h["sp"][i], h["meas"][i]])
+	f.close()
+	Config.notify("CSV exportado: %s" % ProjectSettings.globalize_path(path), 6.0)
 
 #endregion

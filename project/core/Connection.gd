@@ -34,6 +34,20 @@ var motor_noload_speed: float = 6.0    # rad/s sin carga
 # Engranaje: relación de transmisión (ω_b = -ratio * ω_a).
 var gear_ratio: float = 1.0
 
+# --- Control (Fase 3): la bisagra motorizada puede llevar un PID ---
+enum ControlMode { NINGUNO, POSICION, VELOCIDAD }
+var control_mode: int = ControlMode.NINGUNO
+var ctrl_setpoint: float = 0.0   # rad (posición) o rad/s (velocidad)
+var ctrl_kp: float = 4.0
+var ctrl_ki: float = 0.5
+var ctrl_kd: float = 0.2
+
+# --- Eléctrico (Fase 3): consumo del motor como carga ---
+var elec_current_noload: float = 0.2   # A en vacío
+var elec_current_stall: float = 2.5    # A a par máximo
+
+const CONTROL_NOMBRE := ["Ninguno", "Posición (PID)", "Velocidad (PID)"]
+
 func _init() -> void:
 	uid = "c%d_%d" % [Time.get_ticks_usec(), randi() % 100000]
 
@@ -54,6 +68,9 @@ func to_dict() -> Dictionary:
 		"motor_enabled": motor_enabled, "motor_target_speed": motor_target_speed,
 		"motor_stall_torque": motor_stall_torque, "motor_noload_speed": motor_noload_speed,
 		"gear_ratio": gear_ratio,
+		"control_mode": control_mode, "ctrl_setpoint": ctrl_setpoint,
+		"ctrl_kp": ctrl_kp, "ctrl_ki": ctrl_ki, "ctrl_kd": ctrl_kd,
+		"elec_current_noload": elec_current_noload, "elec_current_stall": elec_current_stall,
 	}
 
 static func from_dict(d: Dictionary) -> Connection:
@@ -73,4 +90,11 @@ static func from_dict(d: Dictionary) -> Connection:
 	c.motor_stall_torque = d.get("motor_stall_torque", 0.5)
 	c.motor_noload_speed = d.get("motor_noload_speed", 6.0)
 	c.gear_ratio = d.get("gear_ratio", 1.0)
+	c.control_mode = int(d.get("control_mode", ControlMode.NINGUNO))
+	c.ctrl_setpoint = d.get("ctrl_setpoint", 0.0)
+	c.ctrl_kp = d.get("ctrl_kp", 4.0)
+	c.ctrl_ki = d.get("ctrl_ki", 0.5)
+	c.ctrl_kd = d.get("ctrl_kd", 0.2)
+	c.elec_current_noload = d.get("elec_current_noload", 0.2)
+	c.elec_current_stall = d.get("elec_current_stall", 2.5)
 	return c

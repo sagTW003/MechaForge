@@ -34,11 +34,20 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [ ] Pendiente para 2.1: correas/poleas, amortiguación/rigidez ajustables por
       unión, y "anclaje al mundo" para bancos de prueba fijos.
 
-## ⏳ Fase 3 — Electrónica y control
-- [ ] Cableado visual (alimentación/señal/tierra).
-- [ ] Solver eléctrico (Ohm/Kirchhoff): consumo, caída de tensión, autonomía (C#).
-- [ ] Microcontrolador virtual: bloques visuales + script (Python/Lua).
-- [ ] Controladores PID con gráficas en vivo, osciloscopio, export CSV.
+## ✅ Fase 3 — Electrónica y control (núcleo completado)
+- [x] **Solver eléctrico en C#** (Análisis Nodal Modificado, Ohm/Kirchhoff):
+      tensiones de nodo, corriente, potencia y **autonomía de batería**.
+- [x] **Controladores PID en C#** (anti-windup), configurables por unión
+      (modo posición o velocidad, Kp/Ki/Kd, consigna).
+- [x] Panel de **batería** (voltaje/capacidad) y **consumo** en vivo.
+- [x] **Osciloscopio/gráfica en vivo** (consigna vs medida) y **exportar CSV**.
+- [x] Biblioteca de **componentes electrónicos** (batería, MCU, driver, LED,
+      motor DC, servo, actuador lineal, sensores).
+- [x] Interop C#↔GDScript vía autoload `Electronics` (servicio).
+- [x] Pruebas automatizadas (8/8): Ohm, serie, paralelo, autonomía, PID; y en
+      simulación real: control PID de posición + consumo.
+- [ ] Pendiente para 3.1: cableado visual entre terminales, y microcontrolador
+      programable por bloques/script (Lua/Python embebido).
 
 ## ⏳ Fase 4 — Integración OpenClaw
 - [ ] Puente `ai_bridge` (gateway local + herramientas MCP/JSON-RPC).
