@@ -1,0 +1,66 @@
+# Arquitectura — MechaForge
+
+## Principios
+- **Modular y desacoplado**: cada módulo tiene una responsabilidad clara y se
+  comunica por señales (`Config` actúa como bus de eventos).
+- **Definido por datos**: las piezas son archivos JSON; añadir contenido no
+  requiere tocar código.
+- **Unidades SI** en toda la lógica interna; el formateo a texto legible está
+  aislado en `core/Units.gd`.
+- **GDScript** para interfaz y herramientas; **C#** (.NET 8) para cálculo
+  intensivo (empieza con `core/MassProperties.cs`).
+
+## Módulos (dentro de `project/`)
+
+### `core/` — Modelo de datos y cálculo
+- `Config.gd` *(autoload)* — ajustes globales (rejilla, snapping) y bus de señales.
+- `Units.gd` — formateo de magnitudes SI.
+- `MaterialLibrary.gd` *(autoload)* — materiales con densidad, fricción, límites
+  y aspecto PBR; genera `StandardMaterial3D` y materiales "fantasma".
+- `PartLibrary.gd` *(autoload)* — carga y cataloga las definiciones JSON de piezas.
+- `PartInstance.gd` — una pieza colocada: construye su malla procedural, cuerpo
+  de selección, calcula su masa y se serializa.
+- `MassProperties.cs` — cálculo de masa e inercia (módulo C#).
+
+### `rendering/` — Gráficos
+- `GraphicsProfiles.gd` *(autoload)* — detecta la GPU, elige perfil
+  (Bajo/Medio/Alto/Ultra), aplica ajustes al `Environment` y `Viewport`, y hace
+  escalado dinámico de resolución.
+- `floor_grid.gdshader` — rejilla de taller estilo CAD sobre el suelo.
+
+### `ui/` — Interfaz y cámara
+- `Main.gd` — controlador principal: construye el entorno 3D y la UI, gestiona
+  colocación, selección, propiedades, deshacer/rehacer y archivos.
+- `CameraOrbit.gd` — cámara orbital tipo CAD.
+
+### `io/` — Persistencia
+- `ProjectSerializer.gd` — guardar/cargar proyectos en JSON (`.mforge`).
+
+### Pendientes (fases siguientes)
+- `physics/` — uniones, motores, engranajes (Jolt).
+- `electronics/` — cableado y solver eléctrico.
+- `control/` — microcontrolador virtual, PID.
+- `ai_bridge/` — puente con OpenClaw.
+
+## Deshacer/Rehacer
+Basado en **comandos** (`add`, `remove`, `transform`) con dos pilas. Cada comando
+sabe aplicarse y revertirse, lo que mantiene el historial ligero y reversible —
+incluido, en la Fase 4, el historial de acciones de la IA.
+
+## Selección con el ratón
+Cada `PartInstance` incluye un `StaticBody3D` en una capa de colisión dedicada
+(`PICK_LAYER`). La selección usa un raycast físico contra esa capa; el mismo
+cuerpo servirá de base para la física de la Fase 2.
+
+## Formato de proyecto (`.mforge`)
+```json
+{
+  "formato": "mechaforge",
+  "version": 1,
+  "grid_mm": 10.0,
+  "piezas": [
+    { "uid": "...", "def_id": "perfil_2020_200", "material": "aluminio",
+      "pos": [x, y, z], "rot": [x, y, z] }
+  ]
+}
+```

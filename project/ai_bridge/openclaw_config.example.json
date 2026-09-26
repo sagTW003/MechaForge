@@ -1,0 +1,16 @@
+{
+  "_comentario": "Plantilla de configuración del puente con OpenClaw (Fase 4). Copia este archivo como 'openclaw_config.json' y rellena el token. El archivo real está en .gitignore y NUNCA debe versionarse.",
+  "habilitado": true,
+  "gateway": {
+    "host": "127.0.0.1",
+    "puerto": 18789,
+    "token": "PEGA_AQUI_TU_TOKEN_DEL_GATEWAY",
+    "endpoint_chat": "/v1/chat/completions",
+    "agente_por_defecto": "cerebro"
+  },
+  "herramientas_expuestas": {
+    "modo": "mcp",
+    "solo_local": true,
+    "requiere_confirmacion": true
+  }
+}

@@ -1,0 +1,26 @@
+# --- Godot 4 ---
+project/.godot/
+project/.import/
+export_presets.cfg
+*.translation
+
+# --- .NET / C# ---
+project/.mono/
+project/bin/
+project/obj/
+*.user
+*.suo
+
+# --- Motor Godot (binario grande, no versionar) ---
+tools/godot/
+
+# --- Sistema operativo ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Credenciales locales de la IA (nunca versionar) ---
+project/ai_bridge/openclaw_config.json
+
+# --- Salidas temporales ---
+*.log

@@ -1,0 +1,80 @@
+{
+  "piezas": [
+    {
+      "id": "perfil_2020_100",
+      "nombre": "Perfil aluminio 20×20 (100 mm)",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 20, "y": 100, "z": 20 },
+      "anclajes": [
+        { "pos_mm": [0, 50, 0], "eje": [0, 1, 0] },
+        { "pos_mm": [0, -50, 0], "eje": [0, -1, 0] }
+      ]
+    },
+    {
+      "id": "perfil_2020_200",
+      "nombre": "Perfil aluminio 20×20 (200 mm)",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 20, "y": 200, "z": 20 }
+    },
+    {
+      "id": "perfil_2020_400",
+      "nombre": "Perfil aluminio 20×20 (400 mm)",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 20, "y": 400, "z": 20 }
+    },
+    {
+      "id": "perfil_4040_300",
+      "nombre": "Perfil aluminio 40×40 (300 mm)",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 40, "y": 300, "z": 40 }
+    },
+    {
+      "id": "placa_100x100",
+      "nombre": "Placa aluminio 100×100×5",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "placa",
+      "dimensiones_mm": { "x": 100, "y": 5, "z": 100 }
+    },
+    {
+      "id": "placa_base_200x200",
+      "nombre": "Placa base 200×200×8",
+      "categoria": "estructural",
+      "material": "acero",
+      "forma": "placa",
+      "dimensiones_mm": { "x": 200, "y": 8, "z": 200 }
+    },
+    {
+      "id": "viga_acero_500",
+      "nombre": "Viga acero 30×30 (500 mm)",
+      "categoria": "estructural",
+      "material": "acero",
+      "forma": "caja",
+      "dimensiones_mm": { "x": 30, "y": 500, "z": 30 }
+    },
+    {
+      "id": "tubo_al_d25_300",
+      "nombre": "Tubo aluminio Ø25 (300 mm)",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "tubo",
+      "dimensiones_mm": { "radio": 12.5, "altura": 300, "espesor": 2 }
+    },
+    {
+      "id": "eje_acero_d10_150",
+      "nombre": "Eje acero Ø10 (150 mm)",
+      "categoria": "estructural",
+      "material": "acero_inox",
+      "forma": "cilindro",
+      "dimensiones_mm": { "radio": 5, "altura": 150 }
+    }
+  ]
+}
