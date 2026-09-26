@@ -25,6 +25,13 @@ var selected_part: PartInstance = null
 var placing: bool = false
 var _pending_transform: Dictionary = {}  # para deshacer movimientos
 
+# --- Mover piezas colocadas (arrastre) ---
+var dragging_part: PartInstance = null
+var drag_start_pos: Vector3 = Vector3.ZERO
+var drag_start_rot: Vector3 = Vector3.ZERO
+var drag_grab_offset: Vector3 = Vector3.ZERO
+var drag_moved: bool = false
+
 # --- Física / simulación (Fase 2) ---
 var simulator: Simulator
 var sim_root: Node3D
@@ -269,7 +276,16 @@ func _run_tests() -> void:
 	_check(recuperada != null and recuperada.material_id == "acero", "Se conserva el material 'acero'")
 	_check(recuperada != null and recuperada.position.distance_to(Vector3(0.1, 0.05, -0.2)) < 1.0e-4, "Se conserva la posición")
 
-	# 5. Unidades.
+	# 5. Mover pieza (nudge) + deshacer.
+	Config.set_grid_size_mm(10.0)
+	_select(recuperada)
+	var p_ini: Vector3 = recuperada.position
+	_nudge(Vector3(1, 0, 0))
+	_check(absf(recuperada.position.x - (p_ini.x + 0.01)) < 1.0e-6, "Empuje mueve la pieza 1 celda en X")
+	undo()
+	_check(recuperada.position.distance_to(p_ini) < 1.0e-6, "Deshacer restaura la posición")
+
+	# 6. Unidades.
 	_check(Units.fmt_mass(0.216) == "216.0 g", "Formato de masa < 1 kg en gramos")
 
 	print("[TEST] Resultado: %d OK, %d FALLOS" % [_test_ok, _test_fail])
@@ -659,6 +675,10 @@ func _build_help_panel() -> void:
 	var help := """
 CONSTRUCCIÓN
 [Clic izquierdo]      Colocar pieza / seleccionar
+[Arrastrar pieza]     Mover en el suelo (X/Z)
+[Z + arrastrar]       Mover en altura (vertical)
+[Flechas]             Mover por rejilla (X/Z)
+[Re Pág] / [Av Pág]   Subir / bajar (altura)
 [Clic derecho / Esc]  Cancelar / deseleccionar
 [R]                   Rotar la pieza seleccionada
 [Supr]                Eliminar la pieza seleccionada
@@ -763,6 +783,11 @@ func _refresh_properties() -> void:
 	hb.add_child(_button("Duplicar", _duplicate_selected))
 	hb.add_child(_button("Eliminar", _delete_selected))
 	prop_container.add_child(hb)
+	var hint := _label("Arrastra para mover (X/Z).\nMantén Z + arrastra para la altura.\nFlechas y Re/Av Pág mueven por rejilla.")
+	hint.add_theme_color_override("font_color", Color(0.55, 0.58, 0.62))
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	prop_container.add_child(hint)
 
 func _add_prop_row(k: String, v: String) -> void:
 	var hb := HBoxContainer.new()
@@ -861,22 +886,30 @@ func _process(_delta: float) -> void:
 			ghost.position = pos
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
+	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if placing:
-				_confirm_placement()
-			elif connect_mode:
-				_connect_pick(mb.position)
-			else:
-				_try_select(mb.position)
-		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			if mb.pressed:
+				if placing:
+					_confirm_placement()
+				elif connect_mode:
+					_connect_pick(mb.position)
+				elif simulator.is_running():
+					_try_select(mb.position)
+				else:
+					_begin_pointer(mb.position)
+			else:  # soltar
+				if not placing and not connect_mode and not simulator.is_running():
+					_end_drag()
+		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			if placing:
 				_cancel_placing()
 			elif connect_mode:
 				_set_connect_mode(false)
 			else:
 				_select(null)
+	elif event is InputEventMouseMotion and dragging_part:
+		_update_drag(event as InputEventMouseMotion)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
@@ -924,6 +957,80 @@ func _select(part) -> void:
 		selected_part.set_selected(true)
 	_refresh_properties()
 
+# --- Mover piezas colocadas ---
+## Clic en modo edición: selecciona la pieza y prepara un posible arrastre.
+func _begin_pointer(screen_pos: Vector2) -> void:
+	var part := _pick_part(screen_pos)
+	_select(part)
+	if part == null:
+		return
+	dragging_part = part
+	drag_start_pos = part.position
+	drag_start_rot = part.rotation
+	drag_moved = false
+	var gp = _ground_point(screen_pos)
+	if gp != null:
+		drag_grab_offset = part.global_position - (gp as Vector3)
+		drag_grab_offset.y = 0.0
+	else:
+		drag_grab_offset = Vector3.ZERO
+
+## Arrastre: por defecto mueve en el suelo (X/Z). Con la tecla Z, en altura.
+func _update_drag(event: InputEventMouseMotion) -> void:
+	if dragging_part == null:
+		return
+	if Input.is_key_pressed(KEY_Z):
+		var sens := 0.0022 * maxf(0.25, camera.distance)
+		var new_y := dragging_part.position.y - event.relative.y * sens
+		dragging_part.position.y = maxf(0.0, Config.snap_scalar(new_y))
+	else:
+		var gp = _ground_point(event.position)
+		if gp != null:
+			var target: Vector3 = (gp as Vector3) + drag_grab_offset
+			var snapped := Config.snap_vector(Vector3(target.x, 0.0, target.z))
+			dragging_part.position.x = snapped.x
+			dragging_part.position.z = snapped.z
+	drag_moved = true
+	if connections.size() > 0:
+		_redraw_connection_markers()
+	_show_drag_status()
+
+func _show_drag_status() -> void:
+	if status_label and dragging_part:
+		var p := dragging_part.position
+		status_label.text = "Moviendo %s  ·  X %.3f  Y %.3f  Z %.3f m   (mantén Z para altura)" % [
+			dragging_part.def.get("nombre", ""), p.x, p.y, p.z]
+
+func _end_drag() -> void:
+	if dragging_part == null:
+		return
+	var part := dragging_part
+	dragging_part = null
+	if drag_moved and part.position.distance_to(drag_start_pos) > 1.0e-6:
+		_do({
+			"type": "transform", "uid": part.uid,
+			"old": {"pos": _arr(drag_start_pos), "rot": _arr(drag_start_rot)},
+			"new": {"pos": _arr(part.position), "rot": _arr(part.rotation)},
+		})
+		_redraw_connection_markers()
+	else:
+		_refresh_properties()
+
+## Empuje por rejilla con el teclado (flechas: X/Z; Re/Av Pág: altura).
+func _nudge(dir: Vector3) -> void:
+	if selected_part == null or editing_locked:
+		return
+	var step := Config.grid_size_m
+	var old_pos := selected_part.position
+	var new_pos := old_pos + dir * step
+	new_pos.y = maxf(0.0, new_pos.y)
+	_do({
+		"type": "transform", "uid": selected_part.uid,
+		"old": {"pos": _arr(old_pos), "rot": _arr(selected_part.rotation)},
+		"new": {"pos": _arr(new_pos), "rot": _arr(selected_part.rotation)},
+	})
+	_redraw_connection_markers()
+
 #endregion
 
 #region TECLADO -----------------------------------------------------------------
@@ -956,6 +1063,18 @@ func _handle_key(k: InputEventKey) -> void:
 			_on_open()
 		KEY_D when ctrl and not editing_locked:
 			_duplicate_selected()
+		KEY_LEFT when not editing_locked:
+			_nudge(Vector3(-1, 0, 0))
+		KEY_RIGHT when not editing_locked:
+			_nudge(Vector3(1, 0, 0))
+		KEY_UP when not editing_locked:
+			_nudge(Vector3(0, 0, -1))
+		KEY_DOWN when not editing_locked:
+			_nudge(Vector3(0, 0, 1))
+		KEY_PAGEUP when not editing_locked:
+			_nudge(Vector3(0, 1, 0))
+		KEY_PAGEDOWN when not editing_locked:
+			_nudge(Vector3(0, -1, 0))
 
 func _rotate_selected() -> void:
 	if selected_part == null:
