@@ -155,7 +155,7 @@ Pruebas de electrónica y control:
 
 - Panel **Entorno y gráficos**: **Estudio** (softboxes, ideal para ver materiales),
   **Taller** o **Exterior** (cielo físico con **ciclo día/noche**). Puedes añadir tus
-  propios **HDRI** (`.hdr`, `.exr`, `.png`) en `%APPDATA%\Godotpp_userdata\MechaForge\hdri`
+  propios **HDRI** (`.hdr`, `.exr`, `.png`) en `%APPDATA%\Godot\app_userdata\MechaForge\hdri`
   y pulsar *⟳ Buscar HDRI*. Antialiasing TAA+MSAA / SMAA / FXAA, bloom, DOF.
 - **Gizmo 3D**: selecciona una pieza y arrastra sus flechas (mover) o anillos
   (rotar). `W`/`E` cambian el modo; `R`, `Mayús+R`, `Alt+R` giran en Y/X/Z con pasos
