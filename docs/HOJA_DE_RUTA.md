@@ -73,10 +73,17 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [x] Verificado en vivo: OpenClaw devolvió una acción `add_part` parseada por la
       app. Pruebas del parser: 16/16 base.
 
-## ⏳ Fase 5 — Análisis avanzado
-- [ ] Mapa de esfuerzos por carga, rotura opcional, estabilidad/vuelco.
-- [ ] Plantillas (brazo 4 GDL, seguidor de línea, grúa, puente, pinza).
-- [ ] Importación STL/OBJ/GLTF como piezas; exportar BOM.
+## ✅ Fase 5 — Análisis avanzado (completada)
+- [x] **Mapa de esfuerzos** por carga (color verde→rojo) y **análisis de
+      estabilidad/vuelco** (centro de masa vs base de apoyo).
+- [x] **Plantillas**: Torre, Brazo robótico 3 GDL, Grúa, Puente, Pinza.
+- [x] **Importación de modelos 3D**: GLTF/GLB (GLTFDocument), OBJ y STL
+      (parsers propios) como piezas personalizadas, con autoescala.
+- [x] **Exportar BOM** (lista de materiales) a CSV con cantidades y masas.
+- [x] Barra de herramientas desplazable; FPS en la barra inferior.
+- [x] Pruebas: BOM, importador OBJ y mapa de esfuerzos (19/19 base).
+- [ ] Opcional futuro: rotura de piezas al superar el límite en simulación;
+      persistencia de mallas importadas al guardar el proyecto.
 
 ## ⏳ Fase 6 — Pulido y empaquetado
 - [ ] Optimización en este hardware, perfiles finos.

@@ -80,6 +80,9 @@ var reset_button: Button
 var connect_button: Button
 var conn_dialog: Panel
 var _conn_widgets: Dictionary = {}
+var import_dialog: FileDialog
+var stress_mode: bool = false
+var _custom_count: int = 0
 
 # --- Paneles flotantes ---
 var biblioteca_panel: FloatingPanel
@@ -190,6 +193,27 @@ func _ready() -> void:
 		call_deferred("_run_ai_shot")
 	elif "mfshot8" in OS.get_cmdline_user_args():
 		call_deferred("_run_components_shot")
+	elif "mfshot9" in OS.get_cmdline_user_args():
+		call_deferred("_run_phase5_shot")
+
+func _run_phase5_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot9")
+	var out_path := "user://mechaforge_fase5.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	_tpl_grua()
+	_apply_stress_colors()
+	for p in [biblioteca_panel, propiedades_panel]:
+		if p: p.visible = false
+	camera.target = Vector3(0, 0.2, 0); camera.distance = 1.1
+	camera._pitch = deg_to_rad(-18); camera._yaw = deg_to_rad(-30); camera._update_transform()
+	await get_tree().create_timer(2.5).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT9] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 func _run_components_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -666,6 +690,23 @@ func _run_tests() -> void:
 	var acts := AiActions.parse(ai_reply)
 	_check(acts.size() == 1 and str(acts[0]["tipo"]) == "add_part", "IA: extrae acciones del bloque JSON")
 	_check(AiActions.parse("Tu grúa se vuelca por el centro de masa.").is_empty(), "IA: prosa sin acciones => vacío")
+
+	# 8. BOM (Fase 5).
+	_on_new()
+	_spawn("perfil_2020_200", "aluminio", Vector3(0, 0.1, 0))
+	_spawn("perfil_2020_200", "aluminio", Vector3(0.1, 0.1, 0))
+	_export_bom()
+	var bom := FileAccess.get_file_as_string("user://bom.csv")
+	_check(bom.contains("TOTAL") and bom.contains("perfil_2020_200"), "BOM: exporta CSV con piezas y total")
+
+	# 9. Importador OBJ (Fase 5).
+	var of := FileAccess.open("user://test.obj", FileAccess.WRITE)
+	of.store_string("v 0 0 0\nv 0.1 0 0\nv 0 0.1 0\nf 1 2 3\n"); of.close()
+	var m := MeshImporter.load_mesh("user://test.obj")
+	_check(m != null and m.get_surface_count() > 0, "Importador OBJ carga una malla")
+
+	# 10. Mapa de esfuerzos: color verde→rojo.
+	_check(_stress_color(0.0).g > 0.7 and _stress_color(1.0).r > 0.7, "Esfuerzos: verde (bajo) a rojo (alto)")
 
 	print("[TEST] Resultado: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
@@ -1150,6 +1191,225 @@ func _ai_discard() -> void:
 
 #endregion
 
+#region ANÁLISIS, PLANTILLAS, BOM E IMPORTACIÓN (Fase 5) ------------------------
+
+# --- Lista de materiales (BOM) ---
+func _export_bom() -> void:
+	var tally := {}
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			var p := c as PartInstance
+			if not tally.has(p.def_id):
+				tally[p.def_id] = {"count": 0, "mass": p.mass_kg(), "nombre": p.def.get("nombre", p.def_id), "material": p.material_id}
+			tally[p.def_id]["count"] += 1
+	if tally.is_empty():
+		Config.notify("No hay piezas para el BOM.")
+		return
+	var path := "user://bom.csv"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_line("pieza,def_id,cantidad,masa_unit_g,masa_total_g,material")
+	var total := 0.0
+	var total_n := 0
+	for k in tally:
+		var t: Dictionary = tally[k]
+		var mt: float = t["mass"] * t["count"]
+		total += mt
+		total_n += t["count"]
+		f.store_line("%s,%s,%d,%.1f,%.1f,%s" % [t["nombre"], k, t["count"], t["mass"] * 1000.0, mt * 1000.0, t["material"]])
+	f.store_line("TOTAL,,%d,,%.1f," % [total_n, total * 1000.0])
+	f.close()
+	Config.notify("BOM exportado (%d piezas, %s): %s" % [total_n, Units.fmt_mass(total), ProjectSettings.globalize_path(path)], 7.0)
+
+# --- Plantillas de ejemplo ---
+func _on_template_selected(id: int) -> void:
+	match id:
+		0: _tpl_torre()
+		1: _tpl_brazo()
+		2: _tpl_grua()
+		3: _tpl_puente()
+		4: _tpl_pinza()
+
+func _tpl_fix(a: PartInstance, b: PartInstance, anchor: Vector3) -> void:
+	var c := Connection.new(); c.a_uid = a.uid; c.b_uid = b.uid
+	c.tipo = Connection.Tipo.FIJA; c.anchor = anchor
+	connections.append(c)
+
+func _tpl_hinge(a: PartInstance, b: PartInstance, anchor: Vector3, axis: int, motor: bool) -> void:
+	var c := Connection.new(); c.a_uid = a.uid; c.b_uid = b.uid
+	c.tipo = Connection.Tipo.BISAGRA; c.axis = axis; c.anchor = anchor
+	if motor:
+		c.motor_enabled = true; c.motor_stall_torque = 6.0; c.motor_noload_speed = 4.0
+	connections.append(c)
+
+func _finish_template(name: String) -> void:
+	_redraw_connection_markers()
+	_refresh_uniones_panel()
+	_update_counts()
+	_select(null)
+	Config.notify("Plantilla cargada: %s" % name, 5.0)
+
+func _tpl_torre() -> void:
+	_on_new()
+	_spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var y := 0.108
+	for i in range(4):
+		_spawn("perfil_2020_200", "aluminio_anodizado", Vector3(0, y, 0))
+		y += 0.2
+	_finish_template("Torre")
+
+func _tpl_brazo() -> void:
+	_on_new()
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var s1 := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.158, 0))
+	var s2 := _spawn("perfil_2020_400", "aluminio", Vector3(0.2, 0.31, 0), Vector3(0, 0, PI / 2.0))
+	var s3 := _spawn("perfil_2020_200", "aluminio", Vector3(0.5, 0.31, 0), Vector3(0, 0, PI / 2.0))
+	_tpl_fix(base, s1, Vector3(0, 0.02, 0))
+	_tpl_hinge(s1, s2, Vector3(0, 0.31, 0), 2, true)
+	_tpl_hinge(s2, s3, Vector3(0.4, 0.31, 0), 2, true)
+	_finish_template("Brazo robótico 3 GDL")
+
+func _tpl_grua() -> void:
+	_on_new()
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var torre := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.158, 0))
+	var pluma := _spawn("perfil_2020_400", "aluminio", Vector3(0.12, 0.31, 0), Vector3(0, 0, PI / 2.0))
+	var contra := _spawn("placa_base_200x200", "acero", Vector3(-0.12, 0.31, 0))
+	_tpl_fix(base, torre, Vector3(0, 0.02, 0))
+	_tpl_hinge(torre, pluma, Vector3(0, 0.31, 0), 1, true)  # giro sobre eje Y (slew)
+	_tpl_fix(pluma, contra, Vector3(-0.12, 0.31, 0))
+	_finish_template("Grúa")
+
+func _tpl_puente() -> void:
+	_on_new()
+	var p1 := _spawn("perfil_2020_200", "acero", Vector3(-0.25, 0.1, 0))
+	var p2 := _spawn("perfil_2020_200", "acero", Vector3(0.25, 0.1, 0))
+	var tablero := _spawn("viga_acero_500", "acero", Vector3(0, 0.205, 0), Vector3(0, 0, PI / 2.0))
+	_tpl_fix(p1, tablero, Vector3(-0.25, 0.2, 0))
+	_tpl_fix(p2, tablero, Vector3(0.25, 0.2, 0))
+	_finish_template("Puente")
+
+func _tpl_pinza() -> void:
+	_on_new()
+	var base := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.154, 0))
+	var d1 := _spawn("perfil_2020_100", "aluminio", Vector3(0.05, 0.31, 0))
+	var d2 := _spawn("perfil_2020_100", "aluminio", Vector3(-0.05, 0.31, 0))
+	_tpl_hinge(base, d1, Vector3(0.03, 0.3, 0), 2, true)
+	_tpl_hinge(base, d2, Vector3(-0.03, 0.3, 0), 2, true)
+	_finish_template("Pinza")
+
+# --- Análisis de esfuerzos y estabilidad ---
+func _on_stress_toggled(on: bool) -> void:
+	stress_mode = on
+	if on:
+		_apply_stress_colors()
+	else:
+		for c in parts_root.get_children():
+			if c is PartInstance:
+				(c as PartInstance)._build_visual()
+		Config.notify("Mapa de esfuerzos desactivado.")
+
+func _apply_stress_colors() -> void:
+	var parts := []
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			parts.append(c)
+	for pv in parts:
+		var p: PartInstance = pv
+		var dp := PartLibrary.dims_m(p.def)
+		var top: float = p.position.y + dp.y * 0.5
+		var load := 0.0
+		for qv in parts:
+			var q: PartInstance = qv
+			if q == p:
+				continue
+			var dq := PartLibrary.dims_m(q.def)
+			if q.position.y - dq.y * 0.5 >= top - 0.006:
+				if absf(q.position.x - p.position.x) < (dp.x + dq.x) * 0.5 and absf(q.position.z - p.position.z) < (dp.z + dq.z) * 0.5:
+					load += q.mass_kg()
+		var area := maxf(1.0e-6, dp.x * dp.z)
+		var stress := (load * 9.81) / area
+		var ratio := clampf(stress / maxf(1.0, MaterialLibrary.yield_strength_pa(p.material_id)), 0.0, 1.0)
+		_set_part_overlay(p, _stress_color(ratio))
+	_show_stability()
+
+func _stress_color(r: float) -> Color:
+	# Verde (bajo) -> amarillo -> rojo (alto).
+	if r < 0.5:
+		return Color(0.2, 0.85, 0.25).lerp(Color(0.95, 0.85, 0.15), r * 2.0)
+	return Color(0.95, 0.85, 0.15).lerp(Color(0.95, 0.2, 0.15), (r - 0.5) * 2.0)
+
+func _set_part_overlay(p: PartInstance, col: Color) -> void:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.roughness = 0.6
+	_overlay_recursive(p, m)
+
+func _overlay_recursive(node: Node, m: StandardMaterial3D) -> void:
+	for c in node.get_children():
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).material_override = m
+			_overlay_recursive(c, m)
+		elif not (c is StaticBody3D):
+			_overlay_recursive(c, m)
+
+func _show_stability() -> void:
+	var total := 0.0
+	var acc := Vector3.ZERO
+	var minx := INF; var maxx := -INF; var minz := INF; var maxz := -INF
+	var grounded := false
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			var p := c as PartInstance
+			var mkg := p.mass_kg()
+			acc += p.position * mkg; total += mkg
+			var dp := PartLibrary.dims_m(p.def)
+			if p.position.y - dp.y * 0.5 < 0.01:
+				grounded = true
+				minx = minf(minx, p.position.x - dp.x * 0.5); maxx = maxf(maxx, p.position.x + dp.x * 0.5)
+				minz = minf(minz, p.position.z - dp.z * 0.5); maxz = maxf(maxz, p.position.z + dp.z * 0.5)
+	if total <= 0.0:
+		return
+	var com := acc / total
+	if not grounded:
+		Config.notify("Esfuerzos: COM=(%.2f,%.2f) — sin base de apoyo detectada." % [com.x, com.z], 6.0)
+		return
+	var inside := com.x >= minx and com.x <= maxx and com.z >= minz and com.z <= maxz
+	if inside:
+		Config.notify("Estabilidad: ESTABLE. El centro de masa cae dentro de la base de apoyo.", 6.0)
+	else:
+		Config.notify("⚠ Estabilidad: RIESGO DE VUELCO. El centro de masa cae FUERA de la base.", 8.0)
+
+# --- Importación de modelos 3D ---
+func _import_model() -> void:
+	import_dialog.popup_centered_ratio(0.6)
+
+func _do_import(path: String) -> void:
+	var mesh := MeshImporter.load_mesh(path)
+	if mesh == null:
+		Config.notify("No se pudo importar %s (formato no soportado o archivo dañado)." % path.get_file(), 6.0)
+		return
+	var aabb := mesh.get_aabb()
+	var maxd := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
+	var scale := 1.0
+	if maxd > 2.0:
+		scale = 0.001
+	elif maxd < 0.005 and maxd > 0.0:
+		scale = 0.05 / maxd
+	var dim := aabb.size * scale
+	_custom_count += 1
+	var def := {
+		"id": "custom_%d" % _custom_count,
+		"nombre": path.get_file().get_basename(),
+		"categoria": "importado", "material": "aluminio", "forma": "custom",
+		"_mesh": mesh, "_scale": scale, "_offset": -aabb.get_center() * scale,
+		"dimensiones_mm": {"x": dim.x * 1000.0, "y": dim.y * 1000.0, "z": dim.z * 1000.0},
+	}
+	PartLibrary.register(def)
+	_populate_parts_tree()
+	Config.notify("Importado '%s'. Búscalo en la categoría 'Importado' del panel de piezas." % def["nombre"], 7.0)
+
+#endregion
+
 func _panel(min_size: Vector2) -> PanelContainer:
 	var p := PanelContainer.new()
 	p.custom_minimum_size = min_size
@@ -1163,10 +1423,15 @@ func _panel(min_size: Vector2) -> PanelContainer:
 	return p
 
 func _build_topbar() -> Control:
-	var panel := _panel(Vector2(0, 44))
+	var panel := _panel(Vector2(0, 46))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_child(scroll)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
-	panel.add_child(hb)
+	scroll.add_child(hb)
 
 	hb.add_child(_button("Nuevo", _on_new))
 	hb.add_child(_button("Abrir…", _on_open))
@@ -1225,17 +1490,24 @@ func _build_topbar() -> Control:
 	hb.add_child(profile_option)
 
 	hb.add_child(_vsep())
+	var plant := MenuButton.new()
+	plant.text = "Plantillas"
+	plant.focus_mode = Control.FOCUS_NONE
+	var pm := plant.get_popup()
+	for t in ["Torre", "Brazo robótico 3 GDL", "Grúa", "Puente", "Pinza"]:
+		pm.add_item(t)
+	pm.id_pressed.connect(_on_template_selected)
+	hb.add_child(plant)
+	hb.add_child(_button("BOM", _export_bom))
+	hb.add_child(_button("Importar 3D", _import_model))
+	var stress_chk := CheckButton.new()
+	stress_chk.text = "Esfuerzos"
+	stress_chk.toggled.connect(_on_stress_toggled)
+	hb.add_child(stress_chk)
+
+	hb.add_child(_vsep())
 	hb.add_child(_button("🤖  IA", _toggle_ai_panel))
 	hb.add_child(_button("🎵  Música", _toggle_music_panel))
-
-	var grow := Control.new()
-	grow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hb.add_child(grow)
-
-	fps_label = _label("FPS: --")
-	fps_label.custom_minimum_size = Vector2(120, 0)
-	hb.add_child(fps_label)
-
 	return panel
 
 func _build_left_panel() -> void:
@@ -1398,7 +1670,11 @@ func _build_statusbar() -> Control:
 	hb.add_child(status_label)
 	counts_label = _label("")
 	hb.add_child(counts_label)
-	var hint := _label("  [H] Ayuda  ·  [Rueda] Zoom  ·  [Central] Orbitar  ·  [Mayús+Central] Pan")
+	hb.add_child(_vsep())
+	fps_label = _label("FPS: --")
+	fps_label.custom_minimum_size = Vector2(120, 0)
+	hb.add_child(fps_label)
+	var hint := _label("  [H] Ayuda")
 	hint.add_theme_color_override("font_color", Color(0.55, 0.58, 0.62))
 	hb.add_child(hint)
 	return panel
@@ -1455,6 +1731,15 @@ func _build_file_dialog() -> void:
 	file_dialog.use_native_dialog = true
 	file_dialog.add_filter("*.%s ; Proyecto MechaForge" % Config.PROJECT_EXTENSION)
 	ui_layer.add_child(file_dialog)
+
+	import_dialog = FileDialog.new()
+	import_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	import_dialog.use_native_dialog = true
+	import_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	import_dialog.title = "Importar modelo 3D"
+	import_dialog.add_filter("*.glb, *.gltf, *.obj, *.stl ; Modelos 3D")
+	import_dialog.file_selected.connect(_do_import)
+	ui_layer.add_child(import_dialog)
 
 # --- Fábricas de widgets ---
 func _button(text: String, cb: Callable) -> Button:

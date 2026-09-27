@@ -49,6 +49,10 @@ func _build_visual() -> void:
 		_mesh_instance = MeshInstance3D.new()
 		_mesh_instance.mesh = _make_mesh()
 		_mesh_instance.material_override = MaterialLibrary.get_visual(material_id)
+		if def.get("forma", "") == "custom":
+			_mesh_instance.scale = Vector3.ONE * float(def.get("_scale", 1.0))
+			if def.has("_offset"):
+				_mesh_instance.position = def["_offset"]
 		add_child(_mesh_instance)
 	_build_pick_body()
 
@@ -76,6 +80,8 @@ func _build_pick_body() -> void:
 
 func _make_mesh() -> Mesh:
 	var forma: String = def.get("forma", "caja")
+	if forma == "custom" and def.has("_mesh"):
+		return def["_mesh"]
 	match forma:
 		"cilindro", "tubo":
 			var d: Dictionary = def.get("dimensiones_mm", {})
