@@ -45,8 +45,14 @@ var connect_button: Button
 var conn_dialog: Panel
 var _conn_widgets: Dictionary = {}
 
+# --- Paneles flotantes ---
+var biblioteca_panel: FloatingPanel
+var propiedades_panel: FloatingPanel
+var uniones_panel: FloatingPanel
+var uniones_list: VBoxContainer
+
 # --- Panel de electrónica y control (Fase 3) ---
-var elec_panel: PanelContainer
+var elec_panel: FloatingPanel
 var elec_info_label: Label
 var graph: LiveGraph
 var graph_selector: OptionButton
@@ -121,6 +127,32 @@ func _ready() -> void:
 		call_deferred("_run_physics_shot")
 	elif "mfshot3" in OS.get_cmdline_user_args():
 		call_deferred("_run_control_shot")
+	elif "mfshot4" in OS.get_cmdline_user_args():
+		call_deferred("_run_ui_shot")
+
+func _run_ui_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot4")
+	var out_path := "user://mechaforge_ui.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var arm := _spawn("perfil_2020_200", "aluminio", Vector3(0, 0.108, 0))
+	var c1 := Connection.new(); c1.a_uid = base.uid; c1.b_uid = arm.uid
+	c1.tipo = Connection.Tipo.BISAGRA; c1.axis = 2; c1.anchor = Vector3(0, 0.01, 0)
+	c1.motor_enabled = true
+	connections = [c1]
+	_redraw_connection_markers()
+	_refresh_uniones_panel()
+	uniones_panel.set_collapsed(false)
+	_select(arm)
+	camera.target = Vector3(0, 0.1, 0); camera.distance = 0.9
+	await get_tree().create_timer(1.5).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT4] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 #region PRUEBAS DE ELECTRÓNICA Y CONTROL (Fase 3) -------------------------------
 
@@ -613,35 +645,26 @@ func _build_ui() -> void:
 	ui_layer.name = "UI"
 	add_child(ui_layer)
 
-	var root := MarginContainer.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ui_layer.add_child(root)
-
+	# Barras superior e inferior (fijas).
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(vbox)
-
+	ui_layer.add_child(vbox)
 	vbox.add_child(_build_topbar())
-
-	var middle := HBoxContainer.new()
-	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	middle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(middle)
-
-	middle.add_child(_build_left_panel())
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	middle.add_child(spacer)
-	middle.add_child(_build_right_panel())
-
+	var mid := Control.new()
+	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(mid)
 	vbox.add_child(_build_statusbar())
 
+	# Paneles flotantes (movibles y plegables).
+	_build_left_panel()
+	_build_right_panel()
+	_build_uniones_panel()
 	_build_help_panel()
 	_build_file_dialog()
 	_build_elec_panel()
+	call_deferred("_layout_panels")
 
 func _panel(min_size: Vector2) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -724,23 +747,16 @@ func _build_topbar() -> Control:
 
 	return panel
 
-func _build_left_panel() -> Control:
-	var panel := _panel(Vector2(240, 0))
-	var vb := VBoxContainer.new()
-	vb.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_child(vb)
-
-	var title := _label("Biblioteca de piezas")
-	title.add_theme_font_size_override("font_size", 15)
-	vb.add_child(title)
-
+func _build_left_panel() -> void:
+	biblioteca_panel = FloatingPanel.new("Biblioteca de piezas")
+	ui_layer.add_child(biblioteca_panel)
+	biblioteca_panel.position = Vector2(8, 52)
 	parts_tree = Tree.new()
-	parts_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parts_tree.custom_minimum_size = Vector2(228, 320)
 	parts_tree.hide_root = true
 	parts_tree.item_selected.connect(_on_part_tree_selected)
-	vb.add_child(parts_tree)
+	biblioteca_panel.add_content(parts_tree)
 	_populate_parts_tree()
-	return panel
 
 func _populate_parts_tree() -> void:
 	parts_tree.clear()
@@ -760,27 +776,103 @@ func _populate_parts_tree() -> void:
 			it.set_text(0, def.get("nombre", pid))
 			it.set_metadata(0, pid)
 
-func _build_right_panel() -> Control:
-	var panel := _panel(Vector2(280, 0))
-	var vb := VBoxContainer.new()
-	vb.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_child(vb)
-
-	var title := _label("Propiedades")
-	title.add_theme_font_size_override("font_size", 15)
-	vb.add_child(title)
-
+func _build_right_panel() -> void:
+	propiedades_panel = FloatingPanel.new("Propiedades")
+	ui_layer.add_child(propiedades_panel)
+	propiedades_panel.position = Vector2(1300, 52)
 	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(276, 360)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	vb.add_child(scroll)
-
+	propiedades_panel.add_content(scroll)
 	prop_container = VBoxContainer.new()
 	prop_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prop_container.custom_minimum_size = Vector2(268, 0)
 	scroll.add_child(prop_container)
-
 	_refresh_properties()
-	return panel
+
+func _build_uniones_panel() -> void:
+	uniones_panel = FloatingPanel.new("Uniones")
+	ui_layer.add_child(uniones_panel)
+	uniones_panel.position = Vector2(8, 400)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(228, 0)
+	uniones_panel.add_content(vb)
+	var top := HBoxContainer.new()
+	top.add_child(_button("Borrar todas las uniones", _delete_all_connections))
+	vb.add_child(top)
+	uniones_list = VBoxContainer.new()
+	vb.add_child(uniones_list)
+	_refresh_uniones_panel()
+	uniones_panel.set_collapsed(true)
+
+func _short(s: String) -> String:
+	return s if s.length() <= 16 else s.substr(0, 15) + "…"
+
+func _refresh_uniones_panel() -> void:
+	if uniones_list == null:
+		return
+	for c in uniones_list.get_children():
+		c.queue_free()
+	uniones_panel.set_title("Uniones (%d)" % connections.size())
+	if connections.is_empty():
+		var l := _label("Sin uniones. Usa 🔗 Conectar.")
+		l.add_theme_color_override("font_color", Color(0.6, 0.62, 0.66))
+		l.add_theme_font_size_override("font_size", 11)
+		uniones_list.add_child(l)
+		return
+	var idx := 1
+	for conn in connections:
+		var hb := HBoxContainer.new()
+		var a := _find_part(conn.a_uid)
+		var b := _find_part(conn.b_uid)
+		var an: String = a.def.get("nombre", "?") if a else "?"
+		var bn: String = b.def.get("nombre", "?") if b else "?"
+		var lbl := _label("%d. %s: %s ↔ %s" % [idx, conn.tipo_nombre(), _short(an), _short(bn)])
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.add_theme_font_size_override("font_size", 11)
+		hb.add_child(lbl)
+		var del := Button.new()
+		del.text = "✕"
+		del.focus_mode = Control.FOCUS_NONE
+		del.tooltip_text = "Borrar esta unión"
+		var uid: String = conn.uid
+		del.pressed.connect(func(): _delete_connection(uid))
+		hb.add_child(del)
+		uniones_list.add_child(hb)
+		idx += 1
+
+func _delete_connection(uid: String) -> void:
+	if simulator.is_running():
+		Config.notify("Detén la simulación para borrar uniones.")
+		return
+	for i in range(connections.size()):
+		if connections[i].uid == uid:
+			connections.remove_at(i)
+			break
+	_redraw_connection_markers()
+	_refresh_uniones_panel()
+	_update_counts()
+	Config.project_dirty = true
+	Config.notify("Unión borrada.")
+
+func _delete_all_connections() -> void:
+	if simulator.is_running():
+		Config.notify("Detén la simulación para borrar uniones.")
+		return
+	if connections.is_empty():
+		Config.notify("No hay uniones que borrar.")
+		return
+	connections.clear()
+	_redraw_connection_markers()
+	_refresh_uniones_panel()
+	_update_counts()
+	Config.project_dirty = true
+	Config.notify("Todas las uniones borradas.")
+
+func _layout_panels() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	if propiedades_panel:
+		propiedades_panel.position = Vector2(vp.x - propiedades_panel.size.x - 8, 52)
 
 func _build_statusbar() -> Control:
 	var panel := _panel(Vector2(0, 34))
@@ -1423,6 +1515,7 @@ func _on_new() -> void:
 		c.queue_free()
 	connections.clear()
 	_redraw_connection_markers()
+	_refresh_uniones_panel()
 	_undo.clear()
 	_redo.clear()
 	_select(null)
@@ -1463,6 +1556,7 @@ func _on_open() -> void:
 		var n := ProjectSerializer.apply_document(doc, parts_root)
 		connections = ProjectSerializer.parse_connections(doc)
 		_redraw_connection_markers()
+		_refresh_uniones_panel()
 		_undo.clear(); _redo.clear(); _select(null)
 		Config.current_project_path = path
 		Config.project_dirty = false
@@ -1511,7 +1605,11 @@ func _on_sim_started() -> void:
 	_set_editing_enabled(false)
 	connections_root.visible = false
 	elec_panel.visible = true
+	elec_panel.set_collapsed(false)
 	_populate_graph_selector()
+	await get_tree().process_frame
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	elec_panel.position = Vector2(8, vp.y - elec_panel.size.y - 44)
 	Config.notify("Simulación en marcha. Panel de electrónica y control abajo a la izquierda.", 4.0)
 
 func _on_sim_stopped() -> void:
@@ -1670,6 +1768,7 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		connections.append(c)
 		Config.project_dirty = true
 		_redraw_connection_markers()
+		_refresh_uniones_panel()
 		_update_counts()
 		Config.notify("Unión creada: %s (%s)." % [c.tipo_nombre(), Connection.AXIS_NOMBRE[c.axis]])
 		dlg.queue_free())
@@ -1778,18 +1877,12 @@ func _update_telemetry() -> void:
 #region PANEL DE ELECTRÓNICA Y CONTROL (Fase 3) ---------------------------------
 
 func _build_elec_panel() -> void:
-	elec_panel = _panel(Vector2(400, 300))
-	elec_panel.anchor_top = 1.0; elec_panel.anchor_bottom = 1.0
-	elec_panel.offset_left = 252; elec_panel.offset_right = 252 + 400
-	elec_panel.offset_top = -352; elec_panel.offset_bottom = -44
+	elec_panel = FloatingPanel.new("Electrónica y control")
 	elec_panel.visible = false
 	ui_layer.add_child(elec_panel)
-
 	var vb := VBoxContainer.new()
-	elec_panel.add_child(vb)
-	var title := _label("Electrónica y control")
-	title.add_theme_font_size_override("font_size", 14)
-	vb.add_child(title)
+	vb.custom_minimum_size = Vector2(390, 260)
+	elec_panel.add_content(vb)
 
 	var bh := HBoxContainer.new()
 	bh.add_child(_label("Batería V:"))
