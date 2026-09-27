@@ -39,6 +39,17 @@ var connections_root: Node3D
 var connections: Array = []               # Array[Connection]
 var connect_mode: bool = false
 var connect_first: PartInstance = null
+
+# --- Cableado visual (Fase 3.1) ---
+var wires: Array = []                 # [{uid, a_key, b_key, tipo}]
+var wiring_mode: bool = false
+var wire_first: Dictionary = {}       # primer terminal elegido
+var wires_root: Node3D
+var terminals_root: Node3D            # marcadores de terminales (solo en modo cableado)
+var wire_button: Button
+var circuito_panel: FloatingPanel
+var circuito_label: Label
+const WIRE_PICK_LAYER := 4
 var sim_button: Button
 var reset_button: Button
 var connect_button: Button
@@ -99,6 +110,12 @@ func _ready() -> void:
 	connections_root = Node3D.new()
 	connections_root.name = "MarcadoresUniones"
 	add_child(connections_root)
+	wires_root = Node3D.new()
+	wires_root.name = "Cables"
+	add_child(wires_root)
+	terminals_root = Node3D.new()
+	terminals_root.name = "Terminales"
+	add_child(terminals_root)
 	simulator = Simulator.new()
 	simulator.name = "Simulador"
 	add_child(simulator)
@@ -129,6 +146,35 @@ func _ready() -> void:
 		call_deferred("_run_control_shot")
 	elif "mfshot4" in OS.get_cmdline_user_args():
 		call_deferred("_run_ui_shot")
+	elif "mfshot5" in OS.get_cmdline_user_args():
+		call_deferred("_run_wire_shot")
+
+func _run_wire_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot5")
+	var out_path := "user://mechaforge_cableado.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var bat := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.013, -0.08))
+	var res := _spawn("resistencia_100", "abs", Vector3(0.09, 0.004, 0.04))
+	var led := _spawn("led", "abs", Vector3(-0.06, 0.004, 0.06))
+	wires = [
+		{"uid": "w1", "a_key": _key(bat.uid, "V+"), "b_key": _key(res.uid, "A"), "tipo": "power"},
+		{"uid": "w2", "a_key": _key(res.uid, "B"), "b_key": _key(led.uid, "anodo"), "tipo": "power"},
+		{"uid": "w3", "a_key": _key(led.uid, "catodo"), "b_key": _key(bat.uid, "GND"), "tipo": "gnd"},
+	]
+	_redraw_wires()
+	_set_wiring_mode(true)
+	_analyze_circuit()
+	circuito_panel.set_collapsed(false)
+	_update_counts()
+	camera.target = Vector3(0, 0.05, 0); camera.distance = 0.5
+	await get_tree().create_timer(1.6).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT5] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 func _run_ui_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -190,6 +236,16 @@ func _run_elec_tests() -> void:
 		y += (u - 0.5 * y) * dt          # planta: dy/dt = u - 0.5 y
 	Electronics.PidDestroy(pid)
 	_check(absf(y - 5.0) < 0.2, "PID lleva la planta a la consigna (y=%.2f)" % y)
+
+	# 6) Cableado: batería 12 V + carga 6 Ω en lazo => 2 A.
+	var comps := [
+		{"uid": "bat", "kind": "bateria", "voltaje": 12.0, "capacidad_mah": 2000.0, "a": "bat:V+", "b": "bat:GND"},
+		{"uid": "r1", "kind": "carga", "resistencia": 6.0, "a": "r1:A", "b": "r1:B"},
+	]
+	var wires := [{"a": "bat:V+", "b": "r1:A"}, {"a": "r1:B", "b": "bat:GND"}]
+	var wr := WiringSolver.solve(comps, wires)
+	_check(wr["ok"] and absf(float(wr["current"]) - 2.0) < 1.0e-4, "Cableado: lazo batería→carga da 2 A")
+	_check(absf(WiringSolver.solve(comps, []).get("current", -1.0)) < 1.0e-9, "Cableado: sin cables => circuito abierto (0 A)")
 
 	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
@@ -664,6 +720,7 @@ func _build_ui() -> void:
 	_build_help_panel()
 	_build_file_dialog()
 	_build_elec_panel()
+	_build_circuito_panel()
 	call_deferred("_layout_panels")
 
 func _panel(min_size: Vector2) -> PanelContainer:
@@ -700,6 +757,9 @@ func _build_topbar() -> Control:
 	connect_button = _button("🔗  Conectar", _toggle_connect_mode)
 	connect_button.toggle_mode = true
 	hb.add_child(connect_button)
+	wire_button = _button("🔌  Cablear", _toggle_wiring_mode)
+	wire_button.toggle_mode = true
+	hb.add_child(wire_button)
 	hb.add_child(_vsep())
 
 	snap_check = CheckButton.new()
@@ -1157,18 +1217,22 @@ func _unhandled_input(event: InputEvent) -> void:
 					_confirm_placement()
 				elif connect_mode:
 					_connect_pick(mb.position)
+				elif wiring_mode:
+					_wire_pick(mb.position)
 				elif simulator.is_running():
 					_try_select(mb.position)
 				else:
 					_begin_pointer(mb.position)
 			else:  # soltar
-				if not placing and not connect_mode and not simulator.is_running():
+				if not placing and not connect_mode and not wiring_mode and not simulator.is_running():
 					_end_drag()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			if placing:
 				_cancel_placing()
 			elif connect_mode:
 				_set_connect_mode(false)
+			elif wiring_mode:
+				_set_wiring_mode(false)
 			else:
 				_select(null)
 	elif event is InputEventMouseMotion and dragging_part:
@@ -1268,6 +1332,8 @@ func _update_drag(event: InputEventMouseMotion) -> void:
 	drag_moved = true
 	if connections.size() > 0:
 		_redraw_connection_markers()
+	if wires.size() > 0:
+		_redraw_wires()
 
 func _show_drag_status() -> void:
 	if status_label and dragging_part:
@@ -1305,6 +1371,7 @@ func _nudge(dir: Vector3) -> void:
 		"new": {"pos": _arr(new_pos), "rot": _arr(selected_part.rotation)},
 	})
 	_redraw_connection_markers()
+	_redraw_wires()
 
 #endregion
 
@@ -1514,8 +1581,11 @@ func _on_new() -> void:
 	for c in parts_root.get_children():
 		c.queue_free()
 	connections.clear()
+	wires.clear()
 	_redraw_connection_markers()
+	_redraw_wires()
 	_refresh_uniones_panel()
+	_refresh_circuito_panel()
 	_undo.clear()
 	_redo.clear()
 	_select(null)
@@ -1528,7 +1598,7 @@ func _on_save() -> void:
 	if Config.current_project_path == "":
 		_on_save_as()
 		return
-	var err := ProjectSerializer.save(parts_root, Config.current_project_path, connections)
+	var err := ProjectSerializer.save(parts_root, Config.current_project_path, connections, wires)
 	if err == OK:
 		Config.project_dirty = false
 		Config.notify("Guardado en %s" % Config.current_project_path, 4.0)
@@ -1555,8 +1625,14 @@ func _on_open() -> void:
 		if simulator.is_running(): simulator.stop()
 		var n := ProjectSerializer.apply_document(doc, parts_root)
 		connections = ProjectSerializer.parse_connections(doc)
+		wires = ProjectSerializer.parse_wires(doc)
+		var bat: Dictionary = doc.get("bateria", {})
+		if bat.has("voltaje"): Config.battery_voltage = bat["voltaje"]
+		if bat.has("capacidad_mah"): Config.battery_capacity_mah = bat["capacidad_mah"]
 		_redraw_connection_markers()
+		_redraw_wires()
 		_refresh_uniones_panel()
+		_refresh_circuito_panel()
 		_undo.clear(); _redo.clear(); _select(null)
 		Config.current_project_path = path
 		Config.project_dirty = false
@@ -1590,6 +1666,7 @@ func _toggle_simulation() -> void:
 	else:
 		_cancel_placing()
 		_set_connect_mode(false)
+		_set_wiring_mode(false)
 		simulator.start(connections)
 
 func _reset_simulation() -> void:
@@ -1640,6 +1717,7 @@ func _set_connect_mode(on: bool) -> void:
 	connect_first = null
 	if on:
 		_cancel_placing()
+		_set_wiring_mode(false)
 		_select(null)
 		Config.notify("Conexión: clic en la 1.ª pieza y luego en la 2.ª para unirlas.", 6.0)
 
@@ -1825,6 +1903,213 @@ func _make_link_marker(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
 	sph.position = Vector3.ZERO
 	holder.add_child(sph)
 	return holder
+
+#endregion
+
+#region CABLEADO VISUAL (Fase 3.1) ----------------------------------------------
+
+func _toggle_wiring_mode() -> void:
+	_set_wiring_mode(not wiring_mode)
+
+func _set_wiring_mode(on: bool) -> void:
+	if simulator.is_running():
+		on = false
+	wiring_mode = on
+	if wire_button:
+		wire_button.button_pressed = on
+	wire_first = {}
+	if on:
+		_cancel_placing()
+		_set_connect_mode(false)
+		_select(null)
+		_build_terminal_markers()
+		Config.notify("Cableado: clic en un terminal y luego en otro para unirlos.", 6.0)
+	else:
+		_clear_terminal_markers()
+
+func _electronic_parts() -> Array:
+	var out := []
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def.has("terminales"):
+			out.append(c)
+	return out
+
+func _terminal_world(part: PartInstance, term: Dictionary) -> Vector3:
+	var p: Array = term.get("pos_mm", [0, 0, 0])
+	return part.global_transform * (Vector3(p[0], p[1], p[2]) / 1000.0)
+
+func _term_color(tipo: String) -> Color:
+	match tipo:
+		"power": return Color(0.9, 0.3, 0.3)
+		"gnd": return Color(0.15, 0.16, 0.18)
+		_: return Color(0.3, 0.6, 1.0)
+
+func _build_terminal_markers() -> void:
+	_clear_terminal_markers()
+	for part in _electronic_parts():
+		for term in part.def["terminales"]:
+			var body := StaticBody3D.new()
+			body.collision_layer = WIRE_PICK_LAYER
+			body.collision_mask = 0
+			var cs := CollisionShape3D.new()
+			var sh := SphereShape3D.new(); sh.radius = 0.007
+			cs.shape = sh
+			body.add_child(cs)
+			var mi := MeshInstance3D.new()
+			var sm := SphereMesh.new(); sm.radius = 0.006; sm.height = 0.012
+			mi.mesh = sm
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = _term_color(term.get("tipo", "signal"))
+			mat.emission_enabled = true; mat.emission = mat.albedo_color; mat.emission_energy_multiplier = 0.8
+			mi.material_override = mat
+			body.add_child(mi)
+			body.global_position = _terminal_world(part, term)
+			body.set_meta("part_uid", part.uid)
+			body.set_meta("term_id", str(term.get("id", "")))
+			body.set_meta("term_tipo", term.get("tipo", "signal"))
+			terminals_root.add_child(body)
+
+func _clear_terminal_markers() -> void:
+	for c in terminals_root.get_children():
+		c.queue_free()
+
+func _wire_pick(screen_pos: Vector2) -> void:
+	var ray := camera.screen_ray(screen_pos)
+	var space := get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(
+		ray["origin"], ray["origin"] + ray["dir"] * 1000.0, WIRE_PICK_LAYER)
+	var hit := space.intersect_ray(params)
+	if hit.is_empty():
+		return
+	var body: Node = hit["collider"]
+	var info := {
+		"part_uid": body.get_meta("part_uid"),
+		"term_id": body.get_meta("term_id"),
+		"tipo": body.get_meta("term_tipo"),
+	}
+	if wire_first.is_empty():
+		wire_first = info
+		Config.notify("1.er terminal: %s. Elige el segundo." % info["term_id"])
+	elif info["part_uid"] == wire_first["part_uid"] and info["term_id"] == wire_first["term_id"]:
+		Config.notify("Elige un terminal distinto.")
+	else:
+		_add_wire(wire_first, info)
+		wire_first = {}
+
+func _key(part_uid: String, term_id: String) -> String:
+	return "%s:%s" % [part_uid, term_id]
+
+func _add_wire(a: Dictionary, b: Dictionary) -> void:
+	var tipo := "signal"
+	if a["tipo"] == "gnd" or b["tipo"] == "gnd":
+		tipo = "gnd"
+	elif a["tipo"] == "power" or b["tipo"] == "power":
+		tipo = "power"
+	wires.append({
+		"uid": "w%d_%d" % [Time.get_ticks_usec(), randi() % 100000],
+		"a_key": _key(a["part_uid"], a["term_id"]),
+		"b_key": _key(b["part_uid"], b["term_id"]),
+		"tipo": tipo,
+	})
+	Config.project_dirty = true
+	_redraw_wires()
+	_refresh_circuito_panel()
+	Config.notify("Cable creado (%s)." % tipo)
+
+func _terminal_pos_by_key(key: String):
+	var parts := key.split(":")
+	if parts.size() < 2:
+		return null
+	var part := _find_part(parts[0])
+	if part == null or not part.def.has("terminales"):
+		return null
+	for term in part.def["terminales"]:
+		if str(term.get("id", "")) == parts[1]:
+			return _terminal_world(part, term)
+	return null
+
+func _redraw_wires() -> void:
+	for c in wires_root.get_children():
+		c.queue_free()
+	for w in wires:
+		var pa = _terminal_pos_by_key(w["a_key"])
+		var pb = _terminal_pos_by_key(w["b_key"])
+		if pa == null or pb == null:
+			continue
+		wires_root.add_child(_make_link_marker(pa, pb, _term_color(w["tipo"])))
+
+func _build_components() -> Array:
+	var comps := []
+	for part in _electronic_parts():
+		var el: Dictionary = part.def.get("electrico", {})
+		if el.is_empty():
+			continue
+		var terms: Array = part.def["terminales"]
+		var a_id := ""
+		var b_id := ""
+		if el.get("tipo", "") == "bateria":
+			for t in terms:
+				if t.get("tipo") == "power": a_id = str(t["id"])
+				elif t.get("tipo") == "gnd": b_id = str(t["id"])
+		elif terms.size() >= 2:
+			a_id = str(terms[0]["id"]); b_id = str(terms[1]["id"])
+		if a_id == "" or b_id == "":
+			continue
+		comps.append({
+			"uid": part.uid, "kind": el.get("tipo", "carga"),
+			"voltaje": el.get("voltaje", 0.0), "capacidad_mah": el.get("capacidad_mah", 0.0),
+			"resistencia": el.get("resistencia_ohm", 1.0),
+			"a": _key(part.uid, a_id), "b": _key(part.uid, b_id),
+		})
+	return comps
+
+func _analyze_circuit() -> void:
+	var wire_pairs := []
+	for w in wires:
+		wire_pairs.append({"a": w["a_key"], "b": w["b_key"]})
+	_show_circuit_result(WiringSolver.solve(_build_components(), wire_pairs))
+
+func _clear_wires() -> void:
+	wires.clear()
+	_redraw_wires()
+	_refresh_circuito_panel()
+	Config.project_dirty = true
+	Config.notify("Cables borrados.")
+
+func _build_circuito_panel() -> void:
+	circuito_panel = FloatingPanel.new("Circuito eléctrico")
+	ui_layer.add_child(circuito_panel)
+	circuito_panel.position = Vector2(8, 640)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(300, 0)
+	circuito_panel.add_content(vb)
+	var hb := HBoxContainer.new()
+	hb.add_child(_button("Analizar circuito", _analyze_circuit))
+	hb.add_child(_button("Borrar cables", _clear_wires))
+	vb.add_child(hb)
+	circuito_label = _label("Coloca una batería y cargas (LED, motor, resistencia),\nentra en 🔌 Cablear, une sus terminales y pulsa Analizar.")
+	circuito_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	circuito_label.custom_minimum_size = Vector2(292, 0)
+	vb.add_child(circuito_label)
+	circuito_panel.set_collapsed(true)
+
+func _refresh_circuito_panel() -> void:
+	if circuito_panel:
+		circuito_panel.set_title("Circuito eléctrico (%d cables)" % wires.size())
+
+func _show_circuit_result(r: Dictionary) -> void:
+	if not circuito_label:
+		return
+	if str(r.get("reason", "")) != "":
+		circuito_label.text = "Baterías: %d · Cargas: %d\n%s" % [r.get("batteries", 0), r.get("loads", 0), r["reason"]]
+		return
+	var a = r.get("autonomy_h", INF)
+	var atxt := "∞" if (a == INF or a > 1.0e6) else ("%.2f h" % a)
+	circuito_label.text = "Baterías: %d · Cargas: %d · Nodos: %d\nCorriente: %.3f A · Potencia: %.2f W\nAutonomía: %s" % [
+		r.get("batteries", 0), r.get("loads", 0), r.get("nets", 0), r.get("current", 0.0), r.get("power", 0.0), atxt]
+	Config.notify("Circuito analizado: %.3f A." % r.get("current", 0.0), 4.0)
+
+#endregion
 
 # --- Telemetría en vivo durante la simulación ---
 func _build_telemetry_panel() -> void:
