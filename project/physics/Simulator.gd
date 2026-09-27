@@ -326,8 +326,10 @@ func _drive_motor(jd: Dictionary) -> void:
 	var step := 1.0 / float(Engine.physics_ticks_per_second)
 	# Objetivo efectivo: el del controlador si hay control, si no el fijo.
 	var target: float = _runtime_target.get(conn.uid, conn.motor_target_speed)
-	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, target)
-	hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque * step)
+	# Alimentación por circuito (F1): el voltaje/PWM cableado escala el motor.
+	var duty: float = clampf(conn.elec_duty, 0.0, 1.0)
+	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, target * duty)
+	hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque * duty * step)
 
 ## Engranaje acoplado cinemáticamente: ω_b(eje) = -ratio * ω_a(eje).
 func _drive_gear(jd: Dictionary) -> void:

@@ -50,7 +50,7 @@ static func solve(components: Array, wires: Array) -> Dictionary:
 	for c in components:
 		var ra := _find(parent, c["a"])
 		var rb := _find(parent, c["b"])
-		elems.append({"a": ra, "b": rb, "kind": c["kind"], "v": c.get("voltaje", 0.0), "r": c.get("resistencia", 1.0)})
+		elems.append({"uid": c.get("uid", ""), "a": ra, "b": rb, "kind": c["kind"], "v": c.get("voltaje", 0.0), "r": c.get("resistencia", 1.0)})
 		if c["kind"] == "bateria":
 			batteries += 1
 			if ground == "":
@@ -108,9 +108,22 @@ static func solve(components: Array, wires: Array) -> Dictionary:
 
 	var res: Dictionary = Electronics.SolveCircuit(next_idx, resistors, sources)
 	var cur: float = res.get("main_current", 0.0)
+	# Voltaje en cada componente (para alimentar motores en tiempo real).
+	var volts: PackedFloat64Array = res.get("node_voltages", PackedFloat64Array())
+	var comp_v := {}
+	for e in elems:
+		if not reachable.has(e["a"]) or not reachable.has(e["b"]):
+			continue
+		var ia: int = node_index[e["a"]]
+		var ib: int = node_index[e["b"]]
+		var va: float = volts[ia] if ia < volts.size() else 0.0
+		var vb: float = volts[ib] if ib < volts.size() else 0.0
+		if str(e["uid"]) != "":
+			comp_v[str(e["uid"])] = absf(va - vb)
 	return {
 		"ok": res.get("ok", false), "wired": true,
 		"current": cur, "power": res.get("total_power", 0.0),
 		"autonomy_h": Electronics.Autonomy(cur, first_capacity) if first_capacity > 0.0 else INF,
 		"nets": next_idx, "batteries": batteries, "loads": loads, "reason": "",
+		"component_voltages": comp_v,
 	}

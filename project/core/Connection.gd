@@ -46,6 +46,14 @@ var ctrl_kd: float = 0.2
 var elec_current_noload: float = 0.2   # A en vacío
 var elec_current_stall: float = 2.5    # A a par máximo
 
+# --- Integración mecatrónica (Fase F1) ---
+## uid del componente eléctrico (motor DC/driver) que alimenta este motor.
+## Si está definido, la velocidad/torque escalan con el voltaje del circuito.
+var elec_uid: String = ""
+var elec_voltaje_nominal: float = 12.0
+## Factor de alimentación en tiempo de ejecución (0..1), fijado por el circuito.
+var elec_duty: float = 1.0
+
 const CONTROL_NOMBRE := ["Ninguno", "Posición (PID)", "Velocidad (PID)"]
 
 func _init() -> void:
@@ -71,6 +79,7 @@ func to_dict() -> Dictionary:
 		"control_mode": control_mode, "ctrl_setpoint": ctrl_setpoint,
 		"ctrl_kp": ctrl_kp, "ctrl_ki": ctrl_ki, "ctrl_kd": ctrl_kd,
 		"elec_current_noload": elec_current_noload, "elec_current_stall": elec_current_stall,
+		"elec_uid": elec_uid, "elec_voltaje_nominal": elec_voltaje_nominal,
 	}
 
 static func from_dict(d: Dictionary) -> Connection:
@@ -97,4 +106,6 @@ static func from_dict(d: Dictionary) -> Connection:
 	c.ctrl_kd = d.get("ctrl_kd", 0.2)
 	c.elec_current_noload = d.get("elec_current_noload", 0.2)
 	c.elec_current_stall = d.get("elec_current_stall", 2.5)
+	c.elec_uid = d.get("elec_uid", "")
+	c.elec_voltaje_nominal = d.get("elec_voltaje_nominal", 12.0)
 	return c

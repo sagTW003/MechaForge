@@ -67,6 +67,22 @@ const DATA := {
 		"nombre": "Concreto", "densidad": 2400.0, "friccion": 0.7, "restitucion": 0.1,
 		"color": Color(0.55, 0.55, 0.53), "metalico": 0.0, "rugosidad": 0.9, "limite_mpa": 30.0,
 	},
+	"estano": {
+		"nombre": "Estaño (soldadura)", "densidad": 7300.0, "friccion": 0.4, "restitucion": 0.1,
+		"color": Color(0.78, 0.79, 0.82), "metalico": 1.0, "rugosidad": 0.18, "limite_mpa": 15.0,
+	},
+	"baquelita": {
+		"nombre": "Baquelita / PCB", "densidad": 1400.0, "friccion": 0.5, "restitucion": 0.1,
+		"color": Color(0.09, 0.32, 0.15), "metalico": 0.0, "rugosidad": 0.55, "limite_mpa": 80.0,
+	},
+	"fibra_carbono": {
+		"nombre": "Fibra de carbono", "densidad": 1600.0, "friccion": 0.5, "restitucion": 0.1,
+		"color": Color(0.06, 0.06, 0.07), "metalico": 0.2, "rugosidad": 0.35, "limite_mpa": 600.0,
+	},
+	"acrilico": {
+		"nombre": "Acrílico", "densidad": 1180.0, "friccion": 0.4, "restitucion": 0.2,
+		"color": Color(0.7, 0.85, 0.95, 0.4), "metalico": 0.0, "rugosidad": 0.05, "limite_mpa": 70.0,
+	},
 }
 
 func _ready() -> void:

@@ -454,8 +454,8 @@ func _run_elec_tests() -> void:
 		{"uid": "bat", "kind": "bateria", "voltaje": 12.0, "capacidad_mah": 2000.0, "a": "bat:V+", "b": "bat:GND"},
 		{"uid": "r1", "kind": "carga", "resistencia": 6.0, "a": "r1:A", "b": "r1:B"},
 	]
-	var wires := [{"a": "bat:V+", "b": "r1:A"}, {"a": "r1:B", "b": "bat:GND"}]
-	var wr := WiringSolver.solve(comps, wires)
+	var wpairs := [{"a": "bat:V+", "b": "r1:A"}, {"a": "r1:B", "b": "bat:GND"}]
+	var wr := WiringSolver.solve(comps, wpairs)
 	_check(wr["ok"] and absf(float(wr["current"]) - 2.0) < 1.0e-4, "Cableado: lazo batería→carga da 2 A")
 	_check(absf(WiringSolver.solve(comps, []).get("current", -1.0)) < 1.0e-9, "Cableado: sin cables => circuito abierto (0 A)")
 
@@ -483,6 +483,28 @@ func _run_elec_tests() -> void:
 	var rpb := WiringSolver.solve(_build_components(), wp)
 	_check(rpb["ok"] and float(rpb["current"]) > 0.05, "Protoboard funcional: circuito cierra por columnas/rieles (%.3f A)" % float(rpb["current"]))
 	wires = []
+	_on_new()
+
+	# 9) Integración F1: el circuito alimenta el motor (duty por voltaje).
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var bat2 := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.02, -0.12))
+	var mot := _spawn("motor_dc", "acero", Vector3(0.12, 0.025, 0))
+	var a1 := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 0.5, 0))
+	var a2 := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 0.5, 0))
+	var cf := Connection.new(); cf.tipo = Connection.Tipo.BISAGRA; cf.motor_enabled = true
+	cf.a_uid = a1.uid; cf.b_uid = a2.uid; cf.elec_uid = mot.uid; cf.elec_voltaje_nominal = 11.1
+	connections = [cf]
+	wires = [
+		{"uid": "w1", "a_key": _key(bat2.uid, "V+"), "b_key": _key(mot.uid, "M+"), "tipo": "power"},
+		{"uid": "w2", "a_key": _key(mot.uid, "M-"), "b_key": _key(bat2.uid, "GND"), "tipo": "gnd"},
+	]
+	_circuit_tick()
+	_check(cf.elec_duty > 0.8, "F1: motor alimentado por el circuito (duty=%.2f)" % cf.elec_duty)
+	wires = []
+	_circuit_tick()
+	_check(cf.elec_duty < 0.05, "F1: sin cables el motor se detiene (duty=%.2f)" % cf.elec_duty)
+	connections = []
 	_on_new()
 
 	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
@@ -891,10 +913,12 @@ func _build_environment() -> void:
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_cascades = 4
 
-	# Glow / bloom para brillos metálicos.
+	# Glow / bloom para brillos metálicos e indicadores LED.
 	env.glow_enabled = true
-	env.glow_intensity = 0.4
-	env.glow_bloom = 0.05
+	env.glow_intensity = 0.45
+	env.glow_bloom = 0.1
+	env.glow_hdr_threshold = 0.9
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 
 	# Niebla volumétrica sutil (ambiente de taller).
 	env.volumetric_fog_enabled = true
@@ -930,6 +954,13 @@ func _build_camera() -> void:
 	camera.name = "Camara"
 	camera.target = Vector3(0, 0.1, 0)
 	camera.distance = 1.2
+	# Profundidad de campo sutil (solo fondo) para dar sensación de escala.
+	var attr := CameraAttributesPractical.new()
+	attr.dof_blur_far_enabled = true
+	attr.dof_blur_far_distance = 3.5
+	attr.dof_blur_far_transition = 3.0
+	attr.dof_blur_amount = 0.05
+	camera.attributes = attr
 	add_child(camera)
 	camera.current = true
 
@@ -2045,6 +2076,7 @@ func _process(_delta: float) -> void:
 			_tele_accum = 0.0
 			_update_telemetry()
 			_update_elec_panel()
+			_circuit_tick()
 	if placing and ghost:
 		var dims := PartLibrary.dims_m(ghost.def)
 		var mouse := get_viewport().get_mouse_position()
@@ -2666,6 +2698,16 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 	pid_hb.add_child(_label("Kd")); pid_hb.add_child(kd_spin)
 	vb.add_child(pid_hb)
 
+	vb.add_child(_label("Alimentado por circuito (motor eléctrico, opcional):"))
+	var elec_opt := OptionButton.new()
+	elec_opt.add_item("— ninguno (potencia fija) —")
+	elec_opt.set_item_metadata(0, "")
+	for ep in _electronic_parts():
+		if str(ep.def.get("electrico", {}).get("tipo", "")) == "carga":
+			elec_opt.add_item("%s [%s]" % [ep.def.get("nombre", ""), ep.uid.substr(0, 6)])
+			elec_opt.set_item_metadata(elec_opt.item_count - 1, ep.uid)
+	vb.add_child(elec_opt)
+
 	vb.add_child(_label("Relación (engranaje):"))
 	var ratio_spin := _spin(-10, 10, 0.1, 1.0)
 	vb.add_child(ratio_spin)
@@ -2695,6 +2737,8 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		else:
 			c.ctrl_setpoint = setpoint_spin.value
 		c.ctrl_kp = kp_spin.value; c.ctrl_ki = ki_spin.value; c.ctrl_kd = kd_spin.value
+		c.elec_uid = str(elec_opt.get_item_metadata(elec_opt.selected))
+		c.elec_voltaje_nominal = Config.battery_voltage
 		connections.append(c)
 		Config.project_dirty = true
 		_redraw_connection_markers()
@@ -2998,6 +3042,25 @@ func _analyze_circuit() -> void:
 	# Conexiones internas de las protoboards (columnas y rieles).
 	wire_pairs.append_array(_protoboard_virtual_wires())
 	_show_circuit_result(WiringSolver.solve(_build_components(), wire_pairs))
+
+## Integración mecatrónica (F1): resuelve el circuito cableado y ajusta la
+## alimentación (0..1) de cada motor vinculado a un componente eléctrico.
+func _circuit_tick() -> void:
+	var linked := []
+	for conn in connections:
+		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled and conn.elec_uid != "":
+			linked.append(conn)
+	if linked.is_empty():
+		return
+	var wp := []
+	for w in wires:
+		wp.append({"a": w["a_key"], "b": w["b_key"]})
+	wp.append_array(_protoboard_virtual_wires())
+	var r := WiringSolver.solve(_build_components(), wp)
+	var cv: Dictionary = r.get("component_voltages", {})
+	for conn in linked:
+		var v: float = cv.get(conn.elec_uid, 0.0)
+		conn.elec_duty = clampf(v / maxf(1.0, conn.elec_voltaje_nominal), 0.0, 1.0)
 
 ## Une internamente los terminales del mismo grupo de cada protoboard
 ## (columnas de 5 y rieles), como el cobre interno de una breadboard real.
