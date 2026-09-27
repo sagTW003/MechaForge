@@ -58,10 +58,20 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [ ] Opcional futuro: microcontrolador por **bloques visuales** (además del
       script) y wiring de señal que enlace sensores/actuadores automáticamente.
 
-## ⏳ Fase 4 — Integración OpenClaw
-- [ ] Puente `ai_bridge` (gateway local + herramientas MCP/JSON-RPC).
-- [ ] Panel de chat lateral; vistas previas "fantasma" con confirmación.
-- [ ] Diagnóstico y generación de código usando el estado real de la escena.
+## ✅ Fase 4 — Integración OpenClaw (completada)
+- [x] Puente `ai_bridge/OpenClawBridge.gd` al gateway local (endpoint compatible
+      con OpenAI, `127.0.0.1:18789`), **autoconfigurado** leyendo el token de
+      `~/.openclaw/openclaw.json` (guardado en `user://`, nunca en el código).
+- [x] **Panel de chat** "OpenClaw (IA)" con estado de conexión, selector de
+      **agente**, historial y envío de peticiones/preguntas.
+- [x] El estado real de la escena se envía como contexto (diagnóstico fundado).
+- [x] Protocolo de **acciones JSON** (`add_part`, `connect`, `set_property`,
+      `remove`) parseado por `AiActions`; las propuestas se muestran como
+      **vista previa "fantasma"** con **Aplicar/Descartar** (reversible con deshacer).
+- [x] Conexión **solo local**; si OpenClaw no responde, la app funciona completa
+      y muestra el estado.
+- [x] Verificado en vivo: OpenClaw devolvió una acción `add_part` parseada por la
+      app. Pruebas del parser: 16/16 base.
 
 ## ⏳ Fase 5 — Análisis avanzado
 - [ ] Mapa de esfuerzos por carga, rotura opcional, estabilidad/vuelco.

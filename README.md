@@ -5,9 +5,10 @@ ingeniería" para diseñar, ensamblar, programar y probar mecanismos, robots,
 vehículos, grúas, estructuras, transmisiones y sistemas de control, con física
 realista y gráficos de alta calidad.
 
-> Estado: **Fases 1, 2 y 3 completadas** — construcción (1), **física** (2:
-> cuerpos rígidos Jolt, uniones, motores) y **electrónica y control** (3: solver
-> eléctrico en C#, PID, gráficas, consumo/autonomía).
+> Estado: **Fases 1–4 completadas** — construcción (1), **física** (2), **electrónica
+> y control** (3: solver eléctrico en C#, PID, cableado, microcontrolador) e
+> **integración con OpenClaw** (4: chat, diagnóstico y construcción por IA con
+> vista previa y confirmación).
 > Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
 
 ![Demostración Fase 1](docs/demo_fase1.png)
@@ -170,13 +171,23 @@ crea o edita un `.json`** — no hace falta tocar código. Ejemplo en
 
 ## Integración con OpenClaw (IA personalizada) — *Fase 4*
 
-MechaForge se conectará a tu instancia local de **OpenClaw** (gateway en
-`127.0.0.1:18789`, endpoint compatible con OpenAI y bridge MCP) mediante un
-módulo desacoplado `ai_bridge`. La dirección, puerto y token irán en
-`project/ai_bridge/openclaw_config.json` (plantilla en
-`openclaw_config.example.json`), **nunca en el código**. La app funciona
-completa sin IA; la integración es opcional. Ver
-[docs/INTEGRACION_OPENCLAW.md](docs/INTEGRACION_OPENCLAW.md).
+MechaForge se conecta a tu **OpenClaw** local (gateway `127.0.0.1:18789`, endpoint
+compatible con OpenAI) mediante el módulo desacoplado `ai_bridge`. El puente se
+**autoconfigura** leyendo el token de tu `~/.openclaw/openclaw.json` y lo guarda
+en `user://openclaw_config.json` (**nunca en el código ni en el repo**).
+
+Botón **🤖 IA** → panel de chat "OpenClaw (IA)":
+- **Estado de conexión** y selector de **agente** (cerebro, main, …).
+- Escribe peticiones (*"arma una torre de 4 perfiles"*) o preguntas de
+  diagnóstico; se envía el **estado real de la escena** como contexto.
+- Las propuestas de la IA se muestran como **piezas fantasma** con
+  **Aplicar / Descartar** (reversible con deshacer). Conexión **solo local**.
+- Si OpenClaw no responde, la app funciona completa y lo indica.
+
+![IA](docs/demo_ia.png)
+*Fase 4 — chat con OpenClaw conectado (agente cerebro), con el estado de la escena como contexto.*
+
+Detalles en [docs/INTEGRACION_OPENCLAW.md](docs/INTEGRACION_OPENCLAW.md).
 
 ## Formato de proyecto
 

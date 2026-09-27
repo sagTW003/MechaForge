@@ -63,6 +63,17 @@ var mcu_time: float = 0.0
 
 # --- Música (Spotify) ---
 var music_panel: FloatingPanel
+
+# --- Integración OpenClaw (Fase 4) ---
+var ai_bridge: OpenClawBridge
+var ai_panel: FloatingPanel
+var ai_log: RichTextLabel
+var ai_input: TextEdit
+var ai_status_label: Label
+var ai_apply_row: HBoxContainer
+var ai_history: Array = []          # [{role, content}]
+var ai_pending: Array = []          # acciones propuestas
+var ai_ghost_root: Node3D
 const MCU_DEFAULT := "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp"
 var sim_button: Button
 var reset_button: Button
@@ -130,6 +141,15 @@ func _ready() -> void:
 	terminals_root = Node3D.new()
 	terminals_root.name = "Terminales"
 	add_child(terminals_root)
+	ai_ghost_root = Node3D.new()
+	ai_ghost_root.name = "VistaPreviaIA"
+	add_child(ai_ghost_root)
+	ai_bridge = OpenClawBridge.new()
+	ai_bridge.name = "OpenClawBridge"
+	add_child(ai_bridge)
+	ai_bridge.status_changed.connect(_on_ai_status)
+	ai_bridge.reply.connect(_on_ai_reply)
+	ai_bridge.failed.connect(_on_ai_failed)
 	simulator = Simulator.new()
 	simulator.name = "Simulador"
 	add_child(simulator)
@@ -164,6 +184,56 @@ func _ready() -> void:
 		call_deferred("_run_wire_shot")
 	elif "mfshot6" in OS.get_cmdline_user_args():
 		call_deferred("_run_mcu_shot")
+	elif "mfai" in OS.get_cmdline_user_args():
+		call_deferred("_run_ai_test")
+	elif "mfshot7" in OS.get_cmdline_user_args():
+		call_deferred("_run_ai_shot")
+
+func _run_ai_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot7")
+	var out_path := "user://mechaforge_ia.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	ai_panel.visible = true
+	ai_panel.set_collapsed(false)
+	ai_panel.position = Vector2(1180, 120)
+	ai_panel.custom_minimum_size = Vector2(460, 620)
+	await get_tree().create_timer(1.0).timeout
+	ai_input.text = "Arma una torre de 3 perfiles de aluminio de 200 mm, uno sobre otro."
+	_ai_send()
+	var elapsed := 0.0
+	while ai_bridge.busy and elapsed < 45.0:
+		await get_tree().create_timer(0.5).timeout
+		elapsed += 0.5
+	await get_tree().create_timer(1.5).timeout
+	camera.target = Vector3(0, 0.2, 0); camera.distance = 1.0
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT7] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+func _run_ai_test() -> void:
+	await get_tree().create_timer(0.5).timeout
+	print("[AI] configurado=%s modelo=%s url=%s" % [ai_bridge.configured, ai_bridge.model, ai_bridge.base_url()])
+	if not ai_bridge.configured:
+		print("[AI] Sin configuración; omito prueba en línea."); get_tree().quit(); return
+	var state := {"done": false}
+	ai_bridge.reply.connect(func(t: String):
+		print("[AI] Respuesta OK (%d chars). Acciones detectadas: %d" % [t.length(), AiActions.parse(t).size()])
+		state["done"] = true)
+	ai_bridge.failed.connect(func(e: String):
+		print("[AI] Fallo: %s" % e); state["done"] = true)
+	ai_bridge.send_chat([
+		{"role": "system", "content": _ai_system_prompt()},
+		{"role": "user", "content": "Añade un perfil de aluminio de 200 mm en el origen."},
+	])
+	var elapsed := 0.0
+	while not state["done"] and elapsed < 60.0:
+		await get_tree().create_timer(0.5).timeout
+		elapsed += 0.5
+	get_tree().quit()
 
 func _run_mcu_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -562,6 +632,12 @@ func _run_tests() -> void:
 	# 6. Unidades.
 	_check(Units.fmt_mass(0.216) == "216.0 g", "Formato de masa < 1 kg en gramos")
 
+	# 7. Parser de acciones de la IA (Fase 4).
+	var ai_reply := "Claro.\n```json\n{\"acciones\":[{\"tipo\":\"add_part\",\"def_id\":\"perfil_2020_200\",\"material\":\"aluminio\",\"pos\":[0,0.1,0]}]}\n```"
+	var acts := AiActions.parse(ai_reply)
+	_check(acts.size() == 1 and str(acts[0]["tipo"]) == "add_part", "IA: extrae acciones del bloque JSON")
+	_check(AiActions.parse("Tu grúa se vuelca por el centro de masa.").is_empty(), "IA: prosa sin acciones => vacío")
+
 	print("[TEST] Resultado: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
 
@@ -782,6 +858,7 @@ func _build_ui() -> void:
 	_build_circuito_panel()
 	_build_mcu_panel()
 	_build_music_panel()
+	_build_ai_panel()
 	call_deferred("_layout_panels")
 
 func _build_music_panel() -> void:
@@ -818,6 +895,229 @@ func _toggle_music_panel() -> void:
 	music_panel.visible = true
 	music_panel.set_collapsed(not music_panel.is_collapsed())
 	music_panel.move_to_front()
+
+#region INTEGRACIÓN OPENCLAW (Fase 4) -------------------------------------------
+
+func _build_ai_panel() -> void:
+	ai_panel = FloatingPanel.new("OpenClaw (IA)")
+	ui_layer.add_child(ai_panel)
+	ai_panel.position = Vector2(1240, 470)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(410, 0)
+	vb.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	ai_panel.add_content(vb)
+
+	ai_status_label = _label("● Comprobando conexión…")
+	vb.add_child(ai_status_label)
+
+	var arow := HBoxContainer.new()
+	arow.add_child(_label("Agente:"))
+	var agent_opt := OptionButton.new()
+	var current := ai_bridge.model.replace("openclaw/", "")
+	var sel := 0
+	var k := 0
+	for ag in ai_bridge.agents():
+		agent_opt.add_item(ag)
+		if ag == current:
+			sel = k
+		k += 1
+	agent_opt.select(sel)
+	agent_opt.item_selected.connect(func(idx): ai_bridge.model = "openclaw/" + agent_opt.get_item_text(idx))
+	arow.add_child(agent_opt)
+	vb.add_child(arow)
+
+	ai_log = RichTextLabel.new()
+	ai_log.bbcode_enabled = true
+	ai_log.scroll_following = true
+	ai_log.custom_minimum_size = Vector2(400, 280)
+	ai_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(ai_log)
+
+	ai_apply_row = HBoxContainer.new()
+	ai_apply_row.visible = false
+	vb.add_child(ai_apply_row)
+
+	ai_input = TextEdit.new()
+	ai_input.custom_minimum_size = Vector2(400, 56)
+	ai_input.placeholder_text = "Pídele a OpenClaw: 'arma una torre de 4 perfiles de aluminio'…"
+	vb.add_child(ai_input)
+
+	var row := HBoxContainer.new()
+	row.add_child(_button("Enviar", _ai_send))
+	row.add_child(_button("Reintentar conexión", func(): ai_bridge.check_health()))
+	row.add_child(_button("Limpiar", _ai_clear))
+	vb.add_child(row)
+
+	ai_panel.set_collapsed(true)
+	_ai_append("[color=#8a8f98]La IA propone cambios como vista previa (piezas fantasma) que confirmas antes de aplicar. La app funciona igual sin IA.[/color]")
+	ai_bridge.check_health()
+
+func _toggle_ai_panel() -> void:
+	if ai_panel == null:
+		return
+	ai_panel.visible = true
+	ai_panel.set_collapsed(not ai_panel.is_collapsed())
+	ai_panel.move_to_front()
+	if not ai_panel.is_collapsed():
+		ai_bridge.check_health()
+
+func _on_ai_status(connected: bool, text: String) -> void:
+	if ai_status_label:
+		ai_status_label.text = "● " + text
+		ai_status_label.add_theme_color_override("font_color", Color(0.3, 0.85, 0.4) if connected else Color(0.9, 0.45, 0.4))
+
+func _ai_append(bb: String) -> void:
+	if ai_log:
+		ai_log.append_text(bb + "\n\n")
+
+func _bb_escape(s: String) -> String:
+	return s.replace("[", "[lb]")
+
+func _ai_clear() -> void:
+	ai_history.clear()
+	if ai_log: ai_log.clear()
+	_ai_discard()
+
+func _scene_context() -> String:
+	var lines := ["Piezas actuales (por uid):"]
+	var n := 0
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			var p := c as PartInstance
+			lines.append("- uid=%s def=%s material=%s pos=[%.3f,%.3f,%.3f]" % [p.uid, p.def_id, p.material_id, p.position.x, p.position.y, p.position.z])
+			n += 1
+	if n == 0:
+		lines.append("(escena vacía)")
+	lines.append("Uniones: %d." % connections.size())
+	return "\n".join(lines)
+
+func _ai_system_prompt() -> String:
+	var ids := ", ".join(PartLibrary.all_ids())
+	var mats := ", ".join(MaterialLibrary.ids())
+	return "Eres el asistente de MechaForge, un simulador de construcción mecatrónica e ingeniería. Ayudas a construir y a diagnosticar.\n" + \
+		"Unidades en METROS. El suelo es y=0 y las piezas se apoyan encima (su centro sube media altura).\n" + \
+		"Cuando el usuario pida CONSTRUIR o AÑADIR algo, da una explicación breve y luego un bloque JSON con las acciones:\n" + \
+		"```json\n{\"acciones\":[{\"tipo\":\"add_part\",\"def_id\":\"perfil_2020_200\",\"material\":\"aluminio\",\"pos\":[0,0.1,0],\"rot_y_deg\":0}]}\n```\n" + \
+		"También existe {\"tipo\":\"connect\",\"a\":\"<uid>\",\"b\":\"<uid>\",\"union\":\"bisagra|fija|deslizadera|rotula|engranaje\",\"motor\":true}.\n" + \
+		"def_id disponibles: " + ids + "\n" + \
+		"Materiales: " + mats + "\n" + \
+		"No inventes def_id inexistentes. Para preguntas o diagnóstico, responde en prosa (sin JSON)."
+
+func _ai_send() -> void:
+	if ai_input == null:
+		return
+	var text := ai_input.text.strip_edges()
+	if text == "":
+		return
+	if not ai_bridge.configured:
+		_ai_append("[color=#e06666]OpenClaw no está configurado. Enciende el gateway o revisa user://openclaw_config.json.[/color]")
+		return
+	ai_input.text = ""
+	_ai_append("[color=#f5a623]Tú:[/color] " + _bb_escape(text))
+	ai_history.append({"role": "user", "content": text})
+	var messages := [
+		{"role": "system", "content": _ai_system_prompt()},
+		{"role": "system", "content": "Estado de la escena:\n" + _scene_context()},
+	]
+	for m in ai_history:
+		messages.append(m)
+	_ai_append("[color=#8a8f98]OpenClaw está pensando…[/color]")
+	ai_bridge.send_chat(messages)
+
+func _on_ai_reply(text: String) -> void:
+	ai_history.append({"role": "assistant", "content": text})
+	_ai_append("[color=#4aa3ff]OpenClaw:[/color] " + _bb_escape(text))
+	var actions := AiActions.parse(text)
+	if not actions.is_empty():
+		_ai_preview(actions)
+
+func _on_ai_failed(text: String) -> void:
+	_ai_append("[color=#e06666]" + _bb_escape(text) + "[/color]")
+
+func _ai_preview(actions: Array) -> void:
+	_ai_discard()
+	ai_pending = actions
+	var ghosts := 0
+	for a in actions:
+		if str(a.get("tipo", "")) == "add_part":
+			var def := PartLibrary.get_def(str(a.get("def_id", "")))
+			if def.is_empty():
+				continue
+			var g := PartInstance.new()
+			ai_ghost_root.add_child(g)
+			g.setup(def)
+			g.material_id = str(a.get("material", def.get("material", "aluminio")))
+			_make_ghost_visual(g)
+			var pos = a.get("pos", [0, 0, 0])
+			g.position = Vector3(pos[0], pos[1], pos[2])
+			g.rotation.y = deg_to_rad(float(a.get("rot_y_deg", 0)))
+			ghosts += 1
+	for c in ai_apply_row.get_children():
+		c.queue_free()
+	ai_apply_row.visible = true
+	var lbl := _label("Propuesta: %d acciones (%d piezas)." % [actions.size(), ghosts])
+	lbl.add_theme_color_override("font_color", Color(0.35, 0.8, 1.0))
+	ai_apply_row.add_child(lbl)
+	ai_apply_row.add_child(_button("Aplicar", _ai_apply))
+	ai_apply_row.add_child(_button("Descartar", _ai_discard))
+
+func _ai_apply() -> void:
+	for a in ai_pending:
+		match str(a.get("tipo", "")):
+			"add_part":
+				var def := PartLibrary.get_def(str(a.get("def_id", "")))
+				if def.is_empty():
+					continue
+				var pos = a.get("pos", [0, 0, 0])
+				_do({"type": "add", "data": {
+					"uid": "", "def_id": a.get("def_id"),
+					"material": a.get("material", def.get("material", "aluminio")),
+					"pos": [pos[0], pos[1], pos[2]],
+					"rot": [0.0, deg_to_rad(float(a.get("rot_y_deg", 0))), 0.0],
+				}})
+			"remove":
+				var inst := _find_part(str(a.get("uid", "")))
+				if inst:
+					_do({"type": "remove", "data": inst.to_dict()})
+			"set_property":
+				var inst2 := _find_part(str(a.get("uid", "")))
+				if inst2 and a.has("material"):
+					inst2.material_id = str(a["material"]); inst2._build_visual(); Config.project_dirty = true
+			"connect":
+				_ai_apply_connect(a)
+	_ai_discard()
+	_update_counts()
+	Config.notify("Cambios propuestos por OpenClaw aplicados.")
+
+func _ai_apply_connect(a: Dictionary) -> void:
+	var pa := _find_part(str(a.get("a", "")))
+	var pb := _find_part(str(a.get("b", "")))
+	if pa == null or pb == null:
+		return
+	var c := Connection.new()
+	c.a_uid = pa.uid; c.b_uid = pb.uid
+	var map := {"fija": Connection.Tipo.FIJA, "bisagra": Connection.Tipo.BISAGRA,
+		"deslizadera": Connection.Tipo.DESLIZADERA, "rotula": Connection.Tipo.ROTULA,
+		"engranaje": Connection.Tipo.ENGRANAJE}
+	c.tipo = map.get(str(a.get("union", "fija")).to_lower(), Connection.Tipo.FIJA)
+	c.anchor = (pa.global_position + pb.global_position) * 0.5
+	if a.get("motor", false):
+		c.motor_enabled = true
+	connections.append(c)
+	_redraw_connection_markers()
+	_refresh_uniones_panel()
+
+func _ai_discard() -> void:
+	if ai_ghost_root:
+		for c in ai_ghost_root.get_children():
+			c.queue_free()
+	ai_pending = []
+	if ai_apply_row:
+		for c in ai_apply_row.get_children():
+			c.queue_free()
+		ai_apply_row.visible = false
+
+#endregion
 
 func _panel(min_size: Vector2) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -894,6 +1194,7 @@ func _build_topbar() -> Control:
 	hb.add_child(profile_option)
 
 	hb.add_child(_vsep())
+	hb.add_child(_button("🤖  IA", _toggle_ai_panel))
 	hb.add_child(_button("🎵  Música", _toggle_music_panel))
 
 	var grow := Control.new()
