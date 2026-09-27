@@ -85,6 +85,20 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [ ] Opcional futuro: rotura de piezas al superar el límite en simulación;
       persistencia de mallas importadas al guardar el proyecto.
 
+## 🔧 Refactor gráfico / construcción / física (plan externo)
+Progreso del plan de mejora (fotorrealismo, maniobrabilidad, física):
+- [x] **G1 Gráficos**: materiales nuevos (cobre, estaño, baquelita/PCB, fibra de
+      carbono, acrílico), microrelieve procedural, Depth of Field, bloom para LEDs.
+      (PBR/SDFGI, soft shadows, SSAO/SSR, TAA/FSR ya existían.)
+- [x] **F1 Motor↔circuito**: el voltaje/PWM cableado mueve el motor en tiempo real.
+- [x] **F2 Steppers/Servos**: pasos discretos (1.8°/microstep); servo con rango y
+      velocidad (sec/60°) y stall.
+- [x] **F3 Engranajes**: relación por dientes Z1/Z2 (además de ratio directo).
+- [x] Cables realistas (catenaria + conectores), protoboard funcional, editar dims.
+- [ ] **M1**: gizmo 3D de 3 ejes · snapping a orificios/puertos · glow de pines.
+- [ ] **M2**: colisión básica de cables. **M3**: mecánica de soldadura.
+- [ ] **F3+**: backlash y fricción de engranajes. **G+**: HDRI, texturas foto.
+
 ## ⏳ Fase 6 — Pulido y empaquetado
 - [ ] Optimización en este hardware, perfiles finos.
 - [ ] Ejecutable + instalador/carpeta portable para Windows.

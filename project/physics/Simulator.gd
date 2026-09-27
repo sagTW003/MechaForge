@@ -304,7 +304,13 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 	var pid: int = _pid_ids.get(conn.uid, -1)
 	if pid < 0:
 		return
-	Electronics.PidSetSetpoint(pid, conn.ctrl_setpoint)
+	# Consigna efectiva según el tipo de motor.
+	var setpoint := conn.ctrl_setpoint
+	if conn.motor_type == Connection.MotorType.STEPPER:
+		setpoint = conn.snap_to_step(setpoint)          # pasos discretos (1.8°...)
+	elif conn.motor_type == Connection.MotorType.SERVO:
+		setpoint = clampf(setpoint, deg_to_rad(conn.servo_min_deg), deg_to_rad(conn.servo_max_deg))
+	Electronics.PidSetSetpoint(pid, setpoint)
 	var meas: float = _ctrl_angle[conn.uid] if conn.control_mode == Connection.ControlMode.POSICION else omega
 	_ctrl_meas[conn.uid] = meas
 	var cmd: float = Electronics.PidUpdate(pid, meas, delta)
@@ -338,7 +344,7 @@ func _drive_gear(jd: Dictionary) -> void:
 	var b: RigidBody3D = jd["b"]
 	var axis := conn.axis_vector().normalized()
 	var wa: float = a.angular_velocity.dot(axis)
-	var target_b := -conn.gear_ratio * wa
+	var target_b := -conn.effective_gear_ratio() * wa
 	var wb_now: Vector3 = b.angular_velocity
 	# Sustituye solo la componente sobre el eje, preserva el resto.
 	b.angular_velocity = wb_now - axis * wb_now.dot(axis) + axis * target_b

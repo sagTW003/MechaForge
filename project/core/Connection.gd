@@ -33,6 +33,39 @@ var motor_noload_speed: float = 6.0    # rad/s sin carga
 
 # Engranaje: relación de transmisión (ω_b = -ratio * ω_a).
 var gear_ratio: float = 1.0
+## Dientes de los engranajes (si >0, la relación = Z1/Z2).
+var gear_z1: int = 0
+var gear_z2: int = 0
+
+# --- Tipo de motor (Fase F2) ---
+enum MotorType { DC, STEPPER, SERVO }
+var motor_type: int = MotorType.DC
+## Stepper: grados por paso completo y microsteps.
+var step_deg: float = 1.8
+var microsteps: int = 1
+## Servo: rango y velocidad (segundos por 60°).
+var servo_min_deg: float = 0.0
+var servo_max_deg: float = 180.0
+var servo_sec_per_60: float = 0.15
+
+const MOTOR_TYPE_NOMBRE := ["DC", "Paso a paso", "Servo"]
+
+## Relación de engranaje efectiva (por dientes si están definidos).
+func effective_gear_ratio() -> float:
+	if gear_z1 > 0 and gear_z2 > 0:
+		return float(gear_z1) / float(gear_z2)
+	return gear_ratio
+
+## Ajusta un ángulo (rad) al paso discreto del stepper.
+func snap_to_step(angle_rad: float) -> float:
+	var step := deg_to_rad(step_deg) / float(maxi(1, microsteps))
+	if step <= 0.0:
+		return angle_rad
+	return round(angle_rad / step) * step
+
+## Velocidad máxima del servo (rad/s) según su especificación sec/60°.
+func servo_speed() -> float:
+	return deg_to_rad(60.0) / maxf(0.01, servo_sec_per_60)
 
 # --- Control (Fase 3): la bisagra motorizada puede llevar un PID ---
 enum ControlMode { NINGUNO, POSICION, VELOCIDAD }
@@ -80,6 +113,9 @@ func to_dict() -> Dictionary:
 		"ctrl_kp": ctrl_kp, "ctrl_ki": ctrl_ki, "ctrl_kd": ctrl_kd,
 		"elec_current_noload": elec_current_noload, "elec_current_stall": elec_current_stall,
 		"elec_uid": elec_uid, "elec_voltaje_nominal": elec_voltaje_nominal,
+		"gear_z1": gear_z1, "gear_z2": gear_z2, "motor_type": motor_type,
+		"step_deg": step_deg, "microsteps": microsteps,
+		"servo_min_deg": servo_min_deg, "servo_max_deg": servo_max_deg, "servo_sec_per_60": servo_sec_per_60,
 	}
 
 static func from_dict(d: Dictionary) -> Connection:
@@ -108,4 +144,12 @@ static func from_dict(d: Dictionary) -> Connection:
 	c.elec_current_stall = d.get("elec_current_stall", 2.5)
 	c.elec_uid = d.get("elec_uid", "")
 	c.elec_voltaje_nominal = d.get("elec_voltaje_nominal", 12.0)
+	c.gear_z1 = int(d.get("gear_z1", 0))
+	c.gear_z2 = int(d.get("gear_z2", 0))
+	c.motor_type = int(d.get("motor_type", MotorType.DC))
+	c.step_deg = d.get("step_deg", 1.8)
+	c.microsteps = int(d.get("microsteps", 1))
+	c.servo_min_deg = d.get("servo_min_deg", 0.0)
+	c.servo_max_deg = d.get("servo_max_deg", 180.0)
+	c.servo_sec_per_60 = d.get("servo_sec_per_60", 0.15)
 	return c

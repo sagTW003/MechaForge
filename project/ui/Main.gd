@@ -786,6 +786,15 @@ func _run_tests() -> void:
 	# 10. Mapa de esfuerzos: color verde→rojo.
 	_check(_stress_color(0.0).g > 0.7 and _stress_color(1.0).r > 0.7, "Esfuerzos: verde (bajo) a rojo (alto)")
 
+	# 11. Motores F2/F3: stepper, engranaje por dientes, servo.
+	var cm := Connection.new()
+	cm.step_deg = 1.8; cm.microsteps = 1
+	_check(absf(rad_to_deg(cm.snap_to_step(deg_to_rad(46.0))) - 46.8) < 0.05, "Stepper: 46° ajusta a 46.8° (paso 1.8°)")
+	cm.gear_z1 = 20; cm.gear_z2 = 40
+	_check(absf(cm.effective_gear_ratio() - 0.5) < 1.0e-6, "Engranaje por dientes 20/40 = 0.5")
+	cm.servo_sec_per_60 = 0.15
+	_check(absf(rad_to_deg(cm.servo_speed()) - 400.0) < 1.0, "Servo: 0.15 s/60° ≈ 400°/s")
+
 	print("[TEST] Resultado: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
 
@@ -2708,9 +2717,26 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 			elec_opt.set_item_metadata(elec_opt.item_count - 1, ep.uid)
 	vb.add_child(elec_opt)
 
-	vb.add_child(_label("Relación (engranaje):"))
+	vb.add_child(_label("Tipo de motor:"))
+	var mtype_opt := OptionButton.new()
+	for mn in Connection.MOTOR_TYPE_NOMBRE:
+		mtype_opt.add_item(mn)
+	vb.add_child(mtype_opt)
+	var step_hb := HBoxContainer.new()
+	step_hb.add_child(_label("Paso stepper (°)"))
+	var step_spin := _spin(0.1, 90, 0.1, 1.8)
+	step_hb.add_child(step_spin)
+	vb.add_child(step_hb)
+
+	vb.add_child(_label("Engranaje: relación o dientes (Z1/Z2):"))
+	var gear_hb := HBoxContainer.new()
 	var ratio_spin := _spin(-10, 10, 0.1, 1.0)
-	vb.add_child(ratio_spin)
+	gear_hb.add_child(_label("ratio")); gear_hb.add_child(ratio_spin)
+	var z1_spin := _spin(0, 200, 1, 0)
+	var z2_spin := _spin(0, 200, 1, 0)
+	gear_hb.add_child(_label("Z1")); gear_hb.add_child(z1_spin)
+	gear_hb.add_child(_label("Z2")); gear_hb.add_child(z2_spin)
+	vb.add_child(gear_hb)
 
 	ui_layer.add_child(dlg)
 	dlg.confirmed.connect(func():
@@ -2739,6 +2765,10 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		c.ctrl_kp = kp_spin.value; c.ctrl_ki = ki_spin.value; c.ctrl_kd = kd_spin.value
 		c.elec_uid = str(elec_opt.get_item_metadata(elec_opt.selected))
 		c.elec_voltaje_nominal = Config.battery_voltage
+		c.motor_type = mtype_opt.selected
+		c.step_deg = step_spin.value
+		c.gear_z1 = int(z1_spin.value)
+		c.gear_z2 = int(z2_spin.value)
 		connections.append(c)
 		Config.project_dirty = true
 		_redraw_connection_markers()
