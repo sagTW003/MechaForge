@@ -6,51 +6,51 @@
 	},
 	"cables": [
 		{
-			"a_key": "p1537155_87056:V+",
-			"b_key": "p1534939_3463:P1_2",
+			"a_key": "p1244237_35133:V+",
+			"b_key": "p1240239_246:P1_2",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "power",
 			"uid": "e1"
 		},
 		{
-			"a_key": "p1534939_3463:P1_5",
-			"b_key": "p1537672_21711:A",
+			"a_key": "p1240239_246:P1_5",
+			"b_key": "p1244531_17196:A",
 			"color": "rojo",
 			"tipo": "power",
 			"uid": "e2"
 		},
 		{
-			"a_key": "p1537672_21711:B",
-			"b_key": "p1534939_3463:a5_0",
+			"a_key": "p1244531_17196:B",
+			"b_key": "p1240239_246:a5_0",
 			"color": "amarillo",
 			"tipo": "signal",
 			"uid": "e3"
 		},
 		{
-			"a_key": "p1538665_49316:anodo",
-			"b_key": "p1534939_3463:a5_2",
+			"a_key": "p1245136_4098:anodo",
+			"b_key": "p1240239_246:a5_2",
 			"color": "naranja",
 			"tipo": "signal",
 			"uid": "e4"
 		},
 		{
-			"a_key": "p1538665_49316:catodo",
-			"b_key": "p1534939_3463:N1_4",
+			"a_key": "p1245136_4098:catodo",
+			"b_key": "p1240239_246:N1_4",
 			"color": "auto",
 			"tipo": "gnd",
 			"uid": "e5"
 		},
 		{
-			"a_key": "p1537155_87056:GND",
-			"b_key": "p1534939_3463:N1_1",
+			"a_key": "p1244237_35133:GND",
+			"b_key": "p1240239_246:N1_1",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "gnd",
 			"uid": "e6"
 		}
 	],
-	"creado": "2026-09-27T20:31:17",
+	"creado": "2026-09-27T21:40:19",
 	"descripcion": "Batería LiPo, resistencia de 100 Ω y LED cableados en una protoboard. Pulsa «Analizar circuito».",
 	"entorno": 0,
 	"formato": "mechaforge",
@@ -81,7 +81,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1534939_3463"
+			"uid": "p1240239_246"
 		},
 		{
 			"def_id": "bateria_lipo_3s",
@@ -102,7 +102,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1537155_87056"
+			"uid": "p1244237_35133"
 		},
 		{
 			"def_id": "resistencia_100",
@@ -123,7 +123,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1537672_21711"
+			"uid": "p1244531_17196"
 		},
 		{
 			"def_id": "led",
@@ -143,7 +143,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1538665_49316"
+			"uid": "p1245136_4098"
 		}
 	],
 	"uniones": [],

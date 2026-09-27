@@ -112,6 +112,9 @@ var biblioteca_panel: FloatingPanel
 var propiedades_panel: FloatingPanel
 var uniones_panel: FloatingPanel
 var uniones_list: VBoxContainer
+var selected_conn_uid: String = ""
+var _conn_markers: Dictionary = {}      # conn.uid -> {holder, mat, label}
+const CONN_PICK_LAYER := 16
 
 # --- Panel de electrónica y control (Fase 3) ---
 var elec_panel: FloatingPanel
@@ -247,6 +250,11 @@ func _ready() -> void:
 		gen.main = self
 		add_child(gen)
 		gen.call_deferred("run")
+	elif "mfentorno" in OS.get_cmdline_user_args():
+		var ent: Node = load("res://tests/EntornoTests.gd").new()
+		ent.main = self
+		add_child(ent)
+		ent.call_deferred("run")
 	elif "mfejemplos" in OS.get_cmdline_user_args():
 		var et: Node = load("res://tests/EjemplosTests.gd").new()
 		et.main = self
@@ -289,6 +297,10 @@ func _run_protoboard_shot() -> void:
 		if p: p.visible = false
 	camera.target = Vector3(-0.01, 0.02, 0); camera.distance = 0.4
 	camera._pitch = deg_to_rad(-30); camera._yaw = deg_to_rad(-20); camera._update_transform()
+	if "terminales" in uargs:
+		_set_wiring_mode(true)
+		camera.target = Vector3(-0.045, 0.01, 0.005); camera.distance = 0.13
+		camera._pitch = deg_to_rad(-55); camera._update_transform()
 	await get_tree().create_timer(2.0).timeout
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
@@ -321,21 +333,31 @@ func _run_components_shot() -> void:
 	var out_path := "user://mechaforge_componentes.png"
 	if i >= 0 and i + 1 < uargs.size():
 		out_path = uargs[i + 1]
-	var items := ["protoboard", "driver_motor", "microcontrolador", "motor_dc", "led", "resistencia_100", "bateria_lipo_3s", "sensor_ultrasonido", "servo", "potenciometro", "boton"]
+	var items := ["protoboard", "driver_motor", "microcontrolador", "motor_dc", "led", "resistencia_100", "bateria_lipo_3s", "sensor_ultrasonido", "servo", "potenciometro", "boton",
+		"bateria_18650", "rueda_65", "lidar", "final_carrera", "sensor_linea", "sensor_fuerza", "encoder", "imu", "engranaje_m1_z40"]
 	var x := -0.35
+	var z := 0.0
 	for id in items:
 		var def := PartLibrary.get_def(id)
 		if def.is_empty(): continue
 		var h := PartLibrary.dims_m(def).y
-		_spawn(id, def.get("material", "abs"), Vector3(x, h * 0.5 + 0.001, 0))
+		var rot := Vector3(PI / 2.0, 0, 0) if id == "rueda_65" else Vector3.ZERO
+		if id == "rueda_65": h = PartLibrary.dims_m(def).x
+		_spawn(id, def.get("material", "abs"), Vector3(x, h * 0.5 + 0.001, z), rot)
 		x += 0.09
+		if x > 0.6:
+			x = -0.25
+			z = 0.12
+	MaterialLibrary.wait_textures()
 	_update_counts()
 	_select(null)
 	for p in [biblioteca_panel, propiedades_panel, uniones_panel]:
 		if p: p.visible = false
-	camera.target = Vector3(0.1, 0.03, 0); camera.distance = 0.55
-	camera._pitch = deg_to_rad(-22); camera._yaw = deg_to_rad(-25); camera._update_transform()
-	await get_tree().create_timer(2.5).timeout
+	camera.target = Vector3(0.12, 0.03, 0.05); camera.distance = 0.62
+	if "cerca" in uargs:
+		camera.target = Vector3(-0.08, 0.02, 0.02); camera.distance = 0.3
+	camera._pitch = deg_to_rad(-28); camera._yaw = deg_to_rad(-20); camera._update_transform()
+	await get_tree().create_timer(3.0).timeout
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(out_path)
@@ -1928,7 +1950,7 @@ func _build_uniones_panel() -> void:
 	ui_layer.add_child(uniones_panel)
 	uniones_panel.position = Vector2(8, 400)
 	var vb := VBoxContainer.new()
-	vb.custom_minimum_size = Vector2(228, 0)
+	vb.custom_minimum_size = Vector2(330, 0)
 	uniones_panel.add_content(vb)
 	var top := HBoxContainer.new()
 	top.add_child(_button("Borrar todas las uniones", _delete_all_connections))
@@ -1939,7 +1961,7 @@ func _build_uniones_panel() -> void:
 	uniones_panel.set_collapsed(true)
 
 func _short(s: String) -> String:
-	return s if s.length() <= 16 else s.substr(0, 15) + "…"
+	return s if s.length() <= 22 else s.substr(0, 21) + "…"
 
 func _refresh_uniones_panel() -> void:
 	if uniones_list == null:
@@ -1955,24 +1977,101 @@ func _refresh_uniones_panel() -> void:
 		return
 	var idx := 1
 	for conn in connections:
-		var hb := HBoxContainer.new()
 		var a := _find_part(conn.a_uid)
 		var b := _find_part(conn.b_uid)
 		var an: String = a.def.get("nombre", "?") if a else "?"
 		var bn: String = b.def.get("nombre", "?") if b else "?"
-		var lbl := _label("%d. %s: %s ↔ %s" % [idx, conn.tipo_nombre(), _short(an), _short(bn)])
-		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lbl.add_theme_font_size_override("font_size", 11)
-		hb.add_child(lbl)
+		var sel: bool = conn.uid == selected_conn_uid
+		var box := VBoxContainer.new()
+		var hb := HBoxContainer.new()
+		var pick := Button.new()
+		pick.toggle_mode = true
+		pick.button_pressed = sel
+		pick.flat = not sel
+		pick.focus_mode = Control.FOCUS_NONE
+		pick.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pick.clip_text = true
+		pick.text = "%d. %s (%s): %s ↔ %s" % [idx, conn.tipo_nombre(), Connection.AXIS_NOMBRE[conn.axis], _short(an), _short(bn)]
+		pick.tooltip_text = "Clic para seleccionar la unión nº %d (también se resalta en 3D).\n%s  ↔  %s" % [idx, an, bn]
+		pick.add_theme_font_size_override("font_size", 11)
+		var uid: String = conn.uid
+		pick.pressed.connect(func(): _select_connection("" if selected_conn_uid == uid else uid))
+		hb.add_child(pick)
+		var focus := Button.new()
+		focus.text = "🎯"
+		focus.flat = true
+		focus.focus_mode = Control.FOCUS_NONE
+		focus.tooltip_text = "Encuadrar esta unión con la cámara"
+		focus.pressed.connect(func(): _select_connection(uid); _focus_connection(uid))
+		hb.add_child(focus)
 		var del := Button.new()
 		del.text = "✕"
 		del.focus_mode = Control.FOCUS_NONE
-		del.tooltip_text = "Borrar esta unión"
-		var uid: String = conn.uid
+		del.tooltip_text = "Borrar la unión nº %d" % idx
 		del.pressed.connect(func(): _delete_connection(uid))
 		hb.add_child(del)
-		uniones_list.add_child(hb)
+		box.add_child(hb)
+		if sel:
+			var info := _label(_connection_details(conn, an, bn))
+			info.add_theme_font_size_override("font_size", 10)
+			info.add_theme_color_override("font_color", Color(0.45, 0.85, 1.0))
+			info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			info.custom_minimum_size = Vector2(320, 0)
+			box.add_child(info)
+		uniones_list.add_child(box)
 		idx += 1
+
+## Texto descriptivo de una unión (piezas, eje, anclaje, motor y control).
+func _connection_details(conn: Connection, an: String, bn: String) -> String:
+	var t := "A: %s [%s]\nB: %s [%s]\nEje %s · anclaje (%.3f, %.3f, %.3f) m" % [
+		an, conn.a_uid.substr(0, 8), bn, conn.b_uid.substr(0, 8), Connection.AXIS_NOMBRE[conn.axis],
+		conn.anchor.x, conn.anchor.y, conn.anchor.z]
+	if conn.limit_enabled:
+		t += "\nLímites: %.0f° … %.0f°" % [rad_to_deg(conn.limit_lower), rad_to_deg(conn.limit_upper)]
+	if conn.motor_enabled:
+		t += "\nMotor %s · par %.2f N·m · %.1f rad/s en vacío" % [Connection.MOTOR_TYPE_NOMBRE[conn.motor_type], conn.motor_stall_torque, conn.motor_noload_speed]
+		if conn.control_mode != Connection.ControlMode.NINGUNO:
+			t += "\nControl: %s" % Connection.CONTROL_NOMBRE[conn.control_mode]
+	if conn.tipo == Connection.Tipo.ENGRANAJE:
+		t += "\nRelación %.3f · huelgo %.1f° · rendimiento %.0f %%" % [conn.effective_gear_ratio(), conn.gear_backlash_deg, conn.gear_efficiency * 100.0]
+	return t
+
+## Selecciona (o deselecciona con "") una unión: resalta su marcador y sus piezas.
+func _select_connection(uid: String) -> void:
+	selected_conn_uid = uid
+	if uid != "":
+		_select(null)
+	for k in _conn_markers:
+		var m: Dictionary = _conn_markers[k]
+		var on: bool = k == uid
+		(m["mat"] as StandardMaterial3D).emission_energy_multiplier = 3.5 if on else 0.6
+		(m["holder"] as Node3D).scale = Vector3.ONE * (1.7 if on else 1.0)
+		(m["label"] as Label3D).modulate = Color(0.4, 1.0, 1.0) if on else Color(1, 1, 1, 0.85)
+		(m["label"] as Label3D).outline_modulate = Color(0, 0.3, 0.4) if on else Color(0, 0, 0)
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			(c as PartInstance).set_highlight(false)
+	var conn := _find_conn(uid)
+	if conn:
+		for pu in [conn.a_uid, conn.b_uid]:
+			var p := _find_part(pu)
+			if p: p.set_highlight(true)
+		if uniones_panel and uniones_panel.is_collapsed():
+			uniones_panel.set_collapsed(false)
+	_refresh_uniones_panel()
+
+## Encuadra la cámara en el anclaje de una unión.
+func _focus_connection(uid: String) -> void:
+	var conn := _find_conn(uid)
+	if conn == null:
+		return
+	var a := _find_part(conn.a_uid)
+	var b := _find_part(conn.b_uid)
+	var span := a.global_position.distance_to(b.global_position) if a and b else 0.1
+	camera.target = conn.anchor
+	camera.distance = clampf(span * 3.0, 0.25, 3.0)
+	camera._update_transform()
 
 func _delete_connection(uid: String) -> void:
 	if simulator.is_running():
@@ -1982,6 +2081,8 @@ func _delete_connection(uid: String) -> void:
 		if connections[i].uid == uid:
 			connections.remove_at(i)
 			break
+	if selected_conn_uid == uid:
+		_select_connection("")
 	_redraw_connection_markers()
 	_refresh_uniones_panel()
 	_update_counts()
@@ -1996,6 +2097,7 @@ func _delete_all_connections() -> void:
 		Config.notify("No hay uniones que borrar.")
 		return
 	connections.clear()
+	_select_connection("")
 	_redraw_connection_markers()
 	_refresh_uniones_panel()
 	_update_counts()
@@ -2071,7 +2173,8 @@ CONSTRUCCIÓN
 [R]                   Rotar en Y   ·  [Mayús+R] en X  ·  [Alt+R] en Z
 [1] [2] [3]           Paso de rotación 15° / 45° / 90°
 (Encaje inteligente)  Orificios, ejes, ranuras en T: anillo verde = encaja
-[Supr]                Eliminar la pieza seleccionada
+[Supr]                Eliminar la pieza (o la unión) seleccionada
+[Clic en nº de unión] Seleccionar la unión (resalta sus piezas)
 [Ctrl+D]              Duplicar la pieza seleccionada
 [Ctrl+C] / [Ctrl+V]   Copiar / pegar pieza
 [M]                   Copia simétrica (plano YZ)
@@ -2517,6 +2620,13 @@ func _select(part) -> void:
 # --- Mover piezas colocadas ---
 ## Clic en modo edición: selecciona la pieza y prepara un posible arrastre.
 func _begin_pointer(screen_pos: Vector2) -> void:
+	var cuid := _pick_connection(screen_pos)
+	if cuid != "":
+		_select_connection(cuid)
+		Config.notify("Unión nº %d seleccionada (Supr la borra)." % (connections.find(_find_conn(cuid)) + 1))
+		return
+	if selected_conn_uid != "":
+		_select_connection("")
 	var part := _pick_part(screen_pos)
 	_select(part)
 	if part == null:
@@ -2817,6 +2927,9 @@ func redo() -> void:
 	Config.notify("Rehacer.")
 
 func _delete_selected() -> void:
+	if selected_part == null and selected_conn_uid != "":
+		_delete_connection(selected_conn_uid)
+		return
 	if selected_part == null:
 		return
 	_do({"type": "remove", "data": selected_part.to_dict()})
@@ -3410,17 +3523,80 @@ func _spin(mn: float, mx: float, step: float, val: float) -> SpinBox:
 func _redraw_connection_markers() -> void:
 	for c in connections_root.get_children():
 		c.queue_free()
+	_conn_markers.clear()
 	var colors := {
 		Connection.Tipo.FIJA: Color(0.7, 0.7, 0.7), Connection.Tipo.BISAGRA: Color(0.96, 0.65, 0.14),
 		Connection.Tipo.DESLIZADERA: Color(0.3, 0.6, 1.0), Connection.Tipo.ROTULA: Color(0.3, 0.9, 0.5),
 		Connection.Tipo.ENGRANAJE: Color(0.7, 0.4, 1.0),
 	}
+	var idx := 0
 	for conn in connections:
+		idx += 1
 		var a := _find_part(conn.a_uid)
 		var b := _find_part(conn.b_uid)
 		if a == null or b == null:
 			continue
-		connections_root.add_child(_make_link_marker(a.global_position, b.global_position, colors.get(conn.tipo, Color.WHITE)))
+		var holder := _make_link_marker(a.global_position, b.global_position, colors.get(conn.tipo, Color.WHITE))
+		connections_root.add_child(holder)
+		# Esfera en el ANCLAJE real, con número (el mismo de la lista) y seleccionable.
+		var mat: StandardMaterial3D = (holder.get_child(0) as MeshInstance3D).material_override
+		var anchor := Node3D.new()
+		anchor.position = conn.anchor
+		connections_root.add_child(anchor)
+		var sph := MeshInstance3D.new()
+		var sm := SphereMesh.new(); sm.radius = 0.009; sm.height = 0.018
+		sph.mesh = sm
+		sph.material_override = mat
+		anchor.add_child(sph)
+		var body := StaticBody3D.new()
+		body.collision_layer = CONN_PICK_LAYER
+		body.collision_mask = 0
+		var cs := CollisionShape3D.new()
+		var sh := SphereShape3D.new(); sh.radius = 0.014
+		cs.shape = sh
+		body.add_child(cs)
+		body.set_meta("conn_uid", conn.uid)
+		anchor.add_child(body)
+		var lbl := Label3D.new()
+		lbl.text = str(idx)
+		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lbl.no_depth_test = true
+		lbl.fixed_size = true
+		lbl.pixel_size = 0.0012
+		lbl.font_size = 22
+		lbl.outline_size = 8
+		# Si otra unión tiene el anclaje casi en el mismo sitio, se separan las etiquetas.
+		var near := 0
+		for prev in connections.slice(0, idx - 1):
+			if (prev as Connection).anchor.distance_to(conn.anchor) < 0.03:
+				near += 1
+		lbl.position = Vector3(near * 0.028, 0.022 + near * 0.012, 0)
+		lbl.render_priority = 5
+		anchor.add_child(lbl)
+		_conn_markers[conn.uid] = {"holder": anchor, "mat": mat, "label": lbl}
+	if selected_conn_uid != "" and _find_conn(selected_conn_uid) == null:
+		selected_conn_uid = ""
+	# Mantener el resaltado tras redibujar.
+	if selected_conn_uid != "" and _conn_markers.has(selected_conn_uid):
+		var m: Dictionary = _conn_markers[selected_conn_uid]
+		m["mat"] = (m["mat"] as StandardMaterial3D).duplicate()
+		for n in (m["holder"] as Node3D).get_children():
+			if n is MeshInstance3D:
+				n.material_override = m["mat"]
+		(m["mat"] as StandardMaterial3D).emission_energy_multiplier = 3.5
+		(m["holder"] as Node3D).scale = Vector3.ONE * 1.7
+		(m["label"] as Label3D).modulate = Color(0.4, 1.0, 1.0)
+
+## Unión cuyo marcador está bajo el cursor ("" si ninguna).
+func _pick_connection(screen_pos: Vector2) -> String:
+	if not connections_root.visible:
+		return ""
+	var ray := camera.screen_ray(screen_pos)
+	var params := PhysicsRayQueryParameters3D.create(ray["origin"], ray["origin"] + ray["dir"] * 1000.0, CONN_PICK_LAYER)
+	var hit := get_world_3d().direct_space_state.intersect_ray(params)
+	if hit.is_empty():
+		return ""
+	return str((hit["collider"] as Node).get_meta("conn_uid", ""))
 
 func _make_link_marker(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
 	var holder := Node3D.new()
@@ -3443,12 +3619,6 @@ func _make_link_marker(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
 		if absf(dir.dot(Vector3.UP)) < 0.999:
 			b = Basis(Quaternion(Vector3.UP, dir))    # eje Y del cilindro a lo largo de p1->p2
 	holder.transform = Transform3D(b, mid)
-	# Esfera en el anclaje.
-	var sph := MeshInstance3D.new()
-	var sm := SphereMesh.new(); sm.radius = 0.012; sm.height = 0.024
-	sph.mesh = sm; sph.material_override = mat
-	sph.position = Vector3.ZERO
-	holder.add_child(sph)
 	return holder
 
 #endregion
@@ -3501,11 +3671,13 @@ func _build_terminal_markers() -> void:
 			body.collision_layer = WIRE_PICK_LAYER
 			body.collision_mask = 0
 			var cs := CollisionShape3D.new()
-			var sh := SphereShape3D.new(); sh.radius = 0.0045
+			# Terminales densos (protoboard, paso 2.54 mm): marcador pequeño sobre el agujero.
+			var fino: bool = term.get("fino", false)
+			var sh := SphereShape3D.new(); sh.radius = 0.0012 if fino else 0.0045
 			cs.shape = sh
 			body.add_child(cs)
 			var mi := MeshInstance3D.new()
-			var sm := SphereMesh.new(); sm.radius = 0.0022; sm.height = 0.0044
+			var sm := SphereMesh.new(); sm.radius = 0.0007 if fino else 0.0022; sm.height = sm.radius * 2.0
 			mi.mesh = sm
 			var mat := StandardMaterial3D.new()
 			mat.albedo_color = _term_color(term.get("tipo", "signal"))

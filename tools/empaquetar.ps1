@@ -40,7 +40,7 @@ Copy-Item -Recurse -Force (Join-Path $godotDir "*") (Join-Path $out "motor")
 Write-Host "[4/5] Copiando la aplicación..."
 # Se excluyen cachés del editor y artefactos intermedios que no hacen falta para ejecutar.
 robocopy $proj (Join-Path $out "app") /E /NFL /NDL /NJH /NJS /NP `
-    /XD "$proj\.godot\editor" "$proj\.godot\shader_cache" "$proj\.godot\exported" "$proj\.godot\mono\temp\bin\ExportRelease" "$proj\.godot\mono\temp\bin\ExportDebug" "$proj\obj" "$proj\.godot\mono\temp\obj" | Out-Null
+    /XD "$proj\.godot\editor" "$proj\.godot\shader_cache" "$proj\.godot\exported" "$proj\.godot\mono\temp\bin\ExportRelease" "$proj\.godot\mono\temp\bin\ExportDebug" "$proj\obj" "$proj\.godot\mono\temp\obj" /XF *.jpg *.hdr | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falló ($LASTEXITCODE)" }
 
 $godotExe = "Godot_v4.7.2-stable_mono_win64.exe"

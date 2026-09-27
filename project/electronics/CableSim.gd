@@ -77,6 +77,16 @@ static func solve(p1: Vector3, p2: Vector3, obstacles: Array, slack: float = 1.1
 			pts[i] = p
 	pts[0] = a
 	pts[segs] = b
+	# Relajación (Laplaciano): quita el zigzag del cable apoyado sobre superficies,
+	# volviendo a respetar suelo y piezas tras cada pasada.
+	for _pass in range(4):
+		var prevp := pts.duplicate()
+		for i in range(2, segs - 1):
+			var q := prevp[i] * 0.5 + (prevp[i - 1] + prevp[i + 1]) * 0.25
+			q.y = maxf(q.y, RADIUS)
+			for o in near:
+				q = _push_out(q, o)
+			pts[i] = q
 	# Añade los puntos del conector y suaviza.
 	var raw := PackedVector3Array()
 	raw.append(p1)

@@ -5,6 +5,8 @@ render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 //   style 0 — Estudio/laboratorio: resina epoxi oscura con escamas, satinada.
 //   style 1 — Taller: hormigón pulido con juntas y cinta de seguridad amarilla.
 //   style 2 — Exterior: losa de pruebas de hormigón, asfalto y césped alrededor.
+//   style 3 — Cochera: hormigón real (textura ambientCG CC0) dentro de la nave
+//             (x ±3.5, z −4…3), entrada de adoquín delante del portón y césped.
 // Las líneas de la rejilla tienen grosor constante en PÍXELES (no en metros), y
 // las menores se desvanecen cuando quedan demasiado juntas en pantalla.
 
@@ -14,6 +16,9 @@ uniform float grid_opacity = 1.0;
 uniform float grid_radius = 4.0;     // radio de la zona con rejilla (m)
 uniform vec3 axis_x_color : source_color = vec3(0.9, 0.3, 0.3);
 uniform vec3 axis_z_color : source_color = vec3(0.3, 0.55, 0.95);
+uniform sampler2D tex_concrete : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D tex_concrete_n : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D tex_concrete_r : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 
 varying vec3 world_pos;
 
@@ -83,6 +88,30 @@ void fragment() {
 		float stripe = step(0.5, fract((p.x + p.y) * 5.0));
 		col = mix(col, mix(vec3(0.75, 0.6, 0.05), vec3(0.03), stripe), tape);
 		rough = 0.55 + 0.25 * n;
+	} else if (style == 3) {
+		bool inside = abs(p.x) < 3.5 && p.y > -4.0 && p.y < 3.0;
+		vec2 uv = p * 0.55;
+		vec3 conc = texture(tex_concrete, uv).rgb;
+		float cr = texture(tex_concrete_r, uv).r;
+		vec3 nm = texture(tex_concrete_n, uv).rgb;
+		// Manchas de aceite cerca del lugar del coche.
+		float oil = smoothstep(0.62, 0.78, fbm(p * 1.3 + 3.0)) * step(0.0, 1.5 - length(p - vec2(0.3, -1.2)));
+		vec3 inside_col = conc * 0.95 * (1.0 - oil * 0.45);
+		// Junta de dilatación en la puerta.
+		// Entrada de coches: adoquín gris (juntas) de 3 m de ancho, luego césped.
+		vec2 q = p * vec2(1.0, 1.0) / vec2(0.2, 0.1);
+		float row = floor(q.y);
+		float brick_x = fract(q.x + 0.5 * mod(row, 2.0));
+		float joint = min(min(brick_x, 1.0 - brick_x), min(fract(q.y), 1.0 - fract(q.y)));
+		vec3 paver = conc * vec3(0.78, 0.76, 0.74) * (0.85 + 0.25 * hash(vec2(floor(q.x + 0.5 * mod(row, 2.0)), row)));
+		paver *= mix(0.55, 1.0, smoothstep(0.02, 0.06, joint));
+		vec3 grass = mix(vec3(0.05, 0.12, 0.03), vec3(0.13, 0.22, 0.06), fbm(p * 0.8)) * (0.7 + 0.5 * fbm(p * 20.0));
+		bool drive = p.y >= 3.0 && abs(p.x) < 1.8;
+		col = inside ? inside_col : (drive ? paver : grass);
+		if (!inside && !drive && p.y < 3.0) { col = paver * 0.9; }   // acera perimetral
+		rough = inside ? mix(cr, 0.25, oil) : (drive ? 0.8 : 0.95);
+		if (inside) { NORMAL_MAP = nm; NORMAL_MAP_DEPTH = 0.8; }
+		spec = 0.5;
 	} else {
 		// Exterior: losa de pruebas, asfalto y césped.
 		float box = max(abs(p.x), abs(p.y));

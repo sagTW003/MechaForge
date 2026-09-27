@@ -91,6 +91,18 @@ const DATA := {
 	},
 }
 
+## Juego de texturas real para cada material (si falta, se usa el procedural).
+const TEXTURED := {
+	"aluminio": {"set": "Metal009", "tint": Color(1.0, 1.0, 1.02), "opts": {"scale": 8.0, "metallic": 1.0}},
+	"acero_inox": {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "opts": {"scale": 12.0, "metallic": 1.0, "rough": 0.8}},
+	"acero": {"set": "Metal055A", "tint": Color(0.95, 0.95, 0.95), "opts": {"scale": 4.0}},
+	"abs": {"set": "Plastic013A", "tint": Color(0.16, 0.17, 0.19), "opts": {"scale": 30.0, "rough": 1.2}},
+	"ptfe": {"set": "Plastic013A", "tint": Color(0.95, 0.95, 0.92), "opts": {"scale": 30.0}},
+	"caucho": {"set": "Rubber004", "tint": Color(0.9, 0.9, 0.92), "opts": {"scale": 30.0}},
+	"madera": {"set": "Wood066", "tint": Color.WHITE, "opts": {"scale": 3.0}},
+	"concreto": {"set": "Concrete042A", "tint": Color.WHITE, "opts": {"scale": 1.5}},
+}
+
 func _ready() -> void:
 	_materials = DATA.duplicate(true)
 
@@ -125,6 +137,16 @@ func get_visual(id: String) -> StandardMaterial3D:
 	if _cache.has(id):
 		return _cache[id]
 	var d := get_data(id)
+	# Materiales con textura fotográfica real disponible (ambientCG, CC0).
+	if TEXTURED.has(id):
+		var t: Dictionary = TEXTURED[id]
+		var opts: Dictionary = t["opts"].duplicate()
+		opts["tint"] = t.get("tint", Color.WHITE)
+		var tm := TextureSets.material(t["set"], opts)
+		if tm:
+			_cache[id] = tm
+			_textured[id] = true
+			return tm
 	var m := StandardMaterial3D.new()
 	var col: Color = d.get("color", Color.GRAY)
 	m.albedo_color = col

@@ -25,7 +25,8 @@
 | `Mayús+R` / `Alt+R` | Rotar en **X** / en **Z** |
 | `1` / `2` / `3` | Paso de rotación **15° / 45° / 90°** |
 | *(automático)* | **Encaje inteligente**: al acercar una pieza, se ajusta a orificios de placas, ejes, extremos y ranuras en T de perfiles; un **anillo verde** marca el punto y el fantasma se vuelve verde |
-| `Supr` | Eliminar la pieza seleccionada |
+| `Supr` | Eliminar la pieza seleccionada (o la **unión** seleccionada) |
+| Clic en la esfera numerada de una unión | Seleccionar esa unión (también desde el panel *Uniones*) |
 | `Ctrl+D` | Duplicar la pieza seleccionada |
 | `Ctrl+C` / `Ctrl+V` | Copiar / pegar pieza |
 | `M` | Copia **simétrica** respecto del plano YZ (x → −x) |

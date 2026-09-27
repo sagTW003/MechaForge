@@ -163,6 +163,23 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       en engranajes, prealimentación en control de posición, ángulo de unión exacto
       (sin deriva) y eje de la unión solidario al cuerpo (vehículos que giran).
 
+## ✅ Cochera, texturas reales, protoboard real y selección de uniones
+- [x] Skill `mechaforge` probada con el agente **Cerebro**: leyó la escena, listó
+      piezas, propuso un engranaje (pendiente de confirmación), consultó su estado y
+      ejecutó el análisis con datos reales de la API.
+- [x] Entorno **Cochera (exterior)** (`rendering/GarageScene.gd`): nave con portón
+      abierto, HDRI real (Poly Haven, CC0), mobiliario y zona de pruebas con colisión
+      (rampa, tope, conos), sonda de reflejos, lámparas y día/noche.
+- [x] **Texturas fotográficas** ambientCG (CC0, `rendering/TextureSets.gd`) para toda
+      la electrónica y los actuadores y para aluminio, acero, ABS, caucho, madera y
+      hormigón (`project/assets/CREDITOS.md`).
+- [x] **Protoboard MB-102** de 830 puntos con medidas reales: agujeros dibujados y
+      terminales desde la misma tabla; serigrafía de filas y columnas.
+- [x] **Selección de uniones**: número en 3D igual al de la lista, clic en fila o en
+      el marcador, resaltado de piezas, detalle, encuadre y borrado con `Supr`.
+- [x] Cables apoyados más suaves (relajación Laplaciana).
+- [x] Pruebas `mfentorno` (24/24).
+
 ## ✅ Fase 6 — Pulido y empaquetado
 - [x] Rendimiento verificado: **119 FPS** promedio (1 % bajo 111) con 200 piezas en
       Ultra (RTX 5060); mallas compartidas, texturas en hilos, física de cables con

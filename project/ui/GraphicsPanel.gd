@@ -114,7 +114,7 @@ func _refresh_env_list() -> void:
 	_env_option.select(_env.current_index())
 
 func _sync_time_ui() -> void:
-	var ext := _env.mode == WorkEnvironment.Mode.EXTERIOR and _env.hdri_path == ""
+	var ext := _env.mode == WorkEnvironment.Mode.COCHERA and _env.hdri_path == ""
 	_time_slider.editable = ext
 	_cycle_check.disabled = not ext
 

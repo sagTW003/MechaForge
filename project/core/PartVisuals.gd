@@ -8,6 +8,18 @@ extends RefCounted
 ## Devuelve un Node3D con las mallas, o null para usar la malla por defecto.
 
 static func mat(color: Color, metallic := 0.0, roughness := 0.6, emissive := false) -> StandardMaterial3D:
+	# Superficies opacas y no emisivas: textura fotográfica real (ambientCG, CC0)
+	# teñida con el color de la pieza — plástico texturado o metal satinado.
+	if not emissive and color.a >= 1.0:
+		var tm: StandardMaterial3D
+		if metallic > 0.5:
+			tm = TextureSets.material("Metal011", {"tint": color.lightened(0.15), "scale": 30.0,
+				"rough": clampf(roughness * 1.5, 0.1, 1.0), "metallic": 1.0, "normal": 0.5})
+		else:
+			tm = TextureSets.material("Plastic013A", {"tint": color, "scale": 40.0,
+				"rough": clampf(roughness * 1.4, 0.08, 1.0), "metallic": metallic, "normal": 0.6})
+		if tm:
+			return tm
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.metallic = metallic
@@ -19,6 +31,13 @@ static func mat(color: Color, metallic := 0.0, roughness := 0.6, emissive := fal
 		m.emission = color
 		m.emission_energy_multiplier = 0.6
 	return m
+
+## Material fotográfico concreto (p. ej. "Rubber004"), con respaldo plano.
+static func tex(id: String, tint: Color, scale: float = 30.0, extra: Dictionary = {}) -> StandardMaterial3D:
+	var o := {"tint": tint, "scale": scale}
+	o.merge(extra, true)
+	var m := TextureSets.material(id, o)
+	return m if m else mat(tint)
 
 static func _box(size: Vector3, material: StandardMaterial3D, pos := Vector3.ZERO) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -180,7 +199,7 @@ static func _servo(d: Vector3) -> Node3D:
 
 static func _battery_box(d: Vector3) -> Node3D:
 	var n := Node3D.new()
-	n.add_child(_box(d, mat(Color(0.12, 0.13, 0.16), 0.1, 0.55)))
+	n.add_child(_box(d, tex("Plastic006", Color(0.55, 0.57, 0.62), 25.0)))
 	# Etiqueta.
 	n.add_child(_box(Vector3(d.x * 0.9, d.y * 0.02, d.z * 0.5), mat(Color(0.85, 0.75, 0.1), 0.0, 0.5), Vector3(0, d.y * 0.51, 0)))
 	# Cables + / -.
@@ -209,7 +228,38 @@ static func _protoboard(d: Vector3) -> Node3D:
 	else:
 		board.material_override = mat(Color(0.9, 0.9, 0.88), 0.0, 0.6)
 	n.add_child(board)
+	# Serigrafía: números de columna (1, 5, 10… 60) y letras de fila a–j.
+	var yt := d.y * 0.5 + 0.00005
+	var lbl_col := Color(0.35, 0.35, 0.38)
+	var cols := [0]
+	for c in range(4, PartInstance.BB_COLS, 5):
+		cols.append(c)
+	for c in cols:
+		var x := PartInstance.bb_column_x(c) / 1000.0
+		for zs: float in [1.0, -1.0]:
+			n.add_child(_flat_label(str(c + 1), Vector3(x, yt, zs * 0.0163), lbl_col, zs < 0.0))
+	var letters := ["e", "d", "c", "b", "a"]
+	var letters_b := ["f", "g", "h", "i", "j"]
+	for r in range(5):
+		for xs: float in [-1.0, 1.0]:
+			var x := xs * (PartInstance.bb_column_x(62) / 1000.0 + 0.0028)
+			n.add_child(_flat_label(letters[r], Vector3(x, yt, PartInstance.bb_row_z(true, r) / 1000.0), lbl_col, false))
+			n.add_child(_flat_label(letters_b[r], Vector3(x, yt, PartInstance.bb_row_z(false, r) / 1000.0), lbl_col, false))
 	return n
+
+## Texto impreso plano sobre la cara superior de una pieza.
+static func _flat_label(t: String, pos: Vector3, col: Color, flip: bool) -> Label3D:
+	var l := Label3D.new()
+	l.text = t
+	l.pixel_size = 0.00006
+	l.font_size = 24
+	l.outline_size = 0
+	l.modulate = col
+	l.double_sided = false
+	l.shaded = true
+	l.position = pos
+	l.rotation = Vector3(-PI / 2.0, PI if flip else 0.0, 0.0)
+	return l
 
 static func _sensor_ultra(d: Vector3) -> Node3D:
 	var n := Node3D.new()
@@ -292,7 +342,7 @@ static func _wheel(d: Vector3) -> Node3D:
 	rim.mesh = MeshFactory.tube(r * 0.69, r * 0.22, d.y * 0.7, 40)
 	rim.material_override = MaterialLibrary.get_visual("aluminio")
 	n.add_child(rim)
-	n.add_child(_cyl(r * 0.22, d.y * 0.95, mat(Color(0.2, 0.2, 0.22), 0.8, 0.35), Vector3.ZERO, 16))
+	n.add_child(_cyl(r * 0.22, d.y * 0.95, tex("Metal009", Color(0.55, 0.55, 0.58), 30.0, {"metallic": 1.0}), Vector3.ZERO, 16))
 	return n
 
 static func _line_sensor(d: Vector3) -> Node3D:

@@ -156,7 +156,7 @@ Pruebas de electrónica y control:
 ### Entorno, gráficos y construcción (refactor)
 
 - Panel **Entorno y gráficos**: **Estudio** (softboxes, ideal para ver materiales),
-  **Taller** o **Exterior** (cielo físico con **ciclo día/noche**). Puedes añadir tus
+  **Taller** o **Cochera (exterior)** (con **ciclo día/noche**). Puedes añadir tus
   propios **HDRI** (`.hdr`, `.exr`, `.png`) en `%APPDATA%\Godot\app_userdata\MechaForge\hdri`
   y pulsar *⟳ Buscar HDRI*. Antialiasing TAA+MSAA / SMAA / FXAA, bloom, DOF.
 - **Gizmo 3D**: selecciona una pieza y arrastra sus flechas (mover) o anillos
@@ -174,6 +174,45 @@ Pruebas del refactor:
 ```bat
 ...\Godot_...mono_win64.exe --headless --path project -- mfrefactor
 ```
+
+### Entorno «Cochera (exterior)»
+
+Una cochera doméstica para probar las construcciones como en casa: nave de 7 × 7 m con
+el portón abierto a la entrada de coches (HDRI real «Preller Drive»), banco de trabajo
+con panel de herramientas, estantería con cajas, gabinete, neumáticos, lámparas
+fluorescentes y una zona de pruebas con **rampa de 12°**, tope y conos. Paredes,
+muebles, rampa y conos **tienen colisión**: los vehículos simulados chocan con ellos y
+suben la rampa. La hora del día mueve el sol que entra por el portón (y de noche
+encienden las lámparas). Texturas fotográficas CC0 (ver `project/assets/CREDITOS.md`).
+
+![Cochera](docs/demo_cochera.png)
+*Entorno «Cochera»: el robot evita-obstáculos en la zona de pruebas.*
+
+![Cochera, portón](docs/demo_cochera_fondo.png)
+*Portón abierto hacia la entrada de coches, rampa y conos.*
+
+### Electrónica con texturas reales y protoboard MB-102
+
+- Carcasas, motores, ruedas, pines y contactos usan **texturas fotográficas** (plástico
+  texturado, metal cepillado y satinado, caucho) de ambientCG (CC0).
+- La **protoboard** es una MB-102 de **830 puntos** con medidas reales (paso 2,54 mm,
+  canal central de 7,62 mm, rieles de 50 puntos en grupos de 5, filas a–j y columnas
+  numeradas). Los agujeros dibujados y los terminales de cableado salen de la misma
+  tabla de posiciones, así que **cada terminal cae exactamente en su agujero**.
+
+![Protoboard](docs/demo_protoboard.png)
+*Modo cableado sobre la protoboard: cada marcador de terminal coincide con un agujero.*
+
+### Seleccionar una unión
+
+En el panel **Uniones** cada unión lleva un número que también aparece **flotando en
+3D** junto a su anclaje. Haz clic en la fila (o en la esfera del marcador en 3D) para
+**seleccionarla**: se resaltan el marcador y sus dos piezas (en cian) y se muestran sus
+datos (piezas A/B, eje, anclaje, motor, control). 🎯 la encuadra con la cámara y
+`Supr` o ✕ la borran.
+
+![Uniones](docs/demo_uniones.png)
+*Unión nº 4 seleccionada: piezas resaltadas y detalle en el panel.*
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
@@ -266,6 +305,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Refactor gráfico/construcción/física | `mfrefactor` |
 | Detalles finales (API, sensores, bloques, plantillas…) | `mffinal` |
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
+| Protoboard, uniones, cochera y texturas | `mfentorno` |
 
 ## Arquitectura
 

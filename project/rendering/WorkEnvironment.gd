@@ -7,15 +7,18 @@ extends Node3D
 ##              ver materiales: los metales reflejan las cajas de luz.
 ##   TALLER   — nave de taller procedural (ventanales, tubos fluorescentes, panel de
 ##              herramientas) + hormigón pulido con cinta de seguridad.
-##   EXTERIOR — campo de pruebas con cielo físico y ciclo día/noche opcional.
+##   COCHERA  — cochera doméstica con el portón abierto a la entrada de coches
+##              (rendering/GarageScene.gd): geometría con colisión, texturas reales
+##              y el HDRI «Preller Drive» de fondo; hora del día y ciclo día/noche.
 ##   HDRI de usuario — cualquier .hdr/.exr/.png/.jpg en res://assets/hdri o
 ##              user://hdri se ofrece como entorno adicional (PanoramaSkyMaterial).
 ##
 ## Mantiene un único Environment (los perfiles gráficos lo ajustan) y solo cambia
 ## el cielo, la exposición, las luces y el estilo del suelo.
 
-enum Mode { ESTUDIO, TALLER, EXTERIOR }
-const MODE_NAMES := ["Estudio", "Taller", "Exterior"]
+enum Mode { ESTUDIO, TALLER, COCHERA }
+const MODE_NAMES := ["Estudio", "Taller", "Cochera (exterior)"]
+const GARAGE_HDRI := "res://assets/hdri/preller_drive_2k.hdr"
 const HDRI_DIRS := ["res://assets/hdri", "user://hdri"]
 
 var world_env: WorldEnvironment
@@ -32,6 +35,8 @@ var cycle_hours_per_second: float = 0.1  # un día completo ≈ 4 minutos
 var _studio_sky: ShaderMaterial
 var _physical_sky: PhysicalSkyMaterial
 var _floor_mat: ShaderMaterial
+var _garage: GarageScene
+var _garage_sky: PanoramaSkyMaterial
 
 func _ready() -> void:
 	_build()
@@ -129,10 +134,16 @@ func available() -> Array:
 func find_hdris() -> Array:
 	var out := []
 	for d in HDRI_DIRS:
-		var dir := DirAccess.open(d)
-		if dir == null:
-			continue
-		for f in dir.get_files():
+		var files := []
+		if d.begins_with("res://"):
+			# En el ejecutable exportado los recursos importados no se listan con DirAccess.
+			files = Array(ResourceLoader.list_directory(d))
+		else:
+			var dir := DirAccess.open(d)
+			if dir == null:
+				continue
+			files = Array(dir.get_files())
+		for f in files:
 			if f.get_extension().to_lower() in ["hdr", "exr", "png", "jpg", "jpeg", "webp"]:
 				out.append(d.path_join(f))
 	return out
@@ -177,21 +188,45 @@ func set_mode(m: int) -> void:
 			_set_light(sun, 90.0, 38.0, 1.3, Color(1.0, 0.96, 0.9))
 			_set_light(fill_light, -80.0, 70.0, 0.35, Color(1.0, 0.95, 0.85))
 			_floor_style(1, 80.0)
-		Mode.EXTERIOR:
-			env.sky.sky_material = _physical_sky
-			env.volumetric_fog_density = 0.004
-			_floor_style(2, 600.0)
+		Mode.COCHERA:
+			if _garage_sky == null:
+				_garage_sky = PanoramaSkyMaterial.new()
+				if ResourceLoader.exists(GARAGE_HDRI):
+					_garage_sky.panorama = load(GARAGE_HDRI)
+			env.sky.sky_material = _garage_sky if _garage_sky.panorama else _physical_sky
+			env.volumetric_fog_density = 0.0025
+			_floor_style(3, 120.0)
+			_show_garage(true)
 			_apply_time_of_day()
+	_show_garage(mode == Mode.COCHERA)
 	Config.notify("Entorno: %s" % MODE_NAMES[mode], 3.0)
+
+## La cochera (con sus colisiones) solo existe en el árbol en su modo.
+func _show_garage(on: bool) -> void:
+	if on:
+		if _garage == null:
+			_garage = GarageScene.new()
+			_garage.name = "Cochera"
+		if _garage.get_parent() == null:
+			add_child(_garage)
+	elif _garage and _garage.get_parent():
+		remove_child(_garage)
 
 ## Carga un HDRI equirrectangular del usuario como cielo.
 func load_hdri(path: String) -> bool:
-	var img := Image.load_from_file(path)
-	if img == null or img.is_empty():
+	var tex: Texture2D = null
+	if path.begins_with("res://"):
+		tex = load(path)
+	else:
+		var img := Image.load_from_file(path)
+		if img and not img.is_empty():
+			tex = ImageTexture.create_from_image(img)
+	if tex == null:
 		Config.notify("No se pudo cargar el HDRI: %s" % path.get_file(), 5.0)
 		return false
+	_show_garage(false)
 	var pano := PanoramaSkyMaterial.new()
-	pano.panorama = ImageTexture.create_from_image(img)
+	pano.panorama = tex
 	pano.energy_multiplier = 1.0
 	var env := world_env.environment
 	env.sky.sky_material = pano
@@ -205,11 +240,11 @@ func load_hdri(path: String) -> bool:
 
 func set_time_of_day(h: float) -> void:
 	time_of_day = fposmod(h, 24.0)
-	if mode == Mode.EXTERIOR and hdri_path == "":
+	if mode == Mode.COCHERA and hdri_path == "":
 		_apply_time_of_day()
 
 func _process(delta: float) -> void:
-	if day_cycle and mode == Mode.EXTERIOR and hdri_path == "":
+	if day_cycle and mode == Mode.COCHERA and hdri_path == "":
 		set_time_of_day(time_of_day + delta * cycle_hours_per_second)
 
 ## Posición del sol según la hora: sale a las 6 h por el este, cenit a las 13 h.
@@ -220,17 +255,23 @@ func _apply_time_of_day() -> void:
 	var env := world_env.environment
 	var h := time_of_day
 	var el := sun_elevation_deg(h)
-	var az := -90.0 + (h - 6.5) / 13.0 * 180.0
+	# El portón mira a +Z: el sol recorre el cielo de ese lado y entra por él.
+	var az := -65.0 + (h - 6.5) / 13.0 * 130.0
 	var day := clampf((el + 4.0) / 14.0, 0.0, 1.0)         # 0 noche ... 1 día pleno
 	var golden := clampf(1.0 - absf(el - 6.0) / 12.0, 0.0, 1.0)
 	var sun_col := Color(1.0, 0.97, 0.9).lerp(Color(1.0, 0.62, 0.32), golden)
-	_set_light(sun, az, maxf(el, 2.0), 1.5 * day, sun_col)
+	_set_light(sun, az, maxf(el, 3.0), 2.2 * day, sun_col)
 	sun.visible = day > 0.01
 	# Luna/cielo nocturno como relleno azulado.
 	_set_light(fill_light, az + 180.0, 35.0, lerpf(0.12, 0.2, day), Color(0.6, 0.7, 1.0).lerp(Color(0.8, 0.88, 1.0), day))
-	env.tonemap_exposure = lerpf(2.4, 0.85, day)
-	env.ambient_light_energy = lerpf(0.35, 1.0, day)
+	env.tonemap_exposure = lerpf(1.5, 1.0, day)
+	env.ambient_light_energy = lerpf(0.4, 1.0, day)
 	_physical_sky.energy_multiplier = lerpf(0.15, 1.0, day)
+	if _garage_sky:
+		_garage_sky.energy_multiplier = lerpf(0.06, 1.0, day)
+	# Luces de la cochera: a pleno de noche, de apoyo de día.
+	if _garage:
+		_garage.set_lamps(lerpf(1.3, 0.7, day))
 
 ## Orienta una luz direccional: acimut (desde +Z hacia +X) y elevación en grados.
 func _set_light(l: DirectionalLight3D, az_deg: float, el_deg: float, energy: float, col: Color) -> void:
@@ -245,4 +286,8 @@ func _set_light(l: DirectionalLight3D, az_deg: float, el_deg: float, energy: flo
 
 func _floor_style(s: int, size: float) -> void:
 	_floor_mat.set_shader_parameter("style", s)
+	if s == 3 and TextureSets.has_set("Concrete042A"):
+		_floor_mat.set_shader_parameter("tex_concrete", TextureSets.texture("Concrete042A", "Color"))
+		_floor_mat.set_shader_parameter("tex_concrete_n", TextureSets.texture("Concrete042A", "NormalGL"))
+		_floor_mat.set_shader_parameter("tex_concrete_r", TextureSets.texture("Concrete042A", "Roughness"))
 	(floor_mesh.mesh as PlaneMesh).size = Vector2(size, size)

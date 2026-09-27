@@ -36,28 +36,49 @@ func setup(definition: Dictionary, instance_uid: String = "") -> void:
 		def["terminales"] = gen_protoboard_terminals(def.get("dimensiones_mm", {}))
 	_build_visual()
 
-## Genera los terminales de una protoboard: columnas de 5 (a-e y f-j, cada columna
-## un grupo interno) y cuatro rieles de alimentación, como una breadboard real.
+## Protoboard MB-102 de 830 puntos (medidas reales, paso 0.1" = 2.54 mm):
+##   63 columnas; filas a–e (arriba) y f–j (abajo) separadas por el canal central
+##   de 7.62 mm; cada columna de 5 agujeros es un grupo interno (TAc / TBc).
+##   4 rieles de 50 puntos (grupos de 5 con un hueco): P1 (+, rojo) y N1 (−, azul)
+##   arriba; P2 (+) y N2 (−) abajo.
+## Los ids se conservan: "a{columna}_{fila}" (fila 0 = e, junto al canal, … 4 = a),
+## "b{columna}_{fila}" (0 = f … 4 = j) y "P1_k", "N1_k", "P2_k", "N2_k".
+const BB_PITCH := 2.54
+const BB_COLS := 63
+const BB_RAIL_Z := [22.86, 20.32, -20.32, -22.86]      # P1, N1, P2, N2 (mm)
+const BB_RAIL_IDS := ["P1", "N1", "P2", "N2"]
+const BB_RAIL_TIPO := ["power", "gnd", "power", "gnd"]
+
+static func bb_column_x(c: int) -> float:
+	return (float(c) - (BB_COLS - 1) * 0.5) * BB_PITCH
+
+static func bb_row_z(top: bool, r: int) -> float:
+	var z := 3.81 + r * BB_PITCH
+	return z if top else -z
+
+## Posiciones X (mm) de los 50 agujeros de un riel (grupos de 5 + hueco).
+static func bb_rail_x() -> Array:
+	var xs := []
+	for k in range(59):
+		if k % 6 != 5:
+			xs.append((float(k) - 29.0) * BB_PITCH)
+	return xs
+
 static func gen_protoboard_terminals(dm: Dictionary) -> Array:
-	var x := float(dm.get("x", 165.0))
-	var y := float(dm.get("y", 9.0))
-	var z := float(dm.get("z", 55.0))
-	var yt := y * 0.5
+	var yt := float(dm.get("y", 9.0)) * 0.5
 	var terms := []
-	var cols := 12
-	for c in range(cols):
-		var px := -x * 0.4 + x * 0.8 * float(c) / float(cols - 1)
+	for c in range(BB_COLS):
+		var px := bb_column_x(c)
 		for r in range(5):
-			terms.append({"id": "a%d_%d" % [c, r], "tipo": "signal", "grupo": "TA%d" % c, "pos_mm": [px, yt, z * 0.06 + z * 0.05 * r]})
-		for r in range(5):
-			terms.append({"id": "b%d_%d" % [c, r], "tipo": "signal", "grupo": "TB%d" % c, "pos_mm": [px, yt, -z * 0.06 - z * 0.05 * r]})
-	var rp := 8
-	for k in range(rp):
-		var px := -x * 0.42 + x * 0.84 * float(k) / float(rp - 1)
-		terms.append({"id": "P1_%d" % k, "tipo": "power", "grupo": "P1", "pos_mm": [px, yt, z * 0.44]})
-		terms.append({"id": "N1_%d" % k, "tipo": "gnd", "grupo": "N1", "pos_mm": [px, yt, z * 0.37]})
-		terms.append({"id": "P2_%d" % k, "tipo": "power", "grupo": "P2", "pos_mm": [px, yt, -z * 0.37]})
-		terms.append({"id": "N2_%d" % k, "tipo": "gnd", "grupo": "N2", "pos_mm": [px, yt, -z * 0.44]})
+			terms.append({"id": "a%d_%d" % [c, r], "tipo": "signal", "grupo": "TA%d" % c, "pos_mm": [px, yt, bb_row_z(true, r)]})
+			terms.append({"id": "b%d_%d" % [c, r], "tipo": "signal", "grupo": "TB%d" % c, "pos_mm": [px, yt, bb_row_z(false, r)]})
+	var rx := bb_rail_x()
+	for i in range(4):
+		for k in range(rx.size()):
+			terms.append({"id": "%s_%d" % [BB_RAIL_IDS[i], k], "tipo": BB_RAIL_TIPO[i], "grupo": BB_RAIL_IDS[i],
+				"pos_mm": [rx[k], yt, BB_RAIL_Z[i]], "fino": true})
+	for t in terms:
+		t["fino"] = true      # marcadores pequeños: los agujeros están a 2.54 mm
 	return terms
 
 func _new_uid() -> String:
@@ -228,6 +249,28 @@ func set_selected(value: bool) -> void:
 	elif not value and _selection_box:
 		_selection_box.queue_free()
 		_selection_box = null
+
+var _highlight_box: MeshInstance3D
+
+## Resaltado cian (piezas de la unión seleccionada), distinto de la selección.
+func set_highlight(on: bool) -> void:
+	if on and _highlight_box == null:
+		var box := BoxMesh.new()
+		box.size = PartLibrary.dims_m(def) * 1.08
+		var m := StandardMaterial3D.new()
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = Color(0.2, 0.9, 1.0, 0.16)
+		m.emission_enabled = true
+		m.emission = Color(0.2, 0.9, 1.0)
+		m.emission_energy_multiplier = 0.9
+		m.cull_mode = BaseMaterial3D.CULL_FRONT
+		_highlight_box = MeshInstance3D.new()
+		_highlight_box.mesh = box
+		_highlight_box.material_override = m
+		add_child(_highlight_box)
+	elif not on and _highlight_box:
+		_highlight_box.queue_free()
+		_highlight_box = null
 
 func is_selected() -> bool:
 	return _selected

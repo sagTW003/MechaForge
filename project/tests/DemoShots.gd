@@ -12,6 +12,22 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template == "seguidor":
 		await _template_shot(out_path)
 		return
+	if template == "uniones":
+		main._open_example("res://templates/01_brazo_4gdl.mforge")
+		for p in [main.biblioteca_panel, main.propiedades_panel, main.mcu_panel, main.circuito_panel]:
+			if p: p.visible = false
+		main.uniones_panel.position = Vector2(8, 60)
+		main._select_connection(main.connections[3].uid)
+		MaterialLibrary.wait_textures()
+		await get_tree().create_timer(2.5).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(out_path)
+		print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+		get_tree().quit()
+		return
+	if template.begins_with("cochera"):
+		await _garage_shot(out_path, template)
+		return
 	if template.begins_with("ej:"):
 		await _example_shot("res://templates/%s.mforge" % template.substr(3), out_path)
 		return
@@ -97,6 +113,30 @@ func _example_shot(path: String, out_path: String) -> void:
 	main._toggle_simulation()
 	MaterialLibrary.wait_textures()
 	await get_tree().create_timer(3.0).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Vista amplia de la cochera con el robot evita-obstáculos en marcha.
+##   "cochera" (hacia el portón) o "cochera_fondo" (hacia el banco de trabajo).
+func _garage_shot(out_path: String, which: String) -> void:
+	main._open_example("res://templates/03_evita_obstaculos.mforge")
+	main.work_env.set_mode(WorkEnvironment.Mode.COCHERA)
+	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel, main.mcu_panel, main.elec_panel]:
+		if p: p.visible = false
+	var cam: CameraOrbit = main.camera
+	cam.target = Vector3(0, 0.4, -0.3)
+	cam.distance = 3.2
+	cam._yaw = deg_to_rad(180.0 if which == "cochera" else 20.0)
+	cam._pitch = deg_to_rad(-14)
+	cam._update_transform()
+	main._toggle_simulation()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(4.0).timeout
+	await RenderingServer.frame_post_draw
+	for p in [main.elec_panel, main.mcu_panel]:
+		if p: p.visible = false
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(out_path)
 	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
