@@ -19,6 +19,12 @@ realista y gráficos de alta calidad.
 ![Demostración Fase 3](docs/demo_fase3.png)
 *Fase 3 — control PID de posición con gráfica en vivo y panel de consumo/autonomía.*
 
+![Cableado](docs/demo_cableado.png)
+*Fase 3.1 — cableado visual (batería + resistencia + LED) y análisis de circuito.*
+
+![Microcontrolador](docs/demo_mcu.png)
+*Fase 3.1 — microcontrolador programable: el script `sin(t)` genera la consigna que sigue el PID.*
+
 ---
 
 ## Requisitos
@@ -123,6 +129,16 @@ aparece el panel **Electrónica y control** (abajo a la izquierda) con:
   **autonomía** estimada.
 - **Osciloscopio en vivo** (consigna vs medida) de la unión controlada elegida.
 - **Exportar CSV** de la telemetría de control.
+
+### Cableado y microcontrolador (Fase 3.1)
+
+- **🔌 Cablear**: coloca componentes electrónicos (batería, LED, resistencia,
+  motor…), entra en modo Cablear y une sus **terminales** (bolas de color) con
+  cables. El panel **Circuito eléctrico** analiza el circuito (net-list resuelto
+  con el solver en C#): corriente, potencia y autonomía.
+- **Microcontrolador**: escribe un programa con variables y funciones
+  (`amp = 40`, `output = sin(t) * amp`) que genera la **consigna** de un control
+  PID durante la simulación. Variables disponibles: `t` (tiempo), `x` (medida), `dt`.
 
 Pruebas de electrónica y control:
 ```bat

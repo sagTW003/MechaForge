@@ -50,6 +50,17 @@ var wire_button: Button
 var circuito_panel: FloatingPanel
 var circuito_label: Label
 const WIRE_PICK_LAYER := 4
+
+# --- Microcontrolador programable (Fase 3.1) ---
+var mcu_panel: FloatingPanel
+var mcu_editor: TextEdit
+var mcu_target_selector: OptionButton
+var mcu_status: Label
+var mcu_enabled: bool = false
+var mcu_lines: Array = []
+var mcu_target_uid: String = ""
+var mcu_time: float = 0.0
+const MCU_DEFAULT := "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp"
 var sim_button: Button
 var reset_button: Button
 var connect_button: Button
@@ -148,6 +159,43 @@ func _ready() -> void:
 		call_deferred("_run_ui_shot")
 	elif "mfshot5" in OS.get_cmdline_user_args():
 		call_deferred("_run_wire_shot")
+	elif "mfshot6" in OS.get_cmdline_user_args():
+		call_deferred("_run_mcu_shot")
+
+func _run_mcu_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot6")
+	var out_path := "user://mechaforge_mcu.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	var post := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.154, 0))
+	var arm := _spawn("perfil_2020_400", "aluminio", Vector3(0.2, 0.29, 0), Vector3(0, 0, PI / 2.0))
+	var c1 := Connection.new(); c1.a_uid = base.uid; c1.b_uid = post.uid; c1.tipo = Connection.Tipo.FIJA
+	c1.anchor = Vector3(0, 0.02, 0)
+	var c2 := Connection.new(); c2.a_uid = post.uid; c2.b_uid = arm.uid; c2.tipo = Connection.Tipo.BISAGRA
+	c2.axis = 2; c2.anchor = Vector3(0, 0.29, 0)
+	c2.motor_enabled = true; c2.motor_stall_torque = 8.0; c2.motor_noload_speed = 10.0
+	c2.control_mode = Connection.ControlMode.POSICION
+	c2.ctrl_kp = 10.0; c2.ctrl_ki = 2.0; c2.ctrl_kd = 0.5
+	connections = [c1, c2]
+	mcu_editor.text = "# Barrido senoidal\namp = 35\noutput = sin(t * 1.5) * amp"
+	mcu_lines = mcu_editor.text.split("\n")
+	mcu_target_uid = c2.uid
+	mcu_enabled = true
+	mcu_panel.set_collapsed(false)
+	mcu_status.text = "Programa activo (sin(t))."
+	_redraw_connection_markers(); _refresh_uniones_panel(); _update_counts()
+	camera.target = Vector3(0.1, 0.2, 0); camera.distance = 1.4
+	simulator.start(connections)
+	graph_uid = c2.uid
+	await get_tree().create_timer(4.2).timeout
+	_update_elec_panel()
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT6] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 func _run_wire_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -246,6 +294,12 @@ func _run_elec_tests() -> void:
 	var wr := WiringSolver.solve(comps, wires)
 	_check(wr["ok"] and absf(float(wr["current"]) - 2.0) < 1.0e-4, "Cableado: lazo batería→carga da 2 A")
 	_check(absf(WiringSolver.solve(comps, []).get("current", -1.0)) < 1.0e-9, "Cableado: sin cables => circuito abierto (0 A)")
+
+	# 7) Microcontrolador: script con variables y funciones matemáticas.
+	_check(absf(_mcu_run(["amp = 40", "output = amp * 2"], 0.0, 0.0, 0.008) - 80.0) < 1.0e-6, "MCU: variables y salida")
+	_check(absf(_mcu_run(["sin(pi/2) * 10"], 0.0, 0.0, 0.008) - 10.0) < 1.0e-4, "MCU: funciones matemáticas (sin)")
+	_check(absf(_mcu_run(["x * 3 + t"], 5.0, 2.0, 0.008) - 11.0) < 1.0e-6, "MCU: usa entradas t y x")
+	_check(is_nan(_mcu_run(["sin("], 0.0, 0.0, 0.008)), "MCU: script inválido se detecta")
 
 	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
@@ -721,6 +775,7 @@ func _build_ui() -> void:
 	_build_file_dialog()
 	_build_elec_panel()
 	_build_circuito_panel()
+	_build_mcu_panel()
 	call_deferred("_layout_panels")
 
 func _panel(min_size: Vector2) -> PanelContainer:
@@ -1190,6 +1245,7 @@ func _process(_delta: float) -> void:
 	if _bench_active:
 		_bench_tick(_delta)
 	if simulator and simulator.is_running():
+		_mcu_tick(_delta)
 		_tele_accum += _delta
 		if _tele_accum >= 0.1:
 			_tele_accum = 0.0
@@ -1684,6 +1740,8 @@ func _on_sim_started() -> void:
 	elec_panel.visible = true
 	elec_panel.set_collapsed(false)
 	_populate_graph_selector()
+	_populate_mcu_targets()
+	mcu_time = 0.0
 	await get_tree().process_frame
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	elec_panel.position = Vector2(8, vp.y - elec_panel.size.y - 44)
@@ -2108,6 +2166,121 @@ func _show_circuit_result(r: Dictionary) -> void:
 	circuito_label.text = "Baterías: %d · Cargas: %d · Nodos: %d\nCorriente: %.3f A · Potencia: %.2f W\nAutonomía: %s" % [
 		r.get("batteries", 0), r.get("loads", 0), r.get("nets", 0), r.get("current", 0.0), r.get("power", 0.0), atxt]
 	Config.notify("Circuito analizado: %.3f A." % r.get("current", 0.0), 4.0)
+
+#endregion
+
+#region MICROCONTROLADOR PROGRAMABLE (Fase 3.1) ---------------------------------
+
+## Evalúa una expresión con las variables dadas (usa Expression de Godot).
+func _eval_expr(expr_str: String, vars: Dictionary) -> float:
+	var e := Expression.new()
+	var names := PackedStringArray(vars.keys())
+	if e.parse(expr_str, names) != OK:
+		return NAN
+	var values := []
+	for k in vars.keys():
+		values.append(vars[k])
+	var r = e.execute(values, null, false)
+	if e.has_execute_failed():
+		return NAN
+	return float(r)
+
+## Ejecuta un "programa" multilínea: cada línea 'nombre = expr' define una
+## variable; la última línea evaluada es la salida (consigna).
+func _mcu_run(lines: Array, t: float, x: float, dt: float) -> float:
+	var vars := {"t": t, "x": x, "dt": dt, "pi": PI}
+	var result := 0.0
+	for raw in lines:
+		var line := str(raw).strip_edges()
+		if line == "" or line.begins_with("#"):
+			continue
+		if "=" in line:
+			var idx := line.find("=")
+			var vname := line.substr(0, idx).strip_edges()
+			var v := _eval_expr(line.substr(idx + 1).strip_edges(), vars)
+			if is_nan(v):
+				return NAN
+			vars[vname] = v
+			result = v
+		else:
+			var v := _eval_expr(line, vars)
+			if is_nan(v):
+				return NAN
+			result = v
+	return result
+
+func _build_mcu_panel() -> void:
+	mcu_panel = FloatingPanel.new("Microcontrolador")
+	ui_layer.add_child(mcu_panel)
+	mcu_panel.position = Vector2(360, 400)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(330, 0)
+	mcu_panel.add_content(vb)
+	mcu_editor = TextEdit.new()
+	mcu_editor.custom_minimum_size = Vector2(320, 120)
+	mcu_editor.text = MCU_DEFAULT
+	vb.add_child(mcu_editor)
+	var hb := HBoxContainer.new()
+	hb.add_child(_label("Actúa sobre:"))
+	mcu_target_selector = OptionButton.new()
+	hb.add_child(mcu_target_selector)
+	vb.add_child(hb)
+	var hb2 := HBoxContainer.new()
+	hb2.add_child(_button("Aplicar programa", _apply_mcu))
+	hb2.add_child(_button("Detener", _stop_mcu))
+	vb.add_child(hb2)
+	mcu_status = _label("Escribe un programa y pulsa Aplicar. Requiere una bisagra con control PID.")
+	mcu_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mcu_status.custom_minimum_size = Vector2(322, 0)
+	vb.add_child(mcu_status)
+	mcu_panel.set_collapsed(true)
+
+func _populate_mcu_targets() -> void:
+	if mcu_target_selector == null:
+		return
+	mcu_target_selector.clear()
+	var idx := 0
+	for conn in connections:
+		if conn.tipo == Connection.Tipo.BISAGRA and conn.control_mode != Connection.ControlMode.NINGUNO:
+			mcu_target_selector.add_item("Unión %d (%s)" % [idx + 1, Connection.CONTROL_NOMBRE[conn.control_mode]])
+			mcu_target_selector.set_item_metadata(mcu_target_selector.item_count - 1, conn.uid)
+		idx += 1
+
+func _stop_mcu() -> void:
+	mcu_enabled = false
+	if mcu_status:
+		mcu_status.text = "Programa detenido."
+
+func _apply_mcu() -> void:
+	_populate_mcu_targets()
+	if mcu_target_selector.item_count == 0:
+		mcu_status.text = "No hay uniones con control PID. Crea una bisagra con control de Posición o Velocidad."
+		mcu_enabled = false
+		return
+	var sel := mcu_target_selector.selected if mcu_target_selector.selected >= 0 else 0
+	mcu_target_uid = mcu_target_selector.get_item_metadata(sel)
+	mcu_lines = mcu_editor.text.split("\n")
+	if is_nan(_mcu_run(mcu_lines, 0.0, 0.0, 1.0 / 120.0)):
+		mcu_status.text = "Error en el programa. Usa funciones como sin, cos, abs y variables t, x."
+		mcu_enabled = false
+		return
+	mcu_enabled = true
+	mcu_time = 0.0
+	mcu_status.text = "Programa activo. Pulsa ▶ Simular para verlo generar la consigna."
+
+func _mcu_tick(delta: float) -> void:
+	if not mcu_enabled or mcu_target_uid == "":
+		return
+	mcu_time += delta
+	var conn := _find_conn(mcu_target_uid)
+	if conn == null:
+		return
+	var is_pos := conn.control_mode == Connection.ControlMode.POSICION
+	var x := rad_to_deg(simulator.control_measure(conn.uid)) if is_pos else simulator.control_measure(conn.uid)
+	var out := _mcu_run(mcu_lines, mcu_time, x, delta)
+	if is_nan(out):
+		return
+	conn.ctrl_setpoint = deg_to_rad(out) if is_pos else out
 
 #endregion
 

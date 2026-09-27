@@ -46,8 +46,17 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [x] Interop C#↔GDScript vía autoload `Electronics` (servicio).
 - [x] Pruebas automatizadas (8/8): Ohm, serie, paralelo, autonomía, PID; y en
       simulación real: control PID de posición + consumo.
-- [ ] Pendiente para 3.1: cableado visual entre terminales, y microcontrolador
-      programable por bloques/script (Lua/Python embebido).
+## ✅ Fase 3.1 — Cableado y microcontrolador (completada)
+- [x] Componentes electrónicos con **terminales** (alimentación/señal/tierra) y
+      propiedades eléctricas (batería: V/mAh; cargas: resistencia).
+- [x] **Cableado visual** (modo Cablear): unir terminales con cables por color.
+- [x] Net-list (union-find) → **análisis de circuito** con el solver C#
+      (corriente, potencia, autonomía) en el panel "Circuito eléctrico".
+- [x] **Microcontrolador programable por script**: editor con variables y
+      funciones (sin, cos, abs, t, x…); genera la consigna de un control PID.
+- [x] Serialización v3 (cables + batería). Pruebas: 14/14 electrónica.
+- [ ] Opcional futuro: microcontrolador por **bloques visuales** (además del
+      script) y wiring de señal que enlace sensores/actuadores automáticamente.
 
 ## ⏳ Fase 4 — Integración OpenClaw
 - [ ] Puente `ai_bridge` (gateway local + herramientas MCP/JSON-RPC).
