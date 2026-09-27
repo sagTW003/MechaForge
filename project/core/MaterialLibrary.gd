@@ -81,6 +81,10 @@ const DATA := {
 		"nombre": "Fibra de carbono", "patron": "carbono", "densidad": 1600.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.06, 0.06, 0.07), "metalico": 0.2, "rugosidad": 0.35, "limite_mpa": 600.0,
 	},
+	"ptfe": {
+		"nombre": "Teflón (PTFE)", "patron": "plastico", "densidad": 2200.0, "friccion": 0.05, "restitucion": 0.1,
+		"color": Color(0.9, 0.9, 0.88), "metalico": 0.0, "rugosidad": 0.45, "limite_mpa": 23.0,
+	},
 	"acrilico": {
 		"nombre": "Acrílico", "patron": "vidrio", "densidad": 1180.0, "friccion": 0.4, "restitucion": 0.2,
 		"color": Color(0.7, 0.85, 0.95, 0.4), "metalico": 0.0, "rugosidad": 0.05, "limite_mpa": 70.0,

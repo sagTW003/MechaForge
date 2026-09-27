@@ -45,3 +45,26 @@ Paso 0, para diseñar el puente `ai_bridge` **sin inventar la API**.
 ## Configuración
 La conexión se define en `project/ai_bridge/openclaw_config.json` (plantilla:
 `openclaw_config.example.json`). Ese archivo real está en `.gitignore`.
+
+
+## Estado implementado (API de herramientas)
+
+- **MechaForge → OpenClaw**: panel de chat (`ai_bridge/OpenClawBridge.gd`) contra el
+  endpoint compatible con OpenAI del gateway, con el estado de la escena como contexto.
+- **OpenClaw → MechaForge**: `ai_bridge/ToolServer.gd` expone una **API JSON-RPC 2.0
+  sobre HTTP** en `127.0.0.1:18790` (solo loopback, token Bearer en
+  `user://mechaforge_api.json`, generado la primera vez y fuera del repositorio).
+  Las herramientas (`ai_bridge/SimulatorApi.gd`) son las del documento del proyecto:
+  `get_scene_state`, `add_part`, `connect_parts`, `set_property`, `remove_part`,
+  `write_controller_script`, `run_simulation`, `stop_simulation`, `get_telemetry`,
+  `analyze_design` (+ `list_parts`, `get_proposal_status`).
+- Se eligió HTTP (en lugar de WebSocket) porque las *skills* de OpenClaw usan `curl`;
+  así un agente puede usar MechaForge sin código adicional.
+- **Seguridad**: toda herramienta que modifica la escena devuelve
+  `pending_confirmation` y muestra la propuesta como **piezas fantasma** con
+  **Aplicar/Descartar** en el panel de IA; lo aplicado entra en deshacer/rehacer.
+- **Skill lista para instalar**: `openclaw_skill/mechaforge/SKILL.md`. Para usarla,
+  copia la carpeta `mechaforge` a `~/.openclaw/skills/` (no se instala sola: la
+  configuración de OpenClaw solo se cambia con tu permiso).
+- Pruebas: `-- mffinal` hace peticiones HTTP reales (health, 401 sin token, /tools,
+  propuesta → vista previa → aplicar, estado, análisis, simulación, telemetría).

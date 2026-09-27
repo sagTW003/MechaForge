@@ -6,6 +6,28 @@ extends RefCounted
 ## Mesh listo para usar como pieza personalizada. Unidades: se asume que el
 ## archivo está en metros; MechaForge reescala si es enorme.
 
+## Definición de pieza personalizada a partir de un archivo 3D (autoescala a
+## metros). Guarda la ruta de origen para volver a importarla al abrir el proyecto.
+static func make_part_def(path: String) -> Dictionary:
+	var mesh := load_mesh(path)
+	if mesh == null:
+		return {}
+	var aabb := mesh.get_aabb()
+	var maxd := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
+	var scale := 1.0
+	if maxd > 2.0:
+		scale = 0.001            # probablemente en milímetros
+	elif maxd < 0.005 and maxd > 0.0:
+		scale = 0.05 / maxd
+	var dim := aabb.size * scale
+	return {
+		"id": "import_%s" % path.md5_text().substr(0, 8),
+		"nombre": path.get_file().get_basename(),
+		"categoria": "importado", "material": "aluminio", "forma": "custom",
+		"_mesh": mesh, "_scale": scale, "_offset": -aabb.get_center() * scale, "_source": path,
+		"dimensiones_mm": {"x": dim.x * 1000.0, "y": dim.y * 1000.0, "z": dim.z * 1000.0},
+	}
+
 ## Carga un archivo 3D y devuelve un Mesh, o null si falla.
 static func load_mesh(path: String) -> Mesh:
 	match path.get_extension().to_lower():

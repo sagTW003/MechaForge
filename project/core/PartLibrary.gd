@@ -95,6 +95,9 @@ static func dims_m(def: Dictionary) -> Vector3:
 		var r: float = float(d.get("radio", 10.0)) / 1000.0
 		var h: float = float(d.get("altura", 100.0)) / 1000.0
 		return Vector3(r * 2.0, h, r * 2.0)
+	elif forma == "esfera":
+		var rs := float(def.get("dimensiones_mm", {}).get("radio", 10.0)) / 1000.0
+		return Vector3.ONE * rs * 2.0
 	elif forma == "engranaje":
 		var ra := gear_tip_radius_m(def)
 		var w := float(def.get("dimensiones_mm", {}).get("ancho", 8.0)) / 1000.0
@@ -118,6 +121,9 @@ static func volume_m3(def: Dictionary) -> float:
 			var e := float(d.get("espesor", 2.0)) / 1000.0
 			var ri := maxf(0.0, r - e)
 			return PI * (r * r - ri * ri) * h
+		"esfera":
+			var rs := float(d.get("radio", 10.0)) / 1000.0
+			return 4.0 / 3.0 * PI * rs * rs * rs
 		"engranaje":
 			var rp := gear_pitch_radius_m(def)
 			var w := float(d.get("ancho", 8.0)) / 1000.0

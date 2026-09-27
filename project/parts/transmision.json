@@ -51,6 +51,28 @@
         "ancho": 8,
         "agujero": 5
       }
+    },
+    {
+      "id": "rueda_65",
+      "nombre": "Rueda de caucho Ø65",
+      "categoria": "transmision",
+      "material": "caucho",
+      "forma": "cilindro",
+      "apariencia": "rueda",
+      "dimensiones_mm": {
+        "radio": 32.5,
+        "altura": 26
+      }
+    },
+    {
+      "id": "bola_loca_20",
+      "nombre": "Bola loca de teflón Ø20",
+      "categoria": "transmision",
+      "material": "ptfe",
+      "forma": "esfera",
+      "dimensiones_mm": {
+        "radio": 10
+      }
     }
   ]
 }

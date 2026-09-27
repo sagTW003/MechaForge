@@ -36,11 +36,22 @@ var _step_pos: Dictionary = {}      # conn.uid -> posición del paso actual del 
 var _step_timer: Dictionary = {}    # conn.uid -> tiempo acumulado hasta el siguiente paso
 var _stall_time: Dictionary = {}    # conn.uid -> tiempo en bloqueo (servo/motor)
 var _stalled: Dictionary = {}       # conn.uid -> true si el eje está bloqueado
+var _temp: Dictionary = {}          # conn.uid -> temperatura estimada del bobinado (°C)
+var _overheat_warned: Dictionary = {}
+
+# --- Modelo térmico del motor (primer orden) ---
+# C·dT/dt = I²·R − (T − T_amb)/R_th ; R del bobinado = V_nominal / I_bloqueo.
+const T_AMBIENT := 25.0     # °C
+const THERMAL_RTH := 8.0    # K/W  (motor DC pequeño, carcasa ~Ø25-37 mm)
+const THERMAL_CTH := 30.0   # J/K  (constante de tiempo ≈ 4 min)
+const T_WARN := 90.0        # °C: aviso de sobretemperatura
 var _elec_accum: float = 0.0
 const HIST_MAX := 300
 const HIST_PERIOD := 0.033          # ~30 Hz de muestreo para las gráficas
 
 const WORLD_LAYER := 1
+## Capa de piezas "sin colisión" (cinta de línea): solo la detectan los sensores.
+const MARK_LAYER := 8
 ## El motor de HingeJoint3D impulsa A respecto de B: con este signo, una consigna
 ## positiva hace girar B en sentido positivo del eje respecto de A (convención de
 ## la medida (ω_b - ω_a)·eje que usan el PID y la telemetría).
@@ -52,6 +63,40 @@ func setup(parts_root: Node3D, sim_root: Node3D) -> void:
 
 func is_running() -> bool:
 	return _running
+
+#region CONTROL DEL TIEMPO (pausa, paso a paso, cámara lenta) -------------------
+
+var paused: bool = false
+
+## Pausa/reanuda la física (el mundo Jolt deja de avanzar).
+func set_paused(p: bool) -> void:
+	if not _running:
+		return
+	paused = p
+	PhysicsServer3D.set_active(not p)
+	set_physics_process(not p)
+
+## Avanza exactamente "n" pasos físicos estando en pausa.
+func step_frames(n: int = 1) -> void:
+	if not _running or not paused:
+		return
+	PhysicsServer3D.set_active(true)
+	set_physics_process(true)
+	for i in range(n):
+		await get_tree().physics_frame
+	if paused and _running:
+		PhysicsServer3D.set_active(false)
+		set_physics_process(false)
+
+## Cámara lenta: escala del tiempo (1 = real). La física sigue a 120 Hz con
+## pasos más cortos, así que es estable y medible.
+func set_time_scale(k: float) -> void:
+	Engine.time_scale = clampf(k, 0.01, 4.0)
+
+func sim_time() -> float:
+	return _sim_time
+
+#endregion
 
 #region ARRANQUE / PARADA -------------------------------------------------------
 
@@ -99,6 +144,9 @@ func stop() -> void:
 	if not _running:
 		return
 	set_physics_process(false)
+	paused = false
+	PhysicsServer3D.set_active(true)
+	Engine.time_scale = 1.0
 	# Se retiran del árbol YA (no solo queue_free): si no, siguen en el espacio
 	# físico hasta el final del frame y chocarían con los de un reinicio inmediato.
 	for j in _joints:
@@ -115,6 +163,7 @@ func stop() -> void:
 		Electronics.PidDestroy(_pid_ids[uid])
 	_pid_ids.clear(); _ctrl_angle.clear(); _runtime_target.clear()
 	_step_pos.clear(); _step_timer.clear(); _stall_time.clear(); _stalled.clear()
+	_temp.clear(); _overheat_warned.clear()
 	_motor_frac.clear(); _history.clear(); _elec = {}
 	# Restaurar piezas a su estado inicial.
 	for child in _parts_root.get_children():
@@ -164,6 +213,17 @@ func _make_body(part: PartInstance) -> RigidBody3D:
 	body.add_child(cs)
 	body.add_child(part.make_visual_clone())
 	body.set_meta("part_uid", part.uid)
+	# Anclada al mundo: cuerpo congelado (estático) — bancos de prueba, pistas.
+	if part.anchored:
+		body.freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+		body.freeze = true
+	if part.def.get("sin_colision", false):
+		body.collision_layer = MARK_LAYER
+		body.collision_mask = 0
+	# El sensor de fuerza lee los impulsos de contacto de su cuerpo.
+	if part.def_id == "sensor_fuerza":
+		body.contact_monitor = true
+		body.max_contacts_reported = 16
 	return body
 
 #endregion
@@ -298,6 +358,7 @@ func _physics_process(delta: float) -> void:
 		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
 			_update_control(jd, delta)
 			_drive_motor(jd)
+			_update_thermal(conn, delta)
 		elif conn.tipo == Connection.Tipo.ENGRANAJE:
 			_drive_gear(jd, delta)
 	_update_com()
@@ -338,6 +399,11 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 		_runtime_target[conn.uid] = _stepper_command(conn, meas, setpoint, delta)
 		return
 	var cmd: float = Electronics.PidUpdate(pid, meas, delta)
+	# Control de velocidad: el motor de la bisagra ya es un servo de velocidad, así
+	# que la consigna va como prealimentación y el PID solo corrige (carga, fricción).
+	# Usar la salida del PID como velocidad directa hace oscilar el lazo cada paso.
+	if conn.control_mode == Connection.ControlMode.VELOCIDAD:
+		cmd = setpoint + cmd
 	var vmax := conn.motor_noload_speed
 	if conn.motor_type == Connection.MotorType.SERVO:
 		vmax = minf(vmax, conn.servo_speed())          # velocidad nominal (s/60°)
@@ -378,6 +444,29 @@ func _update_stall(conn: Connection, err: float, omega: float, delta: float) -> 
 	if _stalled[conn.uid] and not was:
 		Config.notify("⚠ %s bloqueado (sobrecarga): par máximo %.2f N·m alcanzado." % [
 			"Servo" if conn.motor_type == Connection.MotorType.SERVO else "Motor", conn.motor_stall_torque], 4.0)
+
+## Calentamiento del bobinado por efecto Joule y enfriamiento hacia el ambiente.
+func _update_thermal(conn: Connection, delta: float) -> void:
+	var frac: float = 1.0 if _stalled.get(conn.uid, false) else _motor_frac.get(conn.uid, 0.0)
+	var i: float = conn.elec_current_noload + (conn.elec_current_stall - conn.elec_current_noload) * frac
+	var r_wind := maxf(0.1, conn.elec_voltaje_nominal / maxf(0.01, conn.elec_current_stall))
+	var t: float = _temp.get(conn.uid, T_AMBIENT)
+	t += (i * i * r_wind - (t - T_AMBIENT) / THERMAL_RTH) / THERMAL_CTH * delta
+	_temp[conn.uid] = t
+	if t > T_WARN and not _overheat_warned.get(conn.uid, false):
+		_overheat_warned[conn.uid] = true
+		Config.notify("🌡 Motor a %.0f °C: sobretemperatura (reduce la carga o el ciclo de trabajo)." % t, 5.0)
+
+## Temperatura estimada del motor de una unión (°C).
+func motor_temperature(uid: String) -> float:
+	return _temp.get(uid, T_AMBIENT)
+
+## Temperatura máxima entre todos los motores (°C).
+func max_motor_temperature() -> float:
+	var m := T_AMBIENT
+	for k in _temp:
+		m = maxf(m, _temp[k])
+	return m
 
 func is_stalled(uid: String) -> bool:
 	return _stalled.get(uid, false)

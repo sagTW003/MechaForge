@@ -128,6 +128,38 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] Pruebas `mfrefactor` (39/39). Benchmark: **119 FPS** promedio (1 % bajo 111)
       con 200 piezas en Ultra (RTX 5060).
 
-## ⏳ Fase 6 — Pulido y empaquetado
-- [ ] Optimización en este hardware, perfiles finos.
-- [ ] Ejecutable + instalador/carpeta portable para Windows.
+## ✅ Detalles finales del documento del proyecto (completados)
+- [x] **API de herramientas para OpenClaw** (`ai_bridge/ToolServer.gd` +
+      `SimulatorApi.gd`): JSON-RPC 2.0 sobre HTTP en `127.0.0.1:18790` con token;
+      `get_scene_state`, `add_part`, `connect_parts`, `set_property`, `remove_part`,
+      `write_controller_script`, `run_simulation`, `stop_simulation`,
+      `get_telemetry`, `analyze_design`. Los cambios llegan como **vista previa con
+      confirmación**. *Skill* lista en `openclaw_skill/mechaforge/`.
+- [x] **Microcontrolador por bloques visuales** (tipo Scratch, `ui/BlockEditor.gd`)
+      además del script; varias salidas `m1..mN` para mover varios actuadores.
+- [x] **API de sensores** (`control/Sensors.gd`): ultrasonido, LiDAR 2D, encoder,
+      IMU, final de carrera, sensor de fuerza y sensor de línea IR.
+- [x] **Pausa, avance cuadro a cuadro y cámara lenta** (1×, 0.5×, 0.25×, 0.1×).
+- [x] **Temperatura estimada del motor** (modelo térmico I²R de primer orden).
+- [x] **Autoguardado** cada 2 min con **Recuperar**; **copiar/pegar**; **simetría**.
+- [x] **Anclaje al mundo** por pieza (bancos de prueba, pistas) — pendiente de 2.1.
+- [x] **Plantillas**: brazo robótico **4 GDL** con PID y **carro seguidor de línea**
+      funcional (pista de cinta, dos sensores IR, control diferencial).
+- [x] Piezas nuevas: rueda Ø65, bola loca de teflón, cinta de pista, chasis,
+      final de carrera, FSR, LiDAR, sensor de línea; material PTFE; forma esfera.
+- [x] **Persistencia de modelos importados** (se re-importan al abrir el proyecto).
+- [x] Correcciones: control de velocidad (prealimentación + PID, sin oscilación),
+      marcadores de uniones mal orientados, búfer HTTP.
+- [x] Pruebas `mffinal` (37/37).
+
+## ✅ Fase 6 — Pulido y empaquetado
+- [x] Rendimiento verificado: **119 FPS** promedio (1 % bajo 111) con 200 piezas en
+      Ultra (RTX 5060); mallas compartidas, texturas en hilos, física de cables con
+      filtrado de obstáculos.
+- [x] **Carpeta portable** para Windows (`tools/empaquetar.ps1 -Zip` →
+      `dist/MechaForge_portable` + `.zip`): runtime .NET de Godot incluido, proyecto
+      precompilado, lanzador sin consola (`MechaForge.vbs`). Verificada ejecutando
+      las pruebas dentro de la copia portable.
+- [ ] Opcional: ejecutable exportado con las plantillas de exportación **.NET** de
+      Godot 4.7.2 (no instaladas; requieren descarga).
+- [ ] Opcional futuro: rotura de piezas en simulación; correas/poleas.

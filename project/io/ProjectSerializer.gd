@@ -87,6 +87,12 @@ static func apply_document(doc: Dictionary, parts_root: Node3D) -> int:
 		if typeof(p) != TYPE_DICTIONARY:
 			continue
 		var def := PartLibrary.get_def(p.get("def_id", ""))
+		# Modelos importados: se vuelven a importar desde su archivo de origen.
+		if def.is_empty() and str(p.get("import_path", "")) != "":
+			def = MeshImporter.make_part_def(str(p["import_path"]))
+			if not def.is_empty():
+				def["id"] = p.get("def_id", def["id"])
+				PartLibrary.register(def)
 		if def.is_empty():
 			push_warning("Pieza desconocida al cargar: %s" % p.get("def_id", "?"))
 			continue
@@ -98,6 +104,7 @@ static func apply_document(doc: Dictionary, parts_root: Node3D) -> int:
 		var dm = p.get("dims_mm", null)
 		if typeof(dm) == TYPE_DICTIONARY and not dm.is_empty():
 			inst.def["dimensiones_mm"] = dm
+		inst.anchored = bool(p.get("fijo", inst.anchored))
 		inst.rebuild()
 		var pos: Array = p.get("pos", [0, 0, 0])
 		var rot: Array = p.get("rot", [0, 0, 0])

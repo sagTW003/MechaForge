@@ -12,6 +12,8 @@ var material_id: String = "aluminio"
 var uid: String = ""
 ## Transformación al iniciar la simulación (para reiniciar al estado original).
 var initial_transform: Transform3D = Transform3D.IDENTITY
+## Anclada al mundo: en simulación queda fija (banco de pruebas, pista, soporte).
+var anchored: bool = false
 
 var _mesh_instance: MeshInstance3D
 var _detail: Node3D
@@ -27,6 +29,7 @@ func setup(definition: Dictionary, instance_uid: String = "") -> void:
 	def_id = def.get("id", "?")
 	material_id = def.get("material", "aluminio")
 	uid = instance_uid if instance_uid != "" else _new_uid()
+	anchored = bool(def.get("fijo", false))
 	name = "Part_%s" % uid
 	# La protoboard genera su matriz de terminales (columnas + rieles) con grupos.
 	if def.get("apariencia", "") == "protoboard":
@@ -137,6 +140,13 @@ func _make_mesh() -> Mesh:
 		return def["_mesh"]
 	var d: Dictionary = def.get("dimensiones_mm", {})
 	match forma:
+		"esfera":
+			var sph := SphereMesh.new()
+			sph.radius = float(d.get("radio", 10.0)) / 1000.0
+			sph.height = sph.radius * 2.0
+			sph.radial_segments = 32
+			sph.rings = 16
+			return sph
 		"cilindro":
 			var r := float(d.get("radio", 10.0)) / 1000.0
 			var h := float(d.get("altura", 100.0)) / 1000.0
@@ -175,6 +185,10 @@ func make_collision_shape() -> Shape3D:
 	var forma: String = def.get("forma", "caja")
 	if forma == "engranaje":
 		return _gear_collision_shape()
+	if forma == "esfera":
+		var ss := SphereShape3D.new()
+		ss.radius = float(def.get("dimensiones_mm", {}).get("radio", 10.0)) / 1000.0
+		return ss
 	if forma == "cilindro" or forma == "tubo":
 		var d: Dictionary = def.get("dimensiones_mm", {})
 		var s := CylinderShape3D.new()
@@ -243,4 +257,5 @@ func to_dict() -> Dictionary:
 		"pos": [position.x, position.y, position.z],
 		"rot": [rotation.x, rotation.y, rotation.z],
 		"dims_mm": def.get("dimensiones_mm", {}),
-	}
+		"fijo": anchored,
+	}.merged({"import_path": def["_source"]} if def.has("_source") else {})

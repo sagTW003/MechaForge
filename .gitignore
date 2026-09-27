@@ -24,3 +24,6 @@ project/ai_bridge/openclaw_config.json
 
 # --- Salidas temporales ---
 *.log
+
+# --- Paquetes generados (tools\empaquetar.ps1) ---
+dist/

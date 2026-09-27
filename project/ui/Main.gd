@@ -72,6 +72,10 @@ var mcu_enabled: bool = false
 var mcu_lines: Array = []
 var mcu_target_uid: String = ""
 var mcu_time: float = 0.0
+var mcu_blocks: BlockEditor
+var mcu_sensors_label: Label
+var mcu_sensors := Sensors.new()
+var _mcu_sensor_vars: Dictionary = {}
 
 # --- Música (Spotify) ---
 var music_panel: FloatingPanel
@@ -86,15 +90,22 @@ var ai_apply_row: HBoxContainer
 var ai_history: Array = []          # [{role, content}]
 var ai_pending: Array = []          # acciones propuestas
 var ai_ghost_root: Node3D
+var tool_server: ToolServer
+var _proposal_seq: int = 0
+var _proposal_ids: Array = []          # ids de propuestas incluidas en ai_pending
+var _proposal_state: Dictionary = {}   # id -> "pending" | "applied" | "discarded"
 const MCU_DEFAULT := "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp"
 var sim_button: Button
 var reset_button: Button
+var pause_button: Button
+var step_button: Button
+var speed_option: OptionButton
+const SPEEDS := [1.0, 0.5, 0.25, 0.1]
 var connect_button: Button
 var conn_dialog: Panel
 var _conn_widgets: Dictionary = {}
 var import_dialog: FileDialog
 var stress_mode: bool = false
-var _custom_count: int = 0
 
 # --- Paneles flotantes ---
 var biblioteca_panel: FloatingPanel
@@ -167,6 +178,14 @@ func _ready() -> void:
 	ai_bridge.status_changed.connect(_on_ai_status)
 	ai_bridge.reply.connect(_on_ai_reply)
 	ai_bridge.failed.connect(_on_ai_failed)
+	# API local de herramientas para OpenClaw (JSON-RPC, solo 127.0.0.1).
+	tool_server = ToolServer.new()
+	tool_server.name = "ToolServer"
+	tool_server.api = SimulatorApi.new(self)
+	if "mftest" in OS.get_cmdline_user_args() or "mfphys" in OS.get_cmdline_user_args() or "mfelec" in OS.get_cmdline_user_args() or "mfbench" in OS.get_cmdline_user_args():
+		tool_server.enabled = false
+	add_child(tool_server)
+	tool_server.request_handled.connect(func(m, ok): _ai_append("[color=#8a8f98]API · %s %s[/color]" % [m, "✔" if ok else "✖"]))
 	simulator = Simulator.new()
 	simulator.name = "Simulador"
 	add_child(simulator)
@@ -179,6 +198,8 @@ func _ready() -> void:
 	_refresh_profile_option()
 	_sync_grid_ui()
 	Config.status_message.connect(_on_status)
+	if not ("mftest" in OS.get_cmdline_user_args() or "mfphys" in OS.get_cmdline_user_args() or "mfbench" in OS.get_cmdline_user_args()):
+		_setup_autosave()
 	Config.notify("MechaForge listo. Elige una pieza en el panel izquierdo y haz clic para colocarla.", 6.0)
 	set_process(true)
 	if "mfbench" in OS.get_cmdline_user_args() or "--mfbench" in OS.get_cmdline_args():
@@ -219,7 +240,13 @@ func _ready() -> void:
 		var ds: Node = load("res://tests/DemoShots.gd").new()
 		ds.main = self
 		add_child(ds)
-		ds.call_deferred("run", out11, int(ua[ei + 1]) if ei >= 0 else 0, "gizmo" in ua, "close" in ua)
+		var ti := ua.find("plantilla")
+		ds.call_deferred("run", out11, int(ua[ei + 1]) if ei >= 0 else 0, "gizmo" in ua, "close" in ua, ua[ti + 1] if ti >= 0 and ti + 1 < ua.size() else "")
+	elif "mffinal" in OS.get_cmdline_user_args():
+		var ft: Node = load("res://tests/FinalTests.gd").new()
+		ft.main = self
+		add_child(ft)
+		ft.call_deferred("run")
 	elif "mfrefactor" in OS.get_cmdline_user_args():
 		var rt: Node = load("res://tests/RefactorTests.gd").new()
 		rt.main = self
@@ -1201,8 +1228,12 @@ func _on_ai_reply(text: String) -> void:
 func _on_ai_failed(text: String) -> void:
 	_ai_append("[color=#e06666]" + _bb_escape(text) + "[/color]")
 
-func _ai_preview(actions: Array) -> void:
-	_ai_discard()
+func _ai_preview(actions: Array, accumulate: bool = false) -> void:
+	if accumulate:
+		actions = ai_pending + actions
+		_clear_ai_ghosts()
+	else:
+		_ai_discard()
 	ai_pending = actions
 	var ghosts := 0
 	for a in actions:
@@ -1217,7 +1248,7 @@ func _ai_preview(actions: Array) -> void:
 			_make_ghost_visual(g)
 			var pos = a.get("pos", [0, 0, 0])
 			g.position = Vector3(pos[0], pos[1], pos[2])
-			g.rotation.y = deg_to_rad(float(a.get("rot_y_deg", 0)))
+			g.rotation = _ai_rot(a)
 			ghosts += 1
 	for c in ai_apply_row.get_children():
 		c.queue_free()
@@ -1236,11 +1267,12 @@ func _ai_apply() -> void:
 				if def.is_empty():
 					continue
 				var pos = a.get("pos", [0, 0, 0])
+				var rr := _ai_rot(a)
 				_do({"type": "add", "data": {
 					"uid": "", "def_id": a.get("def_id"),
 					"material": a.get("material", def.get("material", "aluminio")),
 					"pos": [pos[0], pos[1], pos[2]],
-					"rot": [0.0, deg_to_rad(float(a.get("rot_y_deg", 0))), 0.0],
+					"rot": [rr.x, rr.y, rr.z],
 				}})
 			"remove":
 				var inst := _find_part(str(a.get("uid", "")))
@@ -1248,10 +1280,26 @@ func _ai_apply() -> void:
 					_do({"type": "remove", "data": inst.to_dict()})
 			"set_property":
 				var inst2 := _find_part(str(a.get("uid", "")))
-				if inst2 and a.has("material"):
-					inst2.material_id = str(a["material"]); inst2._build_visual(); Config.project_dirty = true
+				if inst2:
+					if a.has("material"):
+						inst2.material_id = str(a["material"])
+					if typeof(a.get("dims_mm")) == TYPE_DICTIONARY:
+						for k in a["dims_mm"]:
+							inst2.def["dimensiones_mm"][k] = float(a["dims_mm"][k])
+					inst2.rebuild()
+					if typeof(a.get("pos")) == TYPE_ARRAY and a["pos"].size() >= 3:
+						_do({"type": "transform", "uid": inst2.uid, "old": _xf_of(inst2),
+							"new": {"pos": [a["pos"][0], a["pos"][1], a["pos"][2]], "rot": _arr(inst2.rotation)}})
+					Config.project_dirty = true
+			"script":
+				mcu_editor.text = str(a.get("script", ""))
+				mcu_panel.set_collapsed(false)
+				_apply_mcu()
 			"connect":
 				_ai_apply_connect(a)
+	for pid in _proposal_ids:
+		_proposal_state[pid] = "applied"
+	_proposal_ids.clear()
 	_ai_discard()
 	_update_counts()
 	Config.notify("Cambios propuestos por OpenClaw aplicados.")
@@ -1268,21 +1316,121 @@ func _ai_apply_connect(a: Dictionary) -> void:
 		"engranaje": Connection.Tipo.ENGRANAJE}
 	c.tipo = map.get(str(a.get("union", "fija")).to_lower(), Connection.Tipo.FIJA)
 	c.anchor = (pa.global_position + pb.global_position) * 0.5
+	c.axis = maxi(0, ["X", "Y", "Z"].find(str(a.get("eje", "Y")).to_upper()))
 	if a.get("motor", false):
 		c.motor_enabled = true
+		c.motor_target_speed = float(a.get("velocidad", c.motor_target_speed))
+		c.motor_stall_torque = float(a.get("torque", c.motor_stall_torque))
+	if a.has("z1") and a.has("z2"):
+		c.gear_z1 = int(a["z1"]); c.gear_z2 = int(a["z2"])
+	elif pa.def.get("forma", "") == "engranaje" and pb.def.get("forma", "") == "engranaje":
+		c.gear_z1 = PartLibrary.gear_teeth(pa.def); c.gear_z2 = PartLibrary.gear_teeth(pb.def)
 	connections.append(c)
 	_redraw_connection_markers()
 	_refresh_uniones_panel()
 
-func _ai_discard() -> void:
+func _clear_ai_ghosts() -> void:
 	if ai_ghost_root:
 		for c in ai_ghost_root.get_children():
 			c.queue_free()
+
+func _ai_discard() -> void:
+	_clear_ai_ghosts()
+	for pid in _proposal_ids:
+		if _proposal_state.get(pid, "") == "pending":
+			_proposal_state[pid] = "discarded"
+	_proposal_ids.clear()
 	ai_pending = []
 	if ai_apply_row:
 		for c in ai_apply_row.get_children():
 			c.queue_free()
 		ai_apply_row.visible = false
+
+#endregion
+
+## Rotación de una acción de IA: "rot_deg" [x,y,z] o el antiguo "rot_y_deg".
+func _ai_rot(a: Dictionary) -> Vector3:
+	var r = a.get("rot_deg", null)
+	if typeof(r) == TYPE_ARRAY and r.size() >= 3:
+		return Vector3(deg_to_rad(float(r[0])), deg_to_rad(float(r[1])), deg_to_rad(float(r[2])))
+	return Vector3(0, deg_to_rad(float(a.get("rot_y_deg", 0))), 0)
+
+#region API LOCAL PARA OPENCLAW (ToolServer / SimulatorApi) --------------------
+
+## Añade acciones a la propuesta en curso (vista previa) y devuelve su id.
+func api_propose(actions: Array) -> Dictionary:
+	_proposal_seq += 1
+	var pid := _proposal_seq
+	_proposal_state[pid] = "pending"
+	_proposal_ids.append(pid)
+	var keep_ids := _proposal_ids.duplicate()
+	_ai_preview(actions, true)
+	_proposal_ids = keep_ids
+	if ai_panel and ai_panel.is_collapsed():
+		ai_panel.set_collapsed(false)
+	Config.notify("OpenClaw propone cambios: revisa la vista previa y pulsa Aplicar o Descartar.", 5.0)
+	return {"status": "pending_confirmation", "proposal_id": pid,
+		"nota": "El usuario debe confirmar el cambio en MechaForge (vista previa fantasma)."}
+
+func api_proposal_status(pid: int) -> Dictionary:
+	if not _proposal_state.has(pid):
+		return {"error": "propuesta %d desconocida" % pid}
+	return {"id": pid, "status": _proposal_state[pid]}
+
+func api_scene_state() -> Dictionary:
+	var parts := []
+	for c in parts_root.get_children():
+		if c is PartInstance:
+			var p := c as PartInstance
+			parts.append({"uid": p.uid, "def_id": p.def_id, "nombre": p.def.get("nombre", ""),
+				"material": p.material_id, "pos": _arr(p.position), "rot_deg": _arr(p.rotation_degrees),
+				"dims_mm": p.def.get("dimensiones_mm", {}), "masa_kg": p.mass_kg()})
+	var conns := []
+	for cn in connections:
+		conns.append((cn as Connection).to_dict())
+	return {"piezas": parts, "uniones": conns, "cables": wires, "simulando": simulator.is_running(),
+		"unidades": "SI (m, kg, s, rad)"}
+
+func api_telemetry(uid: String) -> Dictionary:
+	if not simulator.is_running():
+		return {"simulando": false, "nota": "Inicia la simulación (run_simulation) para obtener telemetría."}
+	var out := {}
+	for c in parts_root.get_children():
+		if c is PartInstance and (uid == "" or (c as PartInstance).uid == uid):
+			var t := simulator.telemetry((c as PartInstance).uid)
+			if not t.is_empty():
+				out[(c as PartInstance).uid] = {"pos": _arr(t["pos"]), "vel": _arr(t["vel"]),
+					"ang_vel": _arr(t["ang_vel"]), "masa": t["mass"]}
+	var ctrl := {}
+	for cn in connections:
+		if cn.motor_enabled:
+			ctrl[cn.uid] = {"medida": simulator.control_measure(cn.uid), "consigna": cn.ctrl_setpoint,
+				"temperatura_c": simulator.motor_temperature(cn.uid), "bloqueado": simulator.is_stalled(cn.uid)}
+	var e := simulator.electrical()
+	return {"simulando": true, "piezas": out, "motores": ctrl,
+		"electrico": {"voltaje": e.get("voltage", 0.0), "corriente_a": e.get("current", 0.0), "potencia_w": e.get("power", 0.0)}}
+
+## Análisis de diseño como datos (estabilidad, esfuerzos, masa, consumo).
+func api_analyze() -> Dictionary:
+	var st := _stability_data()
+	var stress := []
+	for d in _stress_data():
+		stress.append({"uid": d["part"].uid, "nombre": d["part"].def.get("nombre", ""), "carga_kg": d["load"],
+			"esfuerzo_pa": d["stress"], "uso_limite": d["ratio"]})
+	stress.sort_custom(func(x, y): return x["uso_limite"] > y["uso_limite"])
+	var e := simulator.electrical() if simulator.is_running() else {}
+	return {"masa_total_kg": st.get("mass", 0.0), "centro_de_masa": _arr(st.get("com", Vector3.ZERO)),
+		"estable": st.get("stable", false), "apoyado": st.get("grounded", false),
+		"margen_vuelco_m": st.get("margin", 0.0), "esfuerzos": stress.slice(0, 10),
+		"uniones": connections.size(), "cables": wires.size(),
+		"consumo": {"corriente_a": e.get("current", 0.0), "autonomia_h": e.get("autonomy_h", 0.0)}}
+
+func api_run(on: bool) -> Dictionary:
+	if on and not simulator.is_running():
+		_toggle_simulation()
+	elif not on and simulator.is_running():
+		_toggle_simulation()
+	return {"simulando": simulator.is_running()}
 
 #endregion
 
@@ -1323,6 +1471,8 @@ func _on_template_selected(id: int) -> void:
 		2: _tpl_grua()
 		3: _tpl_puente()
 		4: _tpl_pinza()
+		5: _tpl_brazo4()
+		6: _tpl_seguidor()
 
 func _tpl_fix(a: PartInstance, b: PartInstance, anchor: Vector3) -> void:
 	var c := Connection.new(); c.a_uid = a.uid; c.b_uid = b.uid
@@ -1392,6 +1542,85 @@ func _tpl_pinza() -> void:
 	_tpl_hinge(base, d2, Vector3(-0.03, 0.3, 0), 2, true)
 	_finish_template("Pinza")
 
+## Bisagra con motor y control PID de posición (consigna en grados).
+func _tpl_servo_joint(a: PartInstance, b: PartInstance, anchor: Vector3, axis: int, deg: float) -> Connection:
+	var c := Connection.new(); c.a_uid = a.uid; c.b_uid = b.uid
+	c.tipo = Connection.Tipo.BISAGRA; c.axis = axis; c.anchor = anchor
+	c.motor_enabled = true; c.motor_stall_torque = 8.0; c.motor_noload_speed = 3.0
+	c.control_mode = Connection.ControlMode.POSICION; c.ctrl_setpoint = deg_to_rad(deg)
+	c.ctrl_kp = 8.0; c.ctrl_ki = 1.0; c.ctrl_kd = 0.4
+	connections.append(c)
+	return c
+
+## Brazo de 4 grados de libertad: cintura (Y), hombro, codo y muñeca (Z), cada
+## uno con motor y control PID de posición. La base está anclada al mundo.
+func _tpl_brazo4() -> void:
+	_on_new()
+	var base := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	base.anchored = true
+	var mesa := _spawn("placa_100x100", "aluminio_anodizado", Vector3(0, 0.0105, 0))
+	var col := _spawn("perfil_4040_300", "aluminio_anodizado", Vector3(0, 0.163, 0))
+	var brazo := _spawn("perfil_2020_200", "aluminio", Vector3(0.12, 0.303, 0), Vector3(0, 0, PI / 2.0))
+	var ante := _spawn("perfil_2020_200", "aluminio", Vector3(0.32, 0.303, 0), Vector3(0, 0, PI / 2.0))
+	var mun := _spawn("perfil_2020_100", "aluminio_anodizado", Vector3(0.47, 0.303, 0), Vector3(0, 0, PI / 2.0))
+	_tpl_servo_joint(base, mesa, Vector3(0, 0.008, 0), 1, 30.0)
+	_tpl_fix(mesa, col, Vector3(0, 0.013, 0))
+	_tpl_servo_joint(col, brazo, Vector3(0.02, 0.303, 0), 2, 20.0)
+	_tpl_servo_joint(brazo, ante, Vector3(0.22, 0.303, 0), 2, -35.0)
+	_tpl_servo_joint(ante, mun, Vector3(0.42, 0.303, 0), 2, 15.0)
+	_finish_template("Brazo robótico 4 GDL (PID: cintura 30°, hombro 20°, codo −35°, muñeca 15°)")
+
+const SEGUIDOR_SCRIPT := "# Seguidor de línea: dos sensores a los lados de la cinta.\nbase = 6\nerr = linea1 - linea2\nm1 = base - 7 * err\nm2 = base + 7 * err\noutput = m1"
+
+## Carro diferencial con dos sensores de línea IR sobre una pista ovalada de
+## cinta negra. El microcontrolador corrige la velocidad de cada rueda.
+func _tpl_seguidor() -> void:
+	_on_new()
+	# Pista ovalada: dos rectas y dos semicírculos de cinta (piezas ancladas, sin colisión).
+	var R := 0.25
+	var L := 0.9
+	for zs: float in [-R, R]:
+		for k in range(3):
+			var seg := _spawn("cinta_linea", "caucho", Vector3(-L * 0.5 + 0.15 + k * 0.3, 0.0003, zs))
+			seg.def["dimensiones_mm"]["x"] = 302.0
+			seg.rebuild()
+	var n := 12
+	for side: float in [-1.0, 1.0]:
+		var cx := side * L * 0.5
+		for k in range(n):
+			var a0 := PI * k / n
+			var a1 := PI * (k + 1) / n
+			var am := (a0 + a1) * 0.5
+			var pos := Vector3(cx + side * R * sin(am), 0.0003, -R * cos(am))
+			var seg := _spawn("cinta_linea", "caucho", pos, Vector3(0, -side * am, 0))
+			seg.def["dimensiones_mm"]["x"] = R * (a1 - a0) * 1000.0 + 3.0
+			seg.rebuild()
+	# Carro: chasis, dos ruedas motorizadas, bola loca, sensores y batería.
+	var x0 := 0.1
+	var z0 := -R
+	var chasis := _spawn("placa_chasis_160x120", "aluminio", Vector3(x0, 0.022, z0))
+	var rl := _spawn("rueda_65", "caucho", Vector3(x0 + 0.045, 0.0325, z0 + 0.075), Vector3(PI / 2.0, 0, 0))
+	var rr := _spawn("rueda_65", "caucho", Vector3(x0 + 0.045, 0.0325, z0 - 0.075), Vector3(PI / 2.0, 0, 0))
+	var bola := _spawn("bola_loca_20", "ptfe", Vector3(x0 - 0.06, 0.010, z0))
+	var s1 := _spawn("sensor_linea", "abs", Vector3(x0 - 0.075, 0.0165, z0 + 0.014))
+	var s2 := _spawn("sensor_linea", "abs", Vector3(x0 - 0.075, 0.0165, z0 - 0.014))
+	var bat := _spawn("bateria_lipo_3s", "abs", Vector3(x0 + 0.01, 0.036, z0))
+	for w in [rl, rr]:
+		var c := Connection.new(); c.a_uid = chasis.uid; c.b_uid = w.uid
+		c.tipo = Connection.Tipo.BISAGRA; c.axis = 2; c.anchor = w.position
+		c.motor_enabled = true; c.motor_stall_torque = 0.8; c.motor_noload_speed = 14.0
+		c.control_mode = Connection.ControlMode.VELOCIDAD; c.ctrl_setpoint = 6.0
+		c.ctrl_kp = 0.3; c.ctrl_ki = 1.5; c.ctrl_kd = 0.0
+		connections.append(c)
+	for q in [bola, s1, s2, bat]:
+		_tpl_fix(chasis, q, q.position)
+	mcu_editor.text = SEGUIDOR_SCRIPT
+	_apply_mcu()
+	camera.target = Vector3(0, 0, 0)
+	camera.distance = 1.6
+	camera._update_transform()
+	_finish_template("Carro seguidor de línea — pulsa ▶ Simular (el microcontrolador ya está programado)")
+
 # --- Análisis de esfuerzos y estabilidad ---
 func _on_stress_toggled(on: bool) -> void:
 	stress_mode = on
@@ -1403,11 +1632,14 @@ func _on_stress_toggled(on: bool) -> void:
 				(c as PartInstance)._build_visual()
 		Config.notify("Mapa de esfuerzos desactivado.")
 
-func _apply_stress_colors() -> void:
+## Esfuerzo de compresión aproximado por pieza: peso de lo que tiene encima
+## repartido en su sección, comparado con el límite elástico del material.
+func _stress_data() -> Array:
 	var parts := []
 	for c in parts_root.get_children():
 		if c is PartInstance:
 			parts.append(c)
+	var out := []
 	for pv in parts:
 		var p: PartInstance = pv
 		var dp := PartLibrary.dims_m(p.def)
@@ -1421,10 +1653,15 @@ func _apply_stress_colors() -> void:
 			if q.position.y - dq.y * 0.5 >= top - 0.006:
 				if absf(q.position.x - p.position.x) < (dp.x + dq.x) * 0.5 and absf(q.position.z - p.position.z) < (dp.z + dq.z) * 0.5:
 					load += q.mass_kg()
-		var area := maxf(1.0e-6, dp.x * dp.z)
+		var area := maxf(1.0e-6, dp.x * dp.z * float(p.def.get("relleno", 1.0)))
 		var stress := (load * 9.81) / area
 		var ratio := clampf(stress / maxf(1.0, MaterialLibrary.yield_strength_pa(p.material_id)), 0.0, 1.0)
-		_set_part_overlay(p, _stress_color(ratio))
+		out.append({"part": p, "load": load, "stress": stress, "ratio": ratio})
+	return out
+
+func _apply_stress_colors() -> void:
+	for d in _stress_data():
+		_set_part_overlay(d["part"], _stress_color(d["ratio"]))
 	_show_stability()
 
 func _stress_color(r: float) -> Color:
@@ -1447,7 +1684,8 @@ func _overlay_recursive(node: Node, m: StandardMaterial3D) -> void:
 		elif not (c is StaticBody3D):
 			_overlay_recursive(c, m)
 
-func _show_stability() -> void:
+## Centro de masa frente a la base de apoyo (polígono aproximado por caja).
+func _stability_data() -> Dictionary:
 	var total := 0.0
 	var acc := Vector3.ZERO
 	var minx := INF; var maxx := -INF; var minz := INF; var maxz := -INF
@@ -1457,20 +1695,26 @@ func _show_stability() -> void:
 			var p := c as PartInstance
 			var mkg := p.mass_kg()
 			acc += p.position * mkg; total += mkg
-			var dp := PartLibrary.dims_m(p.def)
-			if p.position.y - dp.y * 0.5 < 0.01:
+			var box := SnapPoints.world_aabb(p, p.def)
+			if box.position.y < 0.01:
 				grounded = true
-				minx = minf(minx, p.position.x - dp.x * 0.5); maxx = maxf(maxx, p.position.x + dp.x * 0.5)
-				minz = minf(minz, p.position.z - dp.z * 0.5); maxz = maxf(maxz, p.position.z + dp.z * 0.5)
+				minx = minf(minx, box.position.x); maxx = maxf(maxx, box.end.x)
+				minz = minf(minz, box.position.z); maxz = maxf(maxz, box.end.z)
 	if total <= 0.0:
-		return
+		return {"mass": 0.0}
 	var com := acc / total
-	if not grounded:
-		Config.notify("Esfuerzos: COM=(%.2f,%.2f) — sin base de apoyo detectada." % [com.x, com.z], 6.0)
+	var margin := minf(minf(com.x - minx, maxx - com.x), minf(com.z - minz, maxz - com.z)) if grounded else 0.0
+	return {"mass": total, "com": com, "grounded": grounded, "stable": grounded and margin >= 0.0, "margin": margin}
+
+func _show_stability() -> void:
+	var st := _stability_data()
+	if st.get("mass", 0.0) <= 0.0:
 		return
-	var inside := com.x >= minx and com.x <= maxx and com.z >= minz and com.z <= maxz
-	if inside:
-		Config.notify("Estabilidad: ESTABLE. El centro de masa cae dentro de la base de apoyo.", 6.0)
+	var com: Vector3 = st["com"]
+	if not st["grounded"]:
+		Config.notify("Esfuerzos: COM=(%.2f,%.2f) — sin base de apoyo detectada." % [com.x, com.z], 6.0)
+	elif st["stable"]:
+		Config.notify("Estabilidad: ESTABLE. El centro de masa cae dentro de la base de apoyo (margen %.0f mm)." % (st["margin"] * 1000.0), 6.0)
 	else:
 		Config.notify("⚠ Estabilidad: RIESGO DE VUELCO. El centro de masa cae FUERA de la base.", 8.0)
 
@@ -1479,26 +1723,10 @@ func _import_model() -> void:
 	import_dialog.popup_centered_ratio(0.6)
 
 func _do_import(path: String) -> void:
-	var mesh := MeshImporter.load_mesh(path)
-	if mesh == null:
+	var def := MeshImporter.make_part_def(path)
+	if def.is_empty():
 		Config.notify("No se pudo importar %s (formato no soportado o archivo dañado)." % path.get_file(), 6.0)
 		return
-	var aabb := mesh.get_aabb()
-	var maxd := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
-	var scale := 1.0
-	if maxd > 2.0:
-		scale = 0.001
-	elif maxd < 0.005 and maxd > 0.0:
-		scale = 0.05 / maxd
-	var dim := aabb.size * scale
-	_custom_count += 1
-	var def := {
-		"id": "custom_%d" % _custom_count,
-		"nombre": path.get_file().get_basename(),
-		"categoria": "importado", "material": "aluminio", "forma": "custom",
-		"_mesh": mesh, "_scale": scale, "_offset": -aabb.get_center() * scale,
-		"dimensiones_mm": {"x": dim.x * 1000.0, "y": dim.y * 1000.0, "z": dim.z * 1000.0},
-	}
 	PartLibrary.register(def)
 	_populate_parts_tree()
 	Config.notify("Importado '%s'. Búscalo en la categoría 'Importado' del panel de piezas." % def["nombre"], 7.0)
@@ -1532,6 +1760,7 @@ func _build_topbar() -> Control:
 	hb.add_child(_button("Abrir…", _on_open))
 	hb.add_child(_button("Guardar", _on_save))
 	hb.add_child(_button("Guardar como…", _on_save_as))
+	hb.add_child(_button("Recuperar", _recover_autosave))
 	hb.add_child(_vsep())
 	hb.add_child(_button("Deshacer", undo))
 	hb.add_child(_button("Rehacer", redo))
@@ -1541,6 +1770,23 @@ func _build_topbar() -> Control:
 	hb.add_child(sim_button)
 	reset_button = _button("⟲  Reiniciar", _reset_simulation)
 	hb.add_child(reset_button)
+	pause_button = _button("⏸", _toggle_pause)
+	pause_button.toggle_mode = true
+	pause_button.tooltip_text = "Pausa / reanudar la simulación (P)"
+	hb.add_child(pause_button)
+	step_button = _button("⏭", func(): simulator.step_frames(1))
+	step_button.tooltip_text = "Avanzar un paso físico (1/120 s) en pausa (.)"
+	hb.add_child(step_button)
+	speed_option = OptionButton.new()
+	speed_option.focus_mode = Control.FOCUS_NONE
+	speed_option.tooltip_text = "Velocidad de simulación (cámara lenta)"
+	for k in SPEEDS:
+		speed_option.add_item("%s×" % str(k))
+	speed_option.item_selected.connect(func(i):
+		simulator.set_time_scale(SPEEDS[i])
+		Config.notify("Velocidad de simulación: %s×" % str(SPEEDS[i])))
+	hb.add_child(speed_option)
+	_set_time_controls(false)
 	connect_button = _button("🔗  Conectar", _toggle_connect_mode)
 	connect_button.toggle_mode = true
 	hb.add_child(connect_button)
@@ -1593,7 +1839,7 @@ func _build_topbar() -> Control:
 	plant.text = "Plantillas"
 	plant.focus_mode = Control.FOCUS_NONE
 	var pm := plant.get_popup()
-	for t in ["Torre", "Brazo robótico 3 GDL", "Grúa", "Puente", "Pinza"]:
+	for t in ["Torre", "Brazo robótico 3 GDL", "Grúa", "Puente", "Pinza", "Brazo robótico 4 GDL (PID)", "Carro seguidor de línea"]:
 		pm.add_item(t)
 	pm.id_pressed.connect(_on_template_selected)
 	hb.add_child(plant)
@@ -1806,11 +2052,14 @@ CONSTRUCCIÓN
 (Encaje inteligente)  Orificios, ejes, ranuras en T: anillo verde = encaja
 [Supr]                Eliminar la pieza seleccionada
 [Ctrl+D]              Duplicar la pieza seleccionada
+[Ctrl+C] / [Ctrl+V]   Copiar / pegar pieza
+[M]                   Copia simétrica (plano YZ)
 [Ctrl+Z] / [Ctrl+Y]   Deshacer / Rehacer
 [G]                   Alternar snapping a la rejilla
 
 SIMULACIÓN Y UNIONES
 [Espacio]             Iniciar / detener la simulación
+[P] / [.]             Pausa / avanzar un paso (cuadro a cuadro)
 [⟲ Reiniciar]         Volver al estado inicial
 [🔗 Conectar]         Unir dos piezas (bisagra, fija, engranaje…)
 
@@ -1926,6 +2175,13 @@ func _refresh_properties() -> void:
 			_add_dim_spin("Ancho (X)", "x", dm.get("x", 20.0))
 			_add_dim_spin("Alto (Y)", "y", dm.get("y", 20.0))
 			_add_dim_spin("Fondo (Z)", "z", dm.get("z", 20.0))
+	var anc := CheckBox.new()
+	anc.text = "Anclada al mundo (fija en simulación)"
+	anc.button_pressed = selected_part.anchored
+	anc.focus_mode = Control.FOCUS_NONE
+	var sp_ref := selected_part
+	anc.toggled.connect(func(v): sp_ref.anchored = v; Config.project_dirty = true)
+	prop_container.add_child(anc)
 	_prop_mass_label = _add_prop_row_ref("Masa", Units.fmt_mass(selected_part.mass_kg()))
 	_add_prop_row("Densidad", "%.0f kg/m³" % MaterialLibrary.density(selected_part.material_id))
 	_add_prop_row("Posición", "X %.3f  Y %.3f  Z %.3f m" % [selected_part.position.x, selected_part.position.y, selected_part.position.z])
@@ -1934,6 +2190,7 @@ func _refresh_properties() -> void:
 	prop_container.add_child(HSeparator.new())
 	var hb := HBoxContainer.new()
 	hb.add_child(_button("Duplicar", _duplicate_selected))
+	hb.add_child(_button("Simetría", _mirror_selected))
 	hb.add_child(_button("Eliminar", _delete_selected))
 	prop_container.add_child(hb)
 	var hint := _label("Arrastra para mover (X/Z).\nSobre otra pieza, ENCAJA sola encima.\nMantén Z + arrastra para la altura.\nFlechas y Re/Av Pág mueven por rejilla.")
@@ -2114,7 +2371,7 @@ func _process(_delta: float) -> void:
 	GraphicsProfiles.update_dynamic(_delta)
 	if _bench_active:
 		_bench_tick(_delta)
-	if simulator and simulator.is_running():
+	if simulator and simulator.is_running() and not simulator.paused:
 		_mcu_tick(_delta)
 		_tele_accum += _delta
 		if _tele_accum >= 0.1:
@@ -2343,6 +2600,10 @@ func _handle_key(k: InputEventKey) -> void:
 			help_panel.visible = not help_panel.visible
 		KEY_SPACE:
 			_toggle_simulation()
+		KEY_P when not ctrl:
+			_toggle_pause()
+		KEY_PERIOD:
+			simulator.step_frames(1)
 		KEY_G:
 			Config.snap_enabled = not Config.snap_enabled
 			snap_check.button_pressed = Config.snap_enabled
@@ -2373,6 +2634,12 @@ func _handle_key(k: InputEventKey) -> void:
 			_on_open()
 		KEY_D when ctrl and not editing_locked:
 			_duplicate_selected()
+		KEY_C when ctrl and not editing_locked:
+			_copy_selected()
+		KEY_V when ctrl and not editing_locked:
+			_paste()
+		KEY_M when not ctrl and not editing_locked:
+			_mirror_selected()
 		KEY_LEFT when not editing_locked:
 			_nudge(Vector3(-1, 0, 0))
 		KEY_RIGHT when not editing_locked:
@@ -2533,6 +2800,40 @@ func _delete_selected() -> void:
 		return
 	_do({"type": "remove", "data": selected_part.to_dict()})
 
+var _clipboard: Dictionary = {}
+
+func _copy_selected() -> void:
+	if selected_part == null:
+		return
+	_clipboard = selected_part.to_dict()
+	Config.notify("Copiado: %s" % selected_part.def.get("nombre", ""))
+
+func _paste() -> void:
+	if _clipboard.is_empty():
+		return
+	var d := _clipboard.duplicate(true)
+	d["uid"] = ""
+	d["pos"][0] += Config.grid_size_m * 4.0
+	d["pos"][2] += Config.grid_size_m * 4.0
+	_clipboard["pos"] = d["pos"].duplicate()     # pegados sucesivos en cascada
+	_do({"type": "add", "data": d})
+
+## Simetría: copia especular de la pieza respecto del plano YZ (x → −x).
+## La orientación se refleja como M·R·M con M = diag(−1, 1, 1), que sigue siendo
+## una rotación (Euler YXZ: x, −y, −z).
+func _mirror_selected() -> void:
+	if selected_part == null:
+		return
+	var d := selected_part.to_dict()
+	d["uid"] = ""
+	d["pos"][0] = -float(d["pos"][0])
+	var r: Array = d["rot"]
+	d["rot"] = [r[0], -float(r[1]), -float(r[2])]
+	if absf(float(d["pos"][0]) - selected_part.position.x) < 1e-6:
+		d["pos"][0] += Config.grid_size_m * 4.0   # pieza sobre el plano: se desplaza
+	_do({"type": "add", "data": d})
+	Config.notify("Copia simétrica (plano YZ).")
+
 func _duplicate_selected() -> void:
 	if selected_part == null:
 		return
@@ -2554,6 +2855,11 @@ func _spawn_from_dict(d: Dictionary) -> PartInstance:
 	inst._build_visual()
 	inst.position = _vec(d.get("pos", [0, 0, 0]))
 	inst.rotation = _vec(d.get("rot", [0, 0, 0]))
+	if d.has("fijo"):
+		inst.anchored = bool(d["fijo"])
+	if typeof(d.get("dims_mm")) == TYPE_DICTIONARY and not d["dims_mm"].is_empty() and d["dims_mm"] != inst.def.get("dimensiones_mm", {}):
+		inst.def["dimensiones_mm"] = d["dims_mm"].duplicate()
+		inst.rebuild()
 	return inst
 
 ## Quita una pieza de la escena YA (remove_child) y la libera: con solo
@@ -2580,6 +2886,7 @@ func _vec(a: Array) -> Vector3:
 	return Vector3(a[0], a[1], a[2])
 
 func _update_counts() -> void:
+	_refresh_mcu_sensors()
 	if counts_label == null:
 		return
 	var n := 0
@@ -2653,29 +2960,64 @@ func _on_save_as() -> void:
 func _on_open() -> void:
 	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	file_dialog.title = "Abrir proyecto MechaForge"
-	_connect_dialog(func(path):
-		var doc := ProjectSerializer.load_document(path)
-		if doc.is_empty():
-			Config.notify("No se pudo abrir el archivo.", 5.0)
-			return
-		if simulator.is_running(): simulator.stop()
-		var n := ProjectSerializer.apply_document(doc, parts_root)
-		connections = ProjectSerializer.parse_connections(doc)
-		wires = ProjectSerializer.parse_wires(doc)
-		var bat: Dictionary = doc.get("bateria", {})
-		if bat.has("voltaje"): Config.battery_voltage = bat["voltaje"]
-		if bat.has("capacidad_mah"): Config.battery_capacity_mah = bat["capacidad_mah"]
-		_redraw_connection_markers()
-		_redraw_wires()
-		_refresh_uniones_panel()
-		_refresh_circuito_panel()
-		_undo.clear(); _redo.clear(); _select(null)
-		Config.current_project_path = path
-		Config.project_dirty = false
-		_sync_grid_ui()
-		_update_counts()
-		Config.notify("Cargadas %d piezas desde %s" % [n, path], 4.0))
+	_connect_dialog(func(path): _load_project(path))
 	file_dialog.popup_centered_ratio(0.6)
+
+## Carga un proyecto (.mforge) completo: piezas, uniones, cables y batería.
+func _load_project(path: String, is_autosave: bool = false) -> bool:
+	var doc := ProjectSerializer.load_document(path)
+	if doc.is_empty():
+		Config.notify("No se pudo abrir el archivo.", 5.0)
+		return false
+	if simulator.is_running(): simulator.stop()
+	var n := ProjectSerializer.apply_document(doc, parts_root)
+	connections = ProjectSerializer.parse_connections(doc)
+	wires = ProjectSerializer.parse_wires(doc)
+	var bat: Dictionary = doc.get("bateria", {})
+	if bat.has("voltaje"): Config.battery_voltage = bat["voltaje"]
+	if bat.has("capacidad_mah"): Config.battery_capacity_mah = bat["capacidad_mah"]
+	_populate_parts_tree()
+	_redraw_connection_markers()
+	_redraw_wires()
+	_refresh_uniones_panel()
+	_refresh_circuito_panel()
+	_undo.clear(); _redo.clear(); _select(null)
+	Config.current_project_path = "" if is_autosave else path
+	Config.project_dirty = is_autosave
+	_sync_grid_ui()
+	_update_counts()
+	Config.notify(("Recuperado el autoguardado (%d piezas)." if is_autosave else "Cargadas %d piezas desde " + path) % n, 4.0)
+	return true
+
+# --- Autoguardado ---
+const AUTOSAVE_PATH := "user://autoguardado.mforge"
+const AUTOSAVE_PERIOD := 120.0
+var _autosave_timer: Timer
+
+func _setup_autosave() -> void:
+	_autosave_timer = Timer.new()
+	_autosave_timer.wait_time = AUTOSAVE_PERIOD
+	_autosave_timer.autostart = true
+	_autosave_timer.timeout.connect(_autosave)
+	add_child(_autosave_timer)
+	if FileAccess.file_exists(AUTOSAVE_PATH):
+		var when := Time.get_datetime_string_from_unix_time(FileAccess.get_modified_time(AUTOSAVE_PATH), true)
+		Config.notify("Hay un autoguardado del %s: pulsa «Recuperar» en la barra para abrirlo." % when.replace("T", " "), 7.0)
+
+## Guarda una copia de seguridad cada 2 minutos si hay cambios sin guardar.
+func _autosave() -> bool:
+	if not Config.project_dirty or simulator.is_running():
+		return false
+	var err := ProjectSerializer.save(parts_root, AUTOSAVE_PATH, connections, wires)
+	if err == OK and status_label:
+		status_label.text = "Autoguardado (%s)" % Time.get_time_string_from_system()
+	return err == OK
+
+func _recover_autosave() -> void:
+	if not FileAccess.file_exists(AUTOSAVE_PATH):
+		Config.notify("No hay autoguardado.", 3.0)
+		return
+	_load_project(AUTOSAVE_PATH, true)
 
 var _dialog_cb: Callable = Callable()
 func _connect_dialog(cb: Callable) -> void:
@@ -2706,6 +3048,21 @@ func _toggle_simulation() -> void:
 		_set_solder_mode(false)
 		simulator.start(connections)
 
+func _toggle_pause() -> void:
+	if not simulator.is_running():
+		pause_button.button_pressed = false
+		return
+	simulator.set_paused(not simulator.paused)
+	pause_button.button_pressed = simulator.paused
+	Config.notify("Simulación en pausa: ⏭ o '.' avanza un paso." if simulator.paused else "Simulación reanudada.")
+
+func _set_time_controls(on: bool) -> void:
+	for b in [pause_button, step_button, speed_option]:
+		if b: b.disabled = not on
+	if not on:
+		if pause_button: pause_button.button_pressed = false
+		if speed_option: speed_option.select(0)
+
 func _reset_simulation() -> void:
 	if simulator.is_running():
 		simulator.stop()
@@ -2714,7 +3071,8 @@ func _reset_simulation() -> void:
 		Config.notify("Simulación reiniciada al estado inicial.")
 
 func _on_sim_started() -> void:
-	sim_button.text = "⏸  Editar"
+	sim_button.text = "⏹  Editar"
+	_set_time_controls(true)
 	_select(null)
 	_set_editing_enabled(false)
 	connections_root.visible = false
@@ -2722,6 +3080,8 @@ func _on_sim_started() -> void:
 	elec_panel.set_collapsed(false)
 	_populate_graph_selector()
 	_populate_mcu_targets()
+	_refresh_mcu_sensors()
+	mcu_sensors.reset()
 	mcu_time = 0.0
 	await get_tree().process_frame
 	var vp: Vector2 = get_viewport().get_visible_rect().size
@@ -2730,6 +3090,7 @@ func _on_sim_started() -> void:
 
 func _on_sim_stopped() -> void:
 	sim_button.text = "▶  Simular"
+	_set_time_controls(false)
 	_select(null)
 	_set_editing_enabled(true)
 	connections_root.visible = true
@@ -2978,13 +3339,13 @@ func _make_link_marker(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
 	mat.emission_enabled = true; mat.emission = color; mat.emission_energy_multiplier = 0.6
 	cyl.material_override = mat
 	holder.add_child(cyl)
-	holder.global_position = mid
+	# El nodo aún no está en el árbol: se orienta con una base pura (sin look_at).
+	var b := Basis.IDENTITY
 	if dist > 0.0001:
-		# Orienta el eje Y del cilindro a lo largo de p1->p2.
 		var dir := (p2 - p1).normalized()
 		if absf(dir.dot(Vector3.UP)) < 0.999:
-			holder.look_at(mid + dir, Vector3.UP)
-			holder.rotate_object_local(Vector3.RIGHT, PI / 2.0)
+			b = Basis(Quaternion(Vector3.UP, dir))    # eje Y del cilindro a lo largo de p1->p2
+	holder.transform = Transform3D(b, mid)
 	# Esfera en el anclaje.
 	var sph := MeshInstance3D.new()
 	var sm := SphereMesh.new(); sm.radius = 0.012; sm.height = 0.024
@@ -3466,8 +3827,12 @@ func _eval_expr(expr_str: String, vars: Dictionary) -> float:
 
 ## Ejecuta un "programa" multilínea: cada línea 'nombre = expr' define una
 ## variable; la última línea evaluada es la salida (consigna).
-func _mcu_run(lines: Array, t: float, x: float, dt: float) -> float:
+func _mcu_run(lines: Array, t: float, x: float, dt: float, out_vars: Variant = null) -> float:
 	var vars := {"t": t, "x": x, "dt": dt, "pi": PI}
+	# Sensores (en simulación: lecturas reales; fuera: 0 para validar).
+	var sv: Dictionary = _mcu_sensor_vars if simulator.is_running() else Sensors.zero_vars(parts_root)
+	for k in sv:
+		vars[k] = sv[k]
 	var result := 0.0
 	for raw in lines:
 		var line := str(raw).strip_edges()
@@ -3486,6 +3851,8 @@ func _mcu_run(lines: Array, t: float, x: float, dt: float) -> float:
 			if is_nan(v):
 				return NAN
 			result = v
+	if out_vars is Dictionary:
+		(out_vars as Dictionary).merge(vars, true)
 	return result
 
 func _build_mcu_panel() -> void:
@@ -3495,12 +3862,32 @@ func _build_mcu_panel() -> void:
 	var vb := VBoxContainer.new()
 	vb.custom_minimum_size = Vector2(330, 0)
 	mcu_panel.add_content(vb)
+	var tabs := TabContainer.new()
+	tabs.custom_minimum_size = Vector2(330, 210)
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(tabs)
 	mcu_editor = TextEdit.new()
+	mcu_editor.name = "Script"
 	mcu_editor.custom_minimum_size = Vector2(320, 120)
 	mcu_editor.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mcu_editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mcu_editor.text = MCU_DEFAULT
-	vb.add_child(mcu_editor)
+	tabs.add_child(mcu_editor)
+	var bl_box := VBoxContainer.new()
+	bl_box.name = "Bloques"
+	mcu_blocks = BlockEditor.new()
+	mcu_blocks.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	bl_box.add_child(mcu_blocks)
+	bl_box.add_child(_button("⇢ Generar script desde bloques y aplicar", func():
+		mcu_editor.text = mcu_blocks.to_script()
+		_apply_mcu()))
+	tabs.add_child(bl_box)
+	mcu_sensors_label = _label("")
+	mcu_sensors_label.add_theme_font_size_override("font_size", 11)
+	mcu_sensors_label.add_theme_color_override("font_color", Color(0.6, 0.63, 0.68))
+	mcu_sensors_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mcu_sensors_label.custom_minimum_size = Vector2(322, 0)
+	vb.add_child(mcu_sensors_label)
 	var hb := HBoxContainer.new()
 	hb.add_child(_label("Actúa sobre:"))
 	mcu_target_selector = OptionButton.new()
@@ -3515,6 +3902,34 @@ func _build_mcu_panel() -> void:
 	mcu_status.custom_minimum_size = Vector2(322, 0)
 	vb.add_child(mcu_status)
 	mcu_panel.set_collapsed(true)
+
+## Uniones con control PID, en orden (salidas m1, m2... del microcontrolador).
+func _controlled_connections() -> Array:
+	var out := []
+	for conn in connections:
+		if conn.tipo == Connection.Tipo.BISAGRA and conn.control_mode != Connection.ControlMode.NINGUNO:
+			out.append(conn)
+	return out
+
+## Actualiza la lista de variables de sensores disponibles en el panel.
+func _refresh_mcu_sensors() -> void:
+	if mcu_sensors_label == null:
+		return
+	var lst := Sensors.list(parts_root)
+	var names := ["t", "x", "dt"]
+	var txt := "Variables: t (s), x (medida), dt."
+	if not lst.is_empty():
+		var parts_txt := []
+		for sdef in lst:
+			parts_txt.append("%s = %s" % [sdef["var"], Sensors.DESCR.get(sdef["kind"], "")])
+		txt += "\nSensores: " + " · ".join(parts_txt)
+	names.append_array(Sensors.variable_names(parts_root))
+	var nctrl := _controlled_connections().size()
+	if nctrl > 0:
+		txt += "\nSalidas: output (unión elegida)" + (", m1..m%d (uniones con control)" % nctrl)
+	mcu_sensors_label.text = txt
+	if mcu_blocks:
+		mcu_blocks.set_variables(names)
 
 func _populate_mcu_targets() -> void:
 	if mcu_target_selector == null:
@@ -3534,6 +3949,7 @@ func _stop_mcu() -> void:
 
 func _apply_mcu() -> void:
 	_populate_mcu_targets()
+	_refresh_mcu_sensors()
 	if mcu_target_selector.item_count == 0:
 		mcu_status.text = "No hay uniones con control PID. Crea una bisagra con control de Posición o Velocidad."
 		mcu_enabled = false
@@ -3558,10 +3974,20 @@ func _mcu_tick(delta: float) -> void:
 		return
 	var is_pos := conn.control_mode == Connection.ControlMode.POSICION
 	var x := rad_to_deg(simulator.control_measure(conn.uid)) if is_pos else simulator.control_measure(conn.uid)
-	var out := _mcu_run(mcu_lines, mcu_time, x, delta)
+	_mcu_sensor_vars = mcu_sensors.read(parts_root, simulator, get_world_3d().direct_space_state)
+	var vars := {}
+	var out := _mcu_run(mcu_lines, mcu_time, x, delta, vars)
 	if is_nan(out):
 		return
 	conn.ctrl_setpoint = deg_to_rad(out) if is_pos else out
+	# Salidas mN: consigna de la N-ésima unión con control (varios actuadores).
+	var ctrl := _controlled_connections()
+	for i in range(ctrl.size()):
+		var key := "m%d" % (i + 1)
+		if vars.has(key):
+			var c2: Connection = ctrl[i]
+			var v2 := float(vars[key])
+			c2.ctrl_setpoint = deg_to_rad(v2) if c2.control_mode == Connection.ControlMode.POSICION else v2
 
 #endregion
 
@@ -3683,8 +4109,8 @@ func _update_elec_panel() -> void:
 	var e := simulator.electrical()
 	var auto = e.get("autonomy_h", INF)
 	var auto_txt := "∞ (sin consumo)" if (auto == INF or auto > 1.0e6) else ("%.2f h" % auto)
-	elec_info_label.text = "Batería: %.1f V   ·   Corriente: %.2f A   ·   Potencia: %.1f W\nAutonomía estimada: %s   ·   Motores activos: %d" % [
-		e.get("voltage", 0.0), e.get("current", 0.0), e.get("power", 0.0), auto_txt, e.get("motors", 0)]
+	elec_info_label.text = "Batería: %.1f V   ·   Corriente: %.2f A   ·   Potencia: %.1f W\nAutonomía estimada: %s   ·   Motores activos: %d   ·   T máx. motor: %.1f °C" % [
+		e.get("voltage", 0.0), e.get("current", 0.0), e.get("power", 0.0), auto_txt, e.get("motors", 0), simulator.max_motor_temperature()]
 
 	if graph_uid != "":
 		var h := simulator.history(graph_uid)

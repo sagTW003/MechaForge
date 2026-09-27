@@ -55,6 +55,11 @@ static func build(def: Dictionary) -> Node3D:
 		"sensor_ultra": return _sensor_ultra(d)
 		"boton": return _button(d)
 		"potenciometro": return _pot(d)
+		"fin_carrera": return _limit_switch(d)
+		"rueda": return _wheel(d)
+		"sensor_linea": return _line_sensor(d)
+		"fsr": return _fsr(d)
+		"lidar": return _lidar(d)
 		_: return null
 
 static func _pcb(d: Vector3, def: Dictionary) -> Node3D:
@@ -231,4 +236,74 @@ static func _pot(d: Vector3) -> Node3D:
 	n.add_child(_box(Vector3(d.x, d.y * 0.5, d.z), mat(Color(0.15, 0.16, 0.2), 0.3, 0.4), Vector3(0, -d.y * 0.25, 0)))
 	n.add_child(_cyl(d.x * 0.28, d.y * 0.6, mat(Color(0.75, 0.76, 0.8), 0.9, 0.3), Vector3(0, d.y * 0.2, 0)))
 	n.add_child(_cyl(d.x * 0.08, d.y * 0.3, mat(Color(0.1, 0.1, 0.1), 0.2, 0.5), Vector3(0, d.y * 0.6, 0), 8))
+	return n
+
+static func _limit_switch(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	n.add_child(_box(d, mat(Color(0.08, 0.08, 0.09), 0.1, 0.5)))
+	# Palanca metálica con rodillo.
+	var steel := MaterialLibrary.get_visual("acero_inox")
+	var lever := _box(Vector3(d.x * 0.9, d.y * 0.08, d.z * 0.5), steel, Vector3(d.x * 0.05, d.y * 0.62, 0))
+	lever.rotation_degrees = Vector3(0, 0, 8)
+	n.add_child(lever)
+	var roll := _cyl(d.y * 0.15, d.z * 0.5, mat(Color(0.85, 0.85, 0.86), 0.2, 0.4), Vector3(d.x * 0.48, d.y * 0.72, 0))
+	roll.rotation_degrees = Vector3(90, 0, 0)
+	n.add_child(roll)
+	n.add_child(_box(Vector3(d.x * 0.12, d.y * 0.1, d.z * 0.3), mat(Color(0.8, 0.1, 0.1), 0.1, 0.4), Vector3(-d.x * 0.3, d.y * 0.55, 0)))
+	return n
+
+static func _fsr(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	var r := d.x * 0.5
+	n.add_child(_cyl(r, d.y, mat(Color(0.12, 0.12, 0.14), 0.1, 0.35)))
+	n.add_child(_cyl(r * 0.8, d.y * 1.05, mat(Color(0.75, 0.6, 0.3), 0.6, 0.35)))
+	var tail := _box(Vector3(r * 0.5, d.y * 0.6, r * 1.6), mat(Color(0.75, 0.6, 0.3), 0.6, 0.35), Vector3(0, 0, -r * 1.2))
+	n.add_child(tail)
+	return n
+
+static func _lidar(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	var r := d.x * 0.5
+	n.add_child(_cyl(r, d.y * 0.45, mat(Color(0.1, 0.1, 0.11), 0.2, 0.45), Vector3(0, -d.y * 0.275, 0), 32))
+	n.add_child(_cyl(r * 0.78, d.y * 0.5, mat(Color(0.15, 0.15, 0.17), 0.3, 0.3), Vector3(0, d.y * 0.2, 0), 32))
+	# Ventana óptica (negra brillante) y emisor rojo tenue.
+	var win := _box(Vector3(r * 0.25, d.y * 0.22, r * 0.9), mat(Color(0.02, 0.02, 0.03), 0.0, 0.05), Vector3(r * 0.72, d.y * 0.2, 0))
+	n.add_child(win)
+	var emit := mat(Color(1.0, 0.15, 0.1), 0.0, 0.3, true)
+	emit.emission_energy_multiplier = 2.5
+	n.add_child(_box(Vector3(r * 0.05, d.y * 0.04, r * 0.1), emit, Vector3(r * 0.86, d.y * 0.2, 0)))
+	return n
+
+static func _wheel(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	var r := d.x * 0.5
+	# Neumático de caucho con banda de rodadura, llanta de aluminio y cubo.
+	var tire := MeshInstance3D.new()
+	tire.mesh = MeshFactory.tube(r, r * 0.68, d.y, 48)
+	tire.material_override = MaterialLibrary.get_visual("caucho")
+	n.add_child(tire)
+	for k in range(24):
+		var ang := TAU * k / 24.0
+		var tread := _box(Vector3(r * 0.08, d.y * 0.9, r * 0.05), MaterialLibrary.get_visual("caucho"),
+			Vector3(cos(ang) * r * 0.99, 0, sin(ang) * r * 0.99))
+		tread.rotation.y = -ang
+		n.add_child(tread)
+	var rim := MeshInstance3D.new()
+	rim.mesh = MeshFactory.tube(r * 0.69, r * 0.22, d.y * 0.7, 40)
+	rim.material_override = MaterialLibrary.get_visual("aluminio")
+	n.add_child(rim)
+	n.add_child(_cyl(r * 0.22, d.y * 0.95, mat(Color(0.2, 0.2, 0.22), 0.8, 0.35), Vector3.ZERO, 16))
+	return n
+
+static func _line_sensor(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	var board := _box(Vector3(d.x, d.y * 0.25, d.z), null, Vector3(0, d.y * 0.3, 0))
+	board.material_override = MaterialLibrary.get_visual("baquelita")
+	n.add_child(board)
+	# Emisor (azul) y receptor (negro) del TCRT5000 mirando al suelo.
+	n.add_child(_cyl(d.z * 0.2, d.y * 0.6, mat(Color(0.2, 0.3, 0.8), 0.0, 0.2), Vector3(-d.x * 0.15, -d.y * 0.15, 0)))
+	n.add_child(_cyl(d.z * 0.2, d.y * 0.6, mat(Color(0.03, 0.03, 0.04), 0.0, 0.2), Vector3(d.x * 0.15, -d.y * 0.15, 0)))
+	var led := mat(Color(1.0, 0.2, 0.1), 0.0, 0.3, true)
+	led.emission_energy_multiplier = 3.0
+	n.add_child(_box(Vector3(d.x * 0.08, d.y * 0.1, d.z * 0.12), led, Vector3(d.x * 0.35, d.y * 0.45, 0)))
 	return n

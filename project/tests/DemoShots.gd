@@ -7,8 +7,11 @@ extends Node
 
 var main: Node
 
-func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false) -> void:
+func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false, template: String = "") -> void:
 	main.work_env.set_mode(env_mode)
+	if template == "seguidor":
+		await _template_shot(out_path)
+		return
 	var sp := func(id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
 		return main._spawn(id, mat, pos, rot)
 	# Placa base perforada y bastidor de perfiles 2020.
@@ -60,5 +63,25 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false)
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Captura de la plantilla del carro seguidor de línea en marcha.
+func _template_shot(out_path: String) -> void:
+	main._tpl_seguidor()
+	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel]:
+		if p: p.visible = false
+	main.mcu_panel.set_collapsed(false)
+	var cam: CameraOrbit = main.camera
+	cam.target = Vector3(-0.2, 0.0, -0.1)
+	cam.distance = 0.9
+	cam._yaw = deg_to_rad(-60)
+	cam._pitch = deg_to_rad(-35)
+	cam._update_transform()
+	main._toggle_simulation()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(3.0).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
 	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
 	get_tree().quit()

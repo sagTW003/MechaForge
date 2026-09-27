@@ -27,6 +27,8 @@
 | *(automático)* | **Encaje inteligente**: al acercar una pieza, se ajusta a orificios de placas, ejes, extremos y ranuras en T de perfiles; un **anillo verde** marca el punto y el fantasma se vuelve verde |
 | `Supr` | Eliminar la pieza seleccionada |
 | `Ctrl+D` | Duplicar la pieza seleccionada |
+| `Ctrl+C` / `Ctrl+V` | Copiar / pegar pieza |
+| `M` | Copia **simétrica** respecto del plano YZ (x → −x) |
 | `G` | Activar/desactivar snapping a la rejilla |
 
 ## Simulación y uniones (Fase 2)
@@ -34,6 +36,9 @@
 |---|---|
 | `Espacio` | Iniciar / detener la simulación |
 | Botón `⟲ Reiniciar` | Volver al estado inicial |
+| `P` / botón `⏸` | Pausa / reanudar |
+| `.` / botón `⏭` | Avanzar un paso físico (1/120 s) en pausa |
+| Selector `1.0×` | Cámara lenta: 1×, 0.5×, 0.25×, 0.1× |
 | Botón `🔗 Conectar` | Unir dos piezas: clic en la 1.ª y luego en la 2.ª, elige el tipo (fija/bisagra/deslizadera/rótula/engranaje), límites y motor |
 
 Durante la simulación, selecciona una pieza para ver su **telemetría en vivo**

@@ -8,10 +8,36 @@
       "forma": "caja",
       "perfil": "tslot",
       "relleno": 0.463,
-      "dimensiones_mm": { "x": 20, "y": 100, "z": 20 },
+      "dimensiones_mm": {
+        "x": 20,
+        "y": 100,
+        "z": 20
+      },
       "anclajes": [
-        { "pos_mm": [0, 50, 0], "eje": [0, 1, 0] },
-        { "pos_mm": [0, -50, 0], "eje": [0, -1, 0] }
+        {
+          "pos_mm": [
+            0,
+            50,
+            0
+          ],
+          "eje": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "pos_mm": [
+            0,
+            -50,
+            0
+          ],
+          "eje": [
+            0,
+            -1,
+            0
+          ]
+        }
       ]
     },
     {
@@ -22,7 +48,11 @@
       "forma": "caja",
       "perfil": "tslot",
       "relleno": 0.463,
-      "dimensiones_mm": { "x": 20, "y": 200, "z": 20 }
+      "dimensiones_mm": {
+        "x": 20,
+        "y": 200,
+        "z": 20
+      }
     },
     {
       "id": "perfil_2020_400",
@@ -32,7 +62,11 @@
       "forma": "caja",
       "perfil": "tslot",
       "relleno": 0.463,
-      "dimensiones_mm": { "x": 20, "y": 400, "z": 20 }
+      "dimensiones_mm": {
+        "x": 20,
+        "y": 400,
+        "z": 20
+      }
     },
     {
       "id": "perfil_4040_300",
@@ -42,7 +76,11 @@
       "forma": "caja",
       "perfil": "tslot",
       "relleno": 0.347,
-      "dimensiones_mm": { "x": 40, "y": 300, "z": 40 }
+      "dimensiones_mm": {
+        "x": 40,
+        "y": 300,
+        "z": 40
+      }
     },
     {
       "id": "placa_100x100",
@@ -50,7 +88,11 @@
       "categoria": "estructural",
       "material": "aluminio",
       "forma": "placa",
-      "dimensiones_mm": { "x": 100, "y": 5, "z": 100 }
+      "dimensiones_mm": {
+        "x": 100,
+        "y": 5,
+        "z": 100
+      }
     },
     {
       "id": "placa_base_200x200",
@@ -58,7 +100,11 @@
       "categoria": "estructural",
       "material": "acero",
       "forma": "placa",
-      "dimensiones_mm": { "x": 200, "y": 8, "z": 200 }
+      "dimensiones_mm": {
+        "x": 200,
+        "y": 8,
+        "z": 200
+      }
     },
     {
       "id": "viga_acero_500",
@@ -66,7 +112,11 @@
       "categoria": "estructural",
       "material": "acero",
       "forma": "caja",
-      "dimensiones_mm": { "x": 30, "y": 500, "z": 30 }
+      "dimensiones_mm": {
+        "x": 30,
+        "y": 500,
+        "z": 30
+      }
     },
     {
       "id": "tubo_al_d25_300",
@@ -74,7 +124,11 @@
       "categoria": "estructural",
       "material": "aluminio",
       "forma": "tubo",
-      "dimensiones_mm": { "radio": 12.5, "altura": 300, "espesor": 2 }
+      "dimensiones_mm": {
+        "radio": 12.5,
+        "altura": 300,
+        "espesor": 2
+      }
     },
     {
       "id": "eje_acero_d10_150",
@@ -82,7 +136,37 @@
       "categoria": "estructural",
       "material": "acero_inox",
       "forma": "cilindro",
-      "dimensiones_mm": { "radio": 5, "altura": 150 }
+      "dimensiones_mm": {
+        "radio": 5,
+        "altura": 150
+      }
+    },
+    {
+      "id": "cinta_linea",
+      "nombre": "Cinta negra para pista (300 mm)",
+      "categoria": "estructural",
+      "material": "caucho",
+      "forma": "placa",
+      "agujeros": false,
+      "fijo": true,
+      "sin_colision": true,
+      "dimensiones_mm": {
+        "x": 300,
+        "y": 0.6,
+        "z": 19
+      }
+    },
+    {
+      "id": "placa_chasis_160x120",
+      "nombre": "Chasis aluminio 160×120×3",
+      "categoria": "estructural",
+      "material": "aluminio",
+      "forma": "placa",
+      "dimensiones_mm": {
+        "x": 160,
+        "y": 3,
+        "z": 120
+      }
     }
   ]
 }

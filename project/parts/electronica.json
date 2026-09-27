@@ -7,12 +7,48 @@
       "material": "abs",
       "forma": "placa",
       "apariencia": "protoboard",
-      "dimensiones_mm": { "x": 165, "y": 9, "z": 55 },
+      "dimensiones_mm": {
+        "x": 165,
+        "y": 9,
+        "z": 55
+      },
       "terminales": [
-        { "id": "V+", "tipo": "power", "pos_mm": [70, 5, 25] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [70, 5, -25] },
-        { "id": "V+2", "tipo": "power", "pos_mm": [-70, 5, 25] },
-        { "id": "GND2", "tipo": "gnd", "pos_mm": [-70, 5, -25] }
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            70,
+            5,
+            25
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            70,
+            5,
+            -25
+          ]
+        },
+        {
+          "id": "V+2",
+          "tipo": "power",
+          "pos_mm": [
+            -70,
+            5,
+            25
+          ]
+        },
+        {
+          "id": "GND2",
+          "tipo": "gnd",
+          "pos_mm": [
+            -70,
+            5,
+            -25
+          ]
+        }
       ]
     },
     {
@@ -22,11 +58,35 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "bateria_caja",
-      "dimensiones_mm": { "x": 105, "y": 25, "z": 34 },
-      "electrico": { "tipo": "bateria", "voltaje": 11.1, "capacidad_mah": 2200 },
+      "dimensiones_mm": {
+        "x": 105,
+        "y": 25,
+        "z": 34
+      },
+      "electrico": {
+        "tipo": "bateria",
+        "voltaje": 11.1,
+        "capacidad_mah": 2200
+      },
       "terminales": [
-        { "id": "V+", "tipo": "power", "pos_mm": [50, 13, 8] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [50, 13, -8] }
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            50,
+            13,
+            8
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            50,
+            13,
+            -8
+          ]
+        }
       ]
     },
     {
@@ -36,11 +96,34 @@
       "material": "acero_inox",
       "forma": "cilindro",
       "apariencia": "bateria_cil",
-      "dimensiones_mm": { "radio": 9, "altura": 65 },
-      "electrico": { "tipo": "bateria", "voltaje": 3.7, "capacidad_mah": 3000 },
+      "dimensiones_mm": {
+        "radio": 9,
+        "altura": 65
+      },
+      "electrico": {
+        "tipo": "bateria",
+        "voltaje": 3.7,
+        "capacidad_mah": 3000
+      },
       "terminales": [
-        { "id": "V+", "tipo": "power", "pos_mm": [0, 33, 0] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [0, -33, 0] }
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            0,
+            33,
+            0
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            0,
+            -33,
+            0
+          ]
+        }
       ]
     },
     {
@@ -50,11 +133,34 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "resistencia",
-      "dimensiones_mm": { "x": 24, "y": 8, "z": 8 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 100 },
+      "dimensiones_mm": {
+        "x": 24,
+        "y": 8,
+        "z": 8
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 100
+      },
       "terminales": [
-        { "id": "A", "tipo": "power", "pos_mm": [12, 0, 0] },
-        { "id": "B", "tipo": "gnd", "pos_mm": [-12, 0, 0] }
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            12,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -12,
+            0,
+            0
+          ]
+        }
       ]
     },
     {
@@ -64,11 +170,34 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "resistencia",
-      "dimensiones_mm": { "x": 24, "y": 8, "z": 8 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 1000 },
+      "dimensiones_mm": {
+        "x": 24,
+        "y": 8,
+        "z": 8
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 1000
+      },
       "terminales": [
-        { "id": "A", "tipo": "power", "pos_mm": [12, 0, 0] },
-        { "id": "B", "tipo": "gnd", "pos_mm": [-12, 0, 0] }
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            12,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -12,
+            0,
+            0
+          ]
+        }
       ]
     },
     {
@@ -78,12 +207,42 @@
       "material": "abs",
       "forma": "cilindro",
       "apariencia": "potenciometro",
-      "dimensiones_mm": { "radio": 8, "altura": 20 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 5000 },
+      "dimensiones_mm": {
+        "radio": 8,
+        "altura": 20
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 5000
+      },
       "terminales": [
-        { "id": "A", "tipo": "power", "pos_mm": [8, 0, 0] },
-        { "id": "W", "tipo": "signal", "pos_mm": [0, -10, 0] },
-        { "id": "B", "tipo": "gnd", "pos_mm": [-8, 0, 0] }
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            8,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "W",
+          "tipo": "signal",
+          "pos_mm": [
+            0,
+            -10,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -8,
+            0,
+            0
+          ]
+        }
       ]
     },
     {
@@ -93,11 +252,34 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "boton",
-      "dimensiones_mm": { "x": 12, "y": 8, "z": 12 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 0.5 },
+      "dimensiones_mm": {
+        "x": 12,
+        "y": 8,
+        "z": 12
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 0.5
+      },
       "terminales": [
-        { "id": "1", "tipo": "power", "pos_mm": [6, -4, 6] },
-        { "id": "2", "tipo": "gnd", "pos_mm": [-6, -4, -6] }
+        {
+          "id": "1",
+          "tipo": "power",
+          "pos_mm": [
+            6,
+            -4,
+            6
+          ]
+        },
+        {
+          "id": "2",
+          "tipo": "gnd",
+          "pos_mm": [
+            -6,
+            -4,
+            -6
+          ]
+        }
       ]
     },
     {
@@ -107,11 +289,33 @@
       "material": "abs",
       "forma": "cilindro",
       "apariencia": "bateria_cil",
-      "dimensiones_mm": { "radio": 5, "altura": 12 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 100000 },
+      "dimensiones_mm": {
+        "radio": 5,
+        "altura": 12
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 100000
+      },
       "terminales": [
-        { "id": "+", "tipo": "power", "pos_mm": [0, -6, 2] },
-        { "id": "-", "tipo": "gnd", "pos_mm": [0, -6, -2] }
+        {
+          "id": "+",
+          "tipo": "power",
+          "pos_mm": [
+            0,
+            -6,
+            2
+          ]
+        },
+        {
+          "id": "-",
+          "tipo": "gnd",
+          "pos_mm": [
+            0,
+            -6,
+            -2
+          ]
+        }
       ]
     },
     {
@@ -121,12 +325,48 @@
       "material": "abs",
       "forma": "placa",
       "apariencia": "placa_pcb",
-      "dimensiones_mm": { "x": 68, "y": 12, "z": 53 },
+      "dimensiones_mm": {
+        "x": 68,
+        "y": 12,
+        "z": 53
+      },
       "terminales": [
-        { "id": "5V", "tipo": "power", "pos_mm": [30, 6, 20] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [30, 6, 10] },
-        { "id": "D1", "tipo": "signal", "pos_mm": [30, 6, 0] },
-        { "id": "D2", "tipo": "signal", "pos_mm": [30, 6, -10] }
+        {
+          "id": "5V",
+          "tipo": "power",
+          "pos_mm": [
+            30,
+            6,
+            20
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            30,
+            6,
+            10
+          ]
+        },
+        {
+          "id": "D1",
+          "tipo": "signal",
+          "pos_mm": [
+            30,
+            6,
+            0
+          ]
+        },
+        {
+          "id": "D2",
+          "tipo": "signal",
+          "pos_mm": [
+            30,
+            6,
+            -10
+          ]
+        }
       ]
     },
     {
@@ -136,12 +376,48 @@
       "material": "abs",
       "forma": "placa",
       "apariencia": "placa_pcb",
-      "dimensiones_mm": { "x": 43, "y": 14, "z": 43 },
+      "dimensiones_mm": {
+        "x": 43,
+        "y": 14,
+        "z": 43
+      },
       "terminales": [
-        { "id": "VIN", "tipo": "power", "pos_mm": [20, 7, 12] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [20, 7, 0] },
-        { "id": "IN", "tipo": "signal", "pos_mm": [20, 7, -12] },
-        { "id": "OUT", "tipo": "power", "pos_mm": [-20, 7, 0] }
+        {
+          "id": "VIN",
+          "tipo": "power",
+          "pos_mm": [
+            20,
+            7,
+            12
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            20,
+            7,
+            0
+          ]
+        },
+        {
+          "id": "IN",
+          "tipo": "signal",
+          "pos_mm": [
+            20,
+            7,
+            -12
+          ]
+        },
+        {
+          "id": "OUT",
+          "tipo": "power",
+          "pos_mm": [
+            -20,
+            7,
+            0
+          ]
+        }
       ]
     },
     {
@@ -151,11 +427,33 @@
       "material": "abs",
       "forma": "cilindro",
       "apariencia": "led",
-      "dimensiones_mm": { "radio": 2.5, "altura": 9 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 220 },
+      "dimensiones_mm": {
+        "radio": 2.5,
+        "altura": 9
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 220
+      },
       "terminales": [
-        { "id": "anodo", "tipo": "power", "pos_mm": [1, -4, 0] },
-        { "id": "catodo", "tipo": "gnd", "pos_mm": [-1, -4, 0] }
+        {
+          "id": "anodo",
+          "tipo": "power",
+          "pos_mm": [
+            1,
+            -4,
+            0
+          ]
+        },
+        {
+          "id": "catodo",
+          "tipo": "gnd",
+          "pos_mm": [
+            -1,
+            -4,
+            0
+          ]
+        }
       ]
     },
     {
@@ -165,11 +463,33 @@
       "material": "acero",
       "forma": "cilindro",
       "apariencia": "motor",
-      "dimensiones_mm": { "radio": 12.5, "altura": 50 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 6 },
+      "dimensiones_mm": {
+        "radio": 12.5,
+        "altura": 50
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 6
+      },
       "terminales": [
-        { "id": "M+", "tipo": "power", "pos_mm": [6, 25, 0] },
-        { "id": "M-", "tipo": "gnd", "pos_mm": [-6, 25, 0] }
+        {
+          "id": "M+",
+          "tipo": "power",
+          "pos_mm": [
+            6,
+            25,
+            0
+          ]
+        },
+        {
+          "id": "M-",
+          "tipo": "gnd",
+          "pos_mm": [
+            -6,
+            25,
+            0
+          ]
+        }
       ]
     },
     {
@@ -179,11 +499,39 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "servo",
-      "dimensiones_mm": { "x": 40, "y": 38, "z": 20 },
+      "dimensiones_mm": {
+        "x": 40,
+        "y": 38,
+        "z": 20
+      },
       "terminales": [
-        { "id": "V+", "tipo": "power", "pos_mm": [0, 19, 8] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [0, 19, 0] },
-        { "id": "PWM", "tipo": "signal", "pos_mm": [0, 19, -8] }
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            0,
+            19,
+            8
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            0,
+            19,
+            0
+          ]
+        },
+        {
+          "id": "PWM",
+          "tipo": "signal",
+          "pos_mm": [
+            0,
+            19,
+            -8
+          ]
+        }
       ]
     },
     {
@@ -192,11 +540,34 @@
       "categoria": "actuador",
       "material": "aluminio",
       "forma": "caja",
-      "dimensiones_mm": { "x": 30, "y": 180, "z": 30 },
-      "electrico": { "tipo": "carga", "resistencia_ohm": 8 },
+      "dimensiones_mm": {
+        "x": 30,
+        "y": 180,
+        "z": 30
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 8
+      },
       "terminales": [
-        { "id": "M+", "tipo": "power", "pos_mm": [0, -90, 8] },
-        { "id": "M-", "tipo": "gnd", "pos_mm": [0, -90, -8] }
+        {
+          "id": "M+",
+          "tipo": "power",
+          "pos_mm": [
+            0,
+            -90,
+            8
+          ]
+        },
+        {
+          "id": "M-",
+          "tipo": "gnd",
+          "pos_mm": [
+            0,
+            -90,
+            -8
+          ]
+        }
       ]
     },
     {
@@ -206,11 +577,39 @@
       "material": "abs",
       "forma": "caja",
       "apariencia": "sensor_ultra",
-      "dimensiones_mm": { "x": 45, "y": 20, "z": 15 },
+      "dimensiones_mm": {
+        "x": 45,
+        "y": 20,
+        "z": 15
+      },
       "terminales": [
-        { "id": "V+", "tipo": "power", "pos_mm": [20, 0, 6] },
-        { "id": "GND", "tipo": "gnd", "pos_mm": [20, 0, 0] },
-        { "id": "SIG", "tipo": "signal", "pos_mm": [20, 0, -6] }
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            20,
+            0,
+            6
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            20,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "SIG",
+          "tipo": "signal",
+          "pos_mm": [
+            20,
+            0,
+            -6
+          ]
+        }
       ]
     },
     {
@@ -220,7 +619,10 @@
       "material": "abs",
       "forma": "cilindro",
       "apariencia": "potenciometro",
-      "dimensiones_mm": { "radio": 15, "altura": 20 }
+      "dimensiones_mm": {
+        "radio": 15,
+        "altura": 20
+      }
     },
     {
       "id": "imu",
@@ -229,7 +631,168 @@
       "material": "abs",
       "forma": "placa",
       "apariencia": "placa_pcb",
-      "dimensiones_mm": { "x": 25, "y": 8, "z": 18 }
+      "dimensiones_mm": {
+        "x": 25,
+        "y": 8,
+        "z": 18
+      }
+    },
+    {
+      "id": "final_carrera",
+      "nombre": "Final de carrera (microinterruptor)",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "fin_carrera",
+      "dimensiones_mm": {
+        "x": 20,
+        "y": 10,
+        "z": 6
+      },
+      "terminales": [
+        {
+          "id": "C",
+          "tipo": "power",
+          "pos_mm": [
+            -8,
+            -5,
+            0
+          ]
+        },
+        {
+          "id": "NO",
+          "tipo": "signal",
+          "pos_mm": [
+            0,
+            -5,
+            0
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            8,
+            -5,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sensor_fuerza",
+      "nombre": "Sensor de fuerza (FSR Ø18)",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "cilindro",
+      "apariencia": "fsr",
+      "dimensiones_mm": {
+        "radio": 9,
+        "altura": 2
+      },
+      "terminales": [
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            0,
+            0,
+            -12
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "signal",
+          "pos_mm": [
+            3,
+            0,
+            -12
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lidar",
+      "nombre": "LiDAR 2D 360°",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "cilindro",
+      "apariencia": "lidar",
+      "dimensiones_mm": {
+        "radio": 35,
+        "altura": 40
+      },
+      "terminales": [
+        {
+          "id": "5V",
+          "tipo": "power",
+          "pos_mm": [
+            30,
+            -15,
+            -8
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            30,
+            -15,
+            0
+          ]
+        },
+        {
+          "id": "TX",
+          "tipo": "signal",
+          "pos_mm": [
+            30,
+            -15,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sensor_linea",
+      "nombre": "Sensor de línea IR (TCRT5000)",
+      "categoria": "sensor",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "sensor_linea",
+      "dimensiones_mm": {
+        "x": 20,
+        "y": 8,
+        "z": 10
+      },
+      "terminales": [
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            -8,
+            4,
+            3
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            -8,
+            4,
+            0
+          ]
+        },
+        {
+          "id": "OUT",
+          "tipo": "signal",
+          "pos_mm": [
+            -8,
+            4,
+            -3
+          ]
+        }
+      ]
     }
   ]
 }
