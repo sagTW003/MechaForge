@@ -188,6 +188,35 @@ func _ready() -> void:
 		call_deferred("_run_ai_test")
 	elif "mfshot7" in OS.get_cmdline_user_args():
 		call_deferred("_run_ai_shot")
+	elif "mfshot8" in OS.get_cmdline_user_args():
+		call_deferred("_run_components_shot")
+
+func _run_components_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot8")
+	var out_path := "user://mechaforge_componentes.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var items := ["protoboard", "driver_motor", "microcontrolador", "motor_dc", "led", "resistencia_100", "bateria_lipo_3s", "sensor_ultrasonido", "servo", "potenciometro", "boton"]
+	var x := -0.35
+	for id in items:
+		var def := PartLibrary.get_def(id)
+		if def.is_empty(): continue
+		var h := PartLibrary.dims_m(def).y
+		_spawn(id, def.get("material", "abs"), Vector3(x, h * 0.5 + 0.001, 0))
+		x += 0.09
+	_update_counts()
+	_select(null)
+	for p in [biblioteca_panel, propiedades_panel, uniones_panel]:
+		if p: p.visible = false
+	camera.target = Vector3(0.1, 0.03, 0); camera.distance = 0.55
+	camera._pitch = deg_to_rad(-22); camera._yaw = deg_to_rad(-25); camera._update_transform()
+	await get_tree().create_timer(2.5).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT8] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 func _run_ai_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -895,6 +924,7 @@ func _toggle_music_panel() -> void:
 	music_panel.visible = true
 	music_panel.set_collapsed(not music_panel.is_collapsed())
 	music_panel.move_to_front()
+	call_deferred("_clamp_panels")
 
 #region INTEGRACIÓN OPENCLAW (Fase 4) -------------------------------------------
 
@@ -958,6 +988,7 @@ func _toggle_ai_panel() -> void:
 	ai_panel.visible = true
 	ai_panel.set_collapsed(not ai_panel.is_collapsed())
 	ai_panel.move_to_front()
+	call_deferred("_clamp_panels")
 	if not ai_panel.is_collapsed():
 		ai_bridge.check_health()
 
@@ -1337,6 +1368,26 @@ func _layout_panels() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	if propiedades_panel:
 		propiedades_panel.position = Vector2(vp.x - propiedades_panel.size.x - 8, 52)
+	if ai_panel:
+		ai_panel.position = Vector2(vp.x - ai_panel.size.x - 8, 300)
+	if music_panel:
+		music_panel.position = Vector2(vp.x - music_panel.size.x - 8, 250)
+	# Reajusta los paneles cuando cambie el tamaño de la ventana.
+	if not get_viewport().size_changed.is_connected(_clamp_panels):
+		get_viewport().size_changed.connect(_clamp_panels)
+	_clamp_panels()
+
+## Mantiene todos los paneles dentro de la ventana (evita partes cortadas).
+func _clamp_panels() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	for p in [biblioteca_panel, propiedades_panel, uniones_panel, elec_panel,
+			circuito_panel, mcu_panel, music_panel, ai_panel]:
+		if p == null or not p.visible:
+			continue
+		var pos: Vector2 = p.position
+		pos.x = clampf(pos.x, 0.0, maxf(0.0, vp.x - p.size.x))
+		pos.y = clampf(pos.y, 44.0, maxf(44.0, vp.y - 40.0))
+		p.position = pos
 
 func _build_statusbar() -> Control:
 	var panel := _panel(Vector2(0, 34))
@@ -1534,11 +1585,17 @@ func _start_placing() -> void:
 	Config.notify("Colocando: %s. Clic para confirmar, clic derecho/Esc para cancelar." % def.get("nombre", current_def_id), 4.0)
 
 func _make_ghost_visual(inst: PartInstance) -> void:
-	for c in inst.get_children():
-		if c is MeshInstance3D:
-			(c as MeshInstance3D).material_override = MaterialLibrary.get_ghost(inst.material_id, true)
-		elif c is StaticBody3D:
+	_apply_ghost_recursive(inst, MaterialLibrary.get_ghost(inst.material_id, true))
+
+func _apply_ghost_recursive(node: Node, gmat: StandardMaterial3D) -> void:
+	for c in node.get_children():
+		if c is StaticBody3D:
 			c.queue_free()  # el fantasma no debe ser seleccionable
+		elif c is MeshInstance3D:
+			(c as MeshInstance3D).material_override = gmat
+			_apply_ghost_recursive(c, gmat)
+		else:
+			_apply_ghost_recursive(c, gmat)
 
 func _clear_ghost() -> void:
 	if ghost:

@@ -14,6 +14,7 @@ var uid: String = ""
 var initial_transform: Transform3D = Transform3D.IDENTITY
 
 var _mesh_instance: MeshInstance3D
+var _detail: Node3D
 var _pick_body: StaticBody3D
 var _selection_box: MeshInstance3D
 var _selected: bool = false
@@ -35,10 +36,20 @@ func _new_uid() -> String:
 func _build_visual() -> void:
 	if _mesh_instance:
 		_mesh_instance.queue_free()
-	_mesh_instance = MeshInstance3D.new()
-	_mesh_instance.mesh = _make_mesh()
-	_mesh_instance.material_override = MaterialLibrary.get_visual(material_id)
-	add_child(_mesh_instance)
+		_mesh_instance = null
+	if _detail:
+		_detail.queue_free()
+		_detail = null
+	# Aspecto detallado (componentes electrónicos, protoboard, etc.) si aplica.
+	var detail := PartVisuals.build(def)
+	if detail:
+		_detail = detail
+		add_child(_detail)
+	else:
+		_mesh_instance = MeshInstance3D.new()
+		_mesh_instance.mesh = _make_mesh()
+		_mesh_instance.material_override = MaterialLibrary.get_visual(material_id)
+		add_child(_mesh_instance)
 	_build_pick_body()
 
 ## Cuerpo estático solo para selección con el ratón (raycast físico).
@@ -106,7 +117,10 @@ func make_collision_shape() -> Shape3D:
 
 ## Crea una MeshInstance3D independiente con la misma malla y material,
 ## para usarla en el cuerpo rígido durante la simulación.
-func make_visual_clone() -> MeshInstance3D:
+func make_visual_clone() -> Node3D:
+	var detail := PartVisuals.build(def)
+	if detail:
+		return detail
 	var mi := MeshInstance3D.new()
 	mi.mesh = _make_mesh()
 	mi.material_override = MaterialLibrary.get_visual(material_id)
