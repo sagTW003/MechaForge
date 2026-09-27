@@ -1,0 +1,771 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [],
+	"creado": "2026-09-27T20:31:16",
+	"descripcion": "Carro con sensor ultrasónico en un recinto cerrado: si detecta una pared a menos de 25 cm, gira.",
+	"entorno": 1,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Evita obstáculos: con una pared a menos de 25 cm gira sobre sí mismo.\ncerca = dist1 < 0.25\nm1 = -4 if cerca else 6\nm2 = 6\noutput = m1",
+		"union": 0
+	},
+	"nombre": "Robot evita-obstáculos",
+	"piezas": [
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.504000008106232,
+				0.100000001490116,
+				-0.400000005960464
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1459933_82493"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.504000008106232,
+				0.100000001490116,
+				-0.400000005960464
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1460242_67332"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.400000005960464,
+				0.100000001490116,
+				0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1460495_34899"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.400000005960464,
+				0.100000001490116,
+				-0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1460859_23849"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.504000008106232,
+				0.100000001490116,
+				-0.200000002980232
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1461573_52426"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.504000008106232,
+				0.100000001490116,
+				-0.200000002980232
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1461890_11174"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.200000002980232,
+				0.100000001490116,
+				0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1462151_69383"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.200000002980232,
+				0.100000001490116,
+				-0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1462405_73795"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.504000008106232,
+				0.100000001490116,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1462652_67131"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.504000008106232,
+				0.100000001490116,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1462898_21192"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.0,
+				0.100000001490116,
+				0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1463146_84159"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.0,
+				0.100000001490116,
+				-0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1463408_12598"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.504000008106232,
+				0.100000001490116,
+				0.200000002980232
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1463647_72539"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.504000008106232,
+				0.100000001490116,
+				0.200000002980232
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1463886_63206"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.200000002980232,
+				0.100000001490116,
+				0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1464128_38397"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.200000002980232,
+				0.100000001490116,
+				-0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1464378_37670"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.504000008106232,
+				0.100000001490116,
+				0.400000005960464
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1464626_13855"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.504000008106232,
+				0.100000001490116,
+				0.400000005960464
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1464864_48452"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.400000005960464,
+				0.100000001490116,
+				0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1465110_80771"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.400000005960464,
+				0.100000001490116,
+				-0.504000008106232
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1465411_44149"
+		},
+		{
+			"def_id": "placa_chasis_160x120",
+			"dims_mm": {
+				"x": 160.0,
+				"y": 3.0,
+				"z": 120.0
+			},
+			"fijo": false,
+			"material": "aluminio",
+			"pos": [
+				0.100000001490116,
+				0.0219999998807907,
+				0.0500000007450581
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1465711_36964"
+		},
+		{
+			"def_id": "rueda_65",
+			"dims_mm": {
+				"altura": 26.0,
+				"radio": 32.5
+			},
+			"fijo": false,
+			"material": "caucho",
+			"pos": [
+				0.144999995827675,
+				0.0324999988079071,
+				0.125
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1465991_97328"
+		},
+		{
+			"def_id": "rueda_65",
+			"dims_mm": {
+				"altura": 26.0,
+				"radio": 32.5
+			},
+			"fijo": false,
+			"material": "caucho",
+			"pos": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.025000000372529
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1467449_39329"
+		},
+		{
+			"def_id": "bola_loca_20",
+			"dims_mm": {
+				"radio": 10.0
+			},
+			"fijo": false,
+			"material": "ptfe",
+			"pos": [
+				0.0399999991059303,
+				0.00999999977648258,
+				0.0500000007450581
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1468443_2054"
+		},
+		{
+			"def_id": "bateria_lipo_3s",
+			"dims_mm": {
+				"x": 105.0,
+				"y": 25.0,
+				"z": 34.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.109999999403954,
+				0.0359999984502792,
+				0.0500000007450581
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1468649_69016"
+		},
+		{
+			"def_id": "sensor_ultrasonido",
+			"dims_mm": {
+				"x": 45.0,
+				"y": 20.0,
+				"z": 15.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0299999993294477,
+				0.034000001847744,
+				0.0500000007450581
+			],
+			"rot": [
+				0.0,
+				3.14159274101257,
+				0.0
+			],
+			"uid": "p1468946_73277"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1465711_36964",
+			"anchor": [
+				0.144999995827675,
+				0.0324999988079071,
+				0.125
+			],
+			"axis": 2,
+			"b": "p1465991_97328",
+			"control_mode": 2,
+			"ctrl_kd": 0.0,
+			"ctrl_ki": 1.5,
+			"ctrl_kp": 0.3,
+			"ctrl_setpoint": 6.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 14.0,
+			"motor_stall_torque": 0.8,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1468894_27036"
+		},
+		{
+			"a": "p1465711_36964",
+			"anchor": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.025000000372529
+			],
+			"axis": 2,
+			"b": "p1467449_39329",
+			"control_mode": 2,
+			"ctrl_kd": 0.0,
+			"ctrl_ki": 1.5,
+			"ctrl_kp": 0.3,
+			"ctrl_setpoint": 6.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 14.0,
+			"motor_stall_torque": 0.8,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1468909_75128"
+		},
+		{
+			"a": "p1465711_36964",
+			"anchor": [
+				0.0399999991059303,
+				0.00999999977648258,
+				0.0500000007450581
+			],
+			"axis": 1,
+			"b": "p1468443_2054",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1468917_18611"
+		},
+		{
+			"a": "p1465711_36964",
+			"anchor": [
+				0.109999999403954,
+				0.0359999984502792,
+				0.0500000007450581
+			],
+			"axis": 1,
+			"b": "p1468649_69016",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1468925_85107"
+		},
+		{
+			"a": "p1465711_36964",
+			"anchor": [
+				0.0299999993294477,
+				0.034000001847744,
+				0.0500000007450581
+			],
+			"axis": 1,
+			"b": "p1468946_73277",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1469167_4852"
+		}
+	],
+	"version": 3,
+	"vista": {
+		"distancia": 1.7,
+		"objetivo": [
+			0.0,
+			0.0,
+			0.0
+		],
+		"pitch": -0.959931088596881,
+		"yaw": -0.523598775598299
+	}
+}

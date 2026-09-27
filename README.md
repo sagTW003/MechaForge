@@ -175,6 +175,34 @@ Pruebas del refactor:
 ...\Godot_...mono_win64.exe --headless --path project -- mfrefactor
 ```
 
+### Proyectos de ejemplo (menú «Ejemplos»)
+
+Nueve proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
+título; guárdalos con «Guardar como…»):
+
+| Ejemplo | Qué muestra |
+|---|---|
+| Brazo robótico 4 GDL | 4 articulaciones con PID; trayectorias senoidales desde el microcontrolador (`m1…m4`) |
+| Carro seguidor de línea | Dos sensores IR, pista de cinta y control diferencial de velocidad |
+| Robot evita-obstáculos | Ultrasonido frontal en un recinto: gira al detectar una pared a < 25 cm |
+| Reductora de engranajes 16:60 | Motor con inversión de giro, relación −16/60 y huelgo visibles |
+| Banco de control PID | Brazo siguiendo una onda (programa por bloques) con encoder en el eje |
+| Circuito LED en protoboard | Batería, resistencia y LED cableados (y soldados) en protoboard |
+| Grúa giratoria con contrapeso | Giro de la pluma por PID; estabilidad con el mapa de esfuerzos |
+| Puente con carga | Viga con dos cargas sobre pilares anclados |
+| Péndulo doble | Dinámica caótica con conservación de la energía |
+
+Los ejemplos son archivos `.mforge` en `project/templates/`: **añadir un proyecto
+al menú = copiar ahí un `.mforge`** (con `"nombre"` y `"descripcion"`). Se regeneran
+con `-- mfgen` (`project/templates/GeneradorEjemplos.gd`). Los proyectos guardan
+ahora también el programa del microcontrolador, la vista de cámara y el entorno.
+
+![Evita-obstáculos](docs/demo_03_evita_obstaculos.png)
+*Ejemplo «Robot evita-obstáculos»: sensor ultrasónico (`dist1`) y regla en el microcontrolador.*
+
+![Reductora](docs/demo_04_reductora.png)
+*Ejemplo «Reductora de engranajes 16:60».*
+
 ### Microcontrolador: bloques, sensores y varios actuadores
 
 El panel **Microcontrolador** tiene dos pestañas: **Script** y **Bloques** (tipo
@@ -202,8 +230,9 @@ Además del chat, MechaForge expone una **API local JSON-RPC** en
 con las herramientas `get_scene_state`, `add_part`, `connect_parts`, `set_property`,
 `remove_part`, `write_controller_script`, `run_simulation`, `stop_simulation`,
 `get_telemetry` y `analyze_design`. Todo cambio llega como **vista previa** y lo
-confirmas tú. La *skill* para OpenClaw está en `openclaw_skill/mechaforge/`
-(cópiala a `~/.openclaw/skills/` para activarla).
+confirmas tú. La *skill* **mechaforge** está instalada en OpenClaw (`~/.openclaw/skills/mechaforge`,
+copia de `openclaw_skill/mechaforge/`): pide a tu agente, con MechaForge abierto,
+cosas como *«usa mechaforge para analizar el diseño»*.
 
 ### Autoguardado
 
@@ -228,6 +257,7 @@ runtime de **.NET 8**.
 | Electrónica y control | `mfelec` |
 | Refactor gráfico/construcción/física | `mfrefactor` |
 | Detalles finales (API, sensores, bloques, plantillas…) | `mffinal` |
+| Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 
 ## Arquitectura
 

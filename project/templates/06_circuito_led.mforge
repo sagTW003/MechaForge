@@ -1,0 +1,161 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [
+		{
+			"a_key": "p1537155_87056:V+",
+			"b_key": "p1534939_3463:P1_2",
+			"color": "auto",
+			"soldado_a": true,
+			"tipo": "power",
+			"uid": "e1"
+		},
+		{
+			"a_key": "p1534939_3463:P1_5",
+			"b_key": "p1537672_21711:A",
+			"color": "rojo",
+			"tipo": "power",
+			"uid": "e2"
+		},
+		{
+			"a_key": "p1537672_21711:B",
+			"b_key": "p1534939_3463:a5_0",
+			"color": "amarillo",
+			"tipo": "signal",
+			"uid": "e3"
+		},
+		{
+			"a_key": "p1538665_49316:anodo",
+			"b_key": "p1534939_3463:a5_2",
+			"color": "naranja",
+			"tipo": "signal",
+			"uid": "e4"
+		},
+		{
+			"a_key": "p1538665_49316:catodo",
+			"b_key": "p1534939_3463:N1_4",
+			"color": "auto",
+			"tipo": "gnd",
+			"uid": "e5"
+		},
+		{
+			"a_key": "p1537155_87056:GND",
+			"b_key": "p1534939_3463:N1_1",
+			"color": "auto",
+			"soldado_a": true,
+			"tipo": "gnd",
+			"uid": "e6"
+		}
+	],
+	"creado": "2026-09-27T20:31:17",
+	"descripcion": "Batería LiPo, resistencia de 100 Ω y LED cableados en una protoboard. Pulsa «Analizar circuito».",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Generado por el editor de bloques.\nang = (60) * sin(2 * pi * (0.25) * t)\nang = clamp(ang, -75, 75)\noutput = ang",
+		"union": -1
+	},
+	"nombre": "Circuito LED en protoboard",
+	"piezas": [
+		{
+			"def_id": "protoboard",
+			"dims_mm": {
+				"x": 165.0,
+				"y": 9.0,
+				"z": 55.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.00499999988824129,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1534939_3463"
+		},
+		{
+			"def_id": "bateria_lipo_3s",
+			"dims_mm": {
+				"x": 105.0,
+				"y": 25.0,
+				"z": 34.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.0130000002682209,
+				-0.0599999986588955
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1537155_87056"
+		},
+		{
+			"def_id": "resistencia_100",
+			"dims_mm": {
+				"x": 24.0,
+				"y": 8.0,
+				"z": 8.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				-0.0599999986588955,
+				0.0120000001043081,
+				0.0199999995529652
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1537672_21711"
+		},
+		{
+			"def_id": "led",
+			"dims_mm": {
+				"altura": 9.0,
+				"radio": 2.5
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0199999995529652,
+				0.0120000001043081,
+				0.0199999995529652
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1538665_49316"
+		}
+	],
+	"uniones": [],
+	"version": 3,
+	"vista": {
+		"distancia": 0.4,
+		"objetivo": [
+			-0.00999999977648258,
+			0.0199999995529652,
+			0.0
+		],
+		"pitch": -0.610865238198015,
+		"yaw": -0.349065850398866
+	}
+}

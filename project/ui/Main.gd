@@ -242,6 +242,16 @@ func _ready() -> void:
 		add_child(ds)
 		var ti := ua.find("plantilla")
 		ds.call_deferred("run", out11, int(ua[ei + 1]) if ei >= 0 else 0, "gizmo" in ua, "close" in ua, ua[ti + 1] if ti >= 0 and ti + 1 < ua.size() else "")
+	elif "mfgen" in OS.get_cmdline_user_args():
+		var gen: Node = load("res://templates/GeneradorEjemplos.gd").new()
+		gen.main = self
+		add_child(gen)
+		gen.call_deferred("run")
+	elif "mfejemplos" in OS.get_cmdline_user_args():
+		var et: Node = load("res://tests/EjemplosTests.gd").new()
+		et.main = self
+		add_child(et)
+		et.call_deferred("run")
 	elif "mffinal" in OS.get_cmdline_user_args():
 		var ft: Node = load("res://tests/FinalTests.gd").new()
 		ft.main = self
@@ -1843,6 +1853,17 @@ func _build_topbar() -> Control:
 		pm.add_item(t)
 	pm.id_pressed.connect(_on_template_selected)
 	hb.add_child(plant)
+	var ejemplos := MenuButton.new()
+	ejemplos.text = "Ejemplos"
+	ejemplos.focus_mode = Control.FOCUS_NONE
+	ejemplos.tooltip_text = "Proyectos completos listos para simular"
+	var em := ejemplos.get_popup()
+	var ex_list := _example_projects()
+	for i in range(ex_list.size()):
+		em.add_item(ex_list[i]["nombre"], i)
+		em.set_item_tooltip(i, ex_list[i]["descripcion"])
+	em.id_pressed.connect(func(i): _open_example(ex_list[i]["ruta"]))
+	hb.add_child(ejemplos)
 	hb.add_child(_button("BOM", _export_bom))
 	hb.add_child(_button("Importar 3D", _import_model))
 	var stress_chk := CheckButton.new()
@@ -2925,6 +2946,7 @@ func _on_new() -> void:
 		_free_part(c)
 	connections.clear()
 	wires.clear()
+	project_meta = {}
 	_redraw_connection_markers()
 	_redraw_wires()
 	_refresh_uniones_panel()
@@ -2941,7 +2963,7 @@ func _on_save() -> void:
 	if Config.current_project_path == "":
 		_on_save_as()
 		return
-	var err := ProjectSerializer.save(parts_root, Config.current_project_path, connections, wires)
+	var err := ProjectSerializer.save(parts_root, Config.current_project_path, connections, wires, _project_extra())
 	if err == OK:
 		Config.project_dirty = false
 		Config.notify("Guardado en %s" % Config.current_project_path, 4.0)
@@ -2976,6 +2998,7 @@ func _load_project(path: String, is_autosave: bool = false) -> bool:
 	var bat: Dictionary = doc.get("bateria", {})
 	if bat.has("voltaje"): Config.battery_voltage = bat["voltaje"]
 	if bat.has("capacidad_mah"): Config.battery_capacity_mah = bat["capacidad_mah"]
+	_apply_project_extra(doc)
 	_populate_parts_tree()
 	_redraw_connection_markers()
 	_redraw_wires()
@@ -2988,6 +3011,80 @@ func _load_project(path: String, is_autosave: bool = false) -> bool:
 	_update_counts()
 	Config.notify(("Recuperado el autoguardado (%d piezas)." if is_autosave else "Cargadas %d piezas desde " + path) % n, 4.0)
 	return true
+
+## Datos del proyecto además de la escena: programa del microcontrolador, vista
+## de la cámara, entorno y metadatos (nombre/descripción de los ejemplos).
+var project_meta: Dictionary = {}
+
+func _project_extra() -> Dictionary:
+	var ctrl := _controlled_connections()
+	var ti := -1
+	for i in range(ctrl.size()):
+		if (ctrl[i] as Connection).uid == mcu_target_uid:
+			ti = i
+	var extra := {
+		"microcontrolador": {"script": mcu_editor.text if mcu_editor else "", "activo": mcu_enabled, "union": ti},
+		"vista": {"objetivo": _arr(camera.target), "distancia": camera.distance,
+			"yaw": camera._yaw, "pitch": camera._pitch},
+		"entorno": work_env.mode,
+	}
+	for k in ["nombre", "descripcion"]:
+		if project_meta.has(k):
+			extra[k] = project_meta[k]
+	return extra
+
+func _apply_project_extra(doc: Dictionary) -> void:
+	project_meta = {}
+	for k in ["nombre", "descripcion"]:
+		if doc.has(k):
+			project_meta[k] = doc[k]
+	if doc.has("entorno"):
+		work_env.set_mode(int(doc["entorno"]))
+	var v = doc.get("vista", null)
+	if typeof(v) == TYPE_DICTIONARY:
+		camera.target = _vec(v.get("objetivo", [0, 0.1, 0]))
+		camera.distance = float(v.get("distancia", 1.2))
+		camera._yaw = float(v.get("yaw", camera._yaw))
+		camera._pitch = float(v.get("pitch", camera._pitch))
+		camera._update_transform()
+	_stop_mcu()
+	var m = doc.get("microcontrolador", null)
+	if typeof(m) == TYPE_DICTIONARY and mcu_editor:
+		mcu_editor.text = str(m.get("script", MCU_DEFAULT))
+		if bool(m.get("activo", false)):
+			_apply_mcu()
+			var ti := int(m.get("union", 0))
+			if ti >= 0 and ti < mcu_target_selector.item_count:
+				mcu_target_selector.select(ti)
+				mcu_target_uid = mcu_target_selector.get_item_metadata(ti)
+			mcu_panel.set_collapsed(false)
+
+# --- Proyectos de ejemplo (res://templates/*.mforge) ---
+const EXAMPLES_DIR := "res://templates"
+
+## Lista de proyectos de ejemplo: [{ruta, nombre, descripcion}] (orden alfabético).
+func _example_projects() -> Array:
+	var out := []
+	var dir := DirAccess.open(EXAMPLES_DIR)
+	if dir == null:
+		return out
+	var files := Array(dir.get_files())
+	files.sort()
+	for f in files:
+		if f.get_extension() != Config.PROJECT_EXTENSION:
+			continue
+		var path := EXAMPLES_DIR.path_join(f)
+		var doc := ProjectSerializer.load_document(path)
+		out.append({"ruta": path, "nombre": str(doc.get("nombre", f.get_basename())),
+			"descripcion": str(doc.get("descripcion", ""))})
+	return out
+
+## Abre un ejemplo como proyecto nuevo sin título (se guarda con «Guardar como»).
+func _open_example(path: String) -> void:
+	if _load_project(path):
+		Config.current_project_path = ""
+		Config.project_dirty = false
+		Config.notify("Ejemplo: %s — %s" % [project_meta.get("nombre", ""), project_meta.get("descripcion", "")], 9.0)
 
 # --- Autoguardado ---
 const AUTOSAVE_PATH := "user://autoguardado.mforge"
@@ -3008,7 +3105,7 @@ func _setup_autosave() -> void:
 func _autosave() -> bool:
 	if not Config.project_dirty or simulator.is_running():
 		return false
-	var err := ProjectSerializer.save(parts_root, AUTOSAVE_PATH, connections, wires)
+	var err := ProjectSerializer.save(parts_root, AUTOSAVE_PATH, connections, wires, _project_extra())
 	if err == OK and status_label:
 		status_label.text = "Autoguardado (%s)" % Time.get_time_string_from_system()
 	return err == OK

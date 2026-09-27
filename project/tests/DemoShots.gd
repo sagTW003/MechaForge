@@ -12,6 +12,9 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template == "seguidor":
 		await _template_shot(out_path)
 		return
+	if template.begins_with("ej:"):
+		await _example_shot("res://templates/%s.mforge" % template.substr(3), out_path)
+		return
 	var sp := func(id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
 		return main._spawn(id, mat, pos, rot)
 	# Placa base perforada y bastidor de perfiles 2020.
@@ -78,6 +81,19 @@ func _template_shot(out_path: String) -> void:
 	cam._yaw = deg_to_rad(-60)
 	cam._pitch = deg_to_rad(-35)
 	cam._update_transform()
+	main._toggle_simulation()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(3.0).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Abre un proyecto de ejemplo desde su archivo, lo simula 3 s y captura.
+func _example_shot(path: String, out_path: String) -> void:
+	main._open_example(path)
+	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel]:
+		if p: p.visible = false
 	main._toggle_simulation()
 	MaterialLibrary.wait_textures()
 	await get_tree().create_timer(3.0).timeout

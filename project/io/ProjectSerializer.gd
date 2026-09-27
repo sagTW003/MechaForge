@@ -15,7 +15,9 @@ const FORMAT_ID := "mechaforge"
 const FORMAT_VERSION := 3
 
 ## Construye el diccionario del proyecto (piezas, uniones y cables).
-static func build_document(parts_root: Node3D, connections: Array = [], wires: Array = []) -> Dictionary:
+## "extra": datos adicionales del proyecto (microcontrolador, vista, entorno,
+## nombre y descripción) que se guardan junto a piezas, uniones y cables.
+static func build_document(parts_root: Node3D, connections: Array = [], wires: Array = [], extra: Dictionary = {}) -> Dictionary:
 	var piezas := []
 	for child in parts_root.get_children():
 		if child is PartInstance:
@@ -23,7 +25,7 @@ static func build_document(parts_root: Node3D, connections: Array = [], wires: A
 	var uniones := []
 	for c in connections:
 		uniones.append((c as Connection).to_dict())
-	return {
+	var doc := {
 		"formato": FORMAT_ID,
 		"version": FORMAT_VERSION,
 		"creado": Time.get_datetime_string_from_system(true),
@@ -34,6 +36,8 @@ static func build_document(parts_root: Node3D, connections: Array = [], wires: A
 		"uniones": uniones,
 		"cables": wires,
 	}
+	doc.merge(extra, true)
+	return doc
 
 ## Reconstruye las uniones de un documento como Array[Connection].
 static func parse_connections(doc: Dictionary) -> Array:
@@ -52,8 +56,8 @@ static func parse_wires(doc: Dictionary) -> Array:
 	return out
 
 ## Guarda a disco. Devuelve OK o un código de error de Godot.
-static func save(parts_root: Node3D, path: String, connections: Array = [], wires: Array = []) -> int:
-	var doc := build_document(parts_root, connections, wires)
+static func save(parts_root: Node3D, path: String, connections: Array = [], wires: Array = [], extra: Dictionary = {}) -> int:
+	var doc := build_document(parts_root, connections, wires, extra)
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()

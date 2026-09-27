@@ -37,6 +37,8 @@ var _step_timer: Dictionary = {}    # conn.uid -> tiempo acumulado hasta el sigu
 var _stall_time: Dictionary = {}    # conn.uid -> tiempo en bloqueo (servo/motor)
 var _stalled: Dictionary = {}       # conn.uid -> true si el eje está bloqueado
 var _temp: Dictionary = {}          # conn.uid -> temperatura estimada del bobinado (°C)
+var _sp_prev: Dictionary = {}       # conn.uid -> consigna anterior (prealimentación)
+var _sp_ff: Dictionary = {}         # conn.uid -> derivada filtrada de la consigna
 var _overheat_warned: Dictionary = {}
 
 # --- Modelo térmico del motor (primer orden) ---
@@ -120,6 +122,12 @@ func start(connections: Array) -> void:
 		for u in [conn.a_uid, conn.b_uid]:
 			if _bodies.has(u):
 				(_bodies[u] as RigidBody3D).can_sleep = false
+	# 2b) Engranajes: grupo rígido de cada rueda (piezas unidas con uniones fijas),
+	# para usar la inercia real del conjunto en la restricción de engrane.
+	for jd in _joints:
+		if (jd["conn"] as Connection).tipo == Connection.Tipo.ENGRANAJE:
+			jd["grp_a"] = _rigid_group(jd["a"])
+			jd["grp_b"] = _rigid_group(jd["b"])
 	# 3) Marcador de centro de masa.
 	_com_marker = _make_com_marker()
 	_sim_root.add_child(_com_marker)
@@ -163,7 +171,7 @@ func stop() -> void:
 		Electronics.PidDestroy(_pid_ids[uid])
 	_pid_ids.clear(); _ctrl_angle.clear(); _runtime_target.clear()
 	_step_pos.clear(); _step_timer.clear(); _stall_time.clear(); _stalled.clear()
-	_temp.clear(); _overheat_warned.clear()
+	_temp.clear(); _overheat_warned.clear(); _sp_prev.clear(); _sp_ff.clear(); _angle_ref.clear(); _axis_local.clear()
 	_motor_frac.clear(); _history.clear(); _elec = {}
 	# Restaurar piezas a su estado inicial.
 	for child in _parts_root.get_children():
@@ -377,10 +385,11 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 	var conn: Connection = jd["conn"]
 	var a: RigidBody3D = jd["a"]
 	var b: RigidBody3D = jd["b"]
-	var axis := conn.axis_vector().normalized()
+	var axis := _joint_axis(conn, a)
 	var omega: float = (b.angular_velocity - a.angular_velocity).dot(axis)
-	# Ángulo relativo acumulado (integración de la velocidad).
-	_ctrl_angle[conn.uid] = _ctrl_angle.get(conn.uid, 0.0) + omega * delta
+	# Ángulo relativo EXACTO a partir de las orientaciones (sin deriva: integrar la
+	# velocidad acumula error cuando el solver corrige posiciones).
+	_ctrl_angle[conn.uid] = _joint_angle(conn.uid, a, b, axis)
 	if conn.control_mode == Connection.ControlMode.NINGUNO:
 		return
 	var pid: int = _pid_ids.get(conn.uid, -1)
@@ -399,6 +408,15 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 		_runtime_target[conn.uid] = _stepper_command(conn, meas, setpoint, delta)
 		return
 	var cmd: float = Electronics.PidUpdate(pid, meas, delta)
+	# Control de posición: prealimentación con la velocidad de la consigna, para
+	# seguir trayectorias sin el retraso típico de un lazo proporcional.
+	if conn.control_mode == Connection.ControlMode.POSICION:
+		var prev: float = _sp_prev.get(conn.uid, setpoint)
+		var ff: float = _sp_ff.get(conn.uid, 0.0)
+		ff += ((setpoint - prev) / delta - ff) * 0.3
+		_sp_prev[conn.uid] = setpoint
+		_sp_ff[conn.uid] = ff
+		cmd += ff
 	# Control de velocidad: el motor de la bisagra ya es un servo de velocidad, así
 	# que la consigna va como prealimentación y el PID solo corrige (carga, fricción).
 	# Usar la salida del PID como velocidad directa hace oscilar el lazo cada paso.
@@ -409,6 +427,33 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 		vmax = minf(vmax, conn.servo_speed())          # velocidad nominal (s/60°)
 	_runtime_target[conn.uid] = clampf(cmd, -vmax, vmax)
 	_update_stall(conn, setpoint - meas, omega, delta)
+
+var _angle_ref: Dictionary = {}     # conn.uid -> {qa0, qb0, axis_a, last, acc}
+var _axis_local: Dictionary = {}    # conn.uid -> eje de la unión en el marco del cuerpo A
+
+## Eje actual de la unión en el mundo: el definido al crearla, pero solidario al
+## cuerpo A (en un vehículo que gira, el eje de las ruedas gira con el chasis).
+func _joint_axis(conn: Connection, a: RigidBody3D) -> Vector3:
+	var q := a.global_transform.basis.get_rotation_quaternion()
+	if not _axis_local.has(conn.uid):
+		_axis_local[conn.uid] = (q.inverse() * conn.axis_vector()).normalized()
+	return (q * (_axis_local[conn.uid] as Vector3)).normalized()
+
+## Giro de b respecto de a alrededor del eje de la unión desde el inicio (rad),
+## desenrollado para admitir varias vueltas.
+func _joint_angle(uid: String, a: RigidBody3D, b: RigidBody3D, axis: Vector3) -> float:
+	var qa := a.global_transform.basis.get_rotation_quaternion()
+	var qb := b.global_transform.basis.get_rotation_quaternion()
+	if not _angle_ref.has(uid):
+		_angle_ref[uid] = {"qa0": qa, "qb0": qb, "axis_a": (qa.inverse() * axis).normalized(), "last": 0.0, "acc": 0.0}
+	var r: Dictionary = _angle_ref[uid]
+	var d: Quaternion = qa.inverse() * qb * (r["qb0"] as Quaternion).inverse() * (r["qa0"] as Quaternion)
+	var ax: Vector3 = r["axis_a"]
+	var ang := 2.0 * atan2(Vector3(d.x, d.y, d.z).dot(ax), d.w)
+	var step := wrapf(ang - float(r["last"]), -PI, PI)
+	r["last"] = ang
+	r["acc"] = float(r["acc"]) + step
+	return r["acc"]
 
 ## Motor paso a paso: la posición avanza a SALTOS discretos (paso/microstep) hacia
 ## la consigna, a la frecuencia de pasos máxima; entre pasos el rotor se retiene
@@ -477,7 +522,7 @@ func _drive_motor(jd: Dictionary) -> void:
 	var hinge: HingeJoint3D = jd["joint"]
 	var a: RigidBody3D = jd["a"]
 	var b: RigidBody3D = jd["b"]
-	var axis := conn.axis_vector().normalized()
+	var axis := _joint_axis(conn, a)
 	# Curva torque–velocidad de motor DC: torque disponible cae con la velocidad.
 	var omega: float = (b.angular_velocity - a.angular_velocity).dot(axis)
 	var step := 1.0 / float(Engine.physics_ticks_per_second)
@@ -510,14 +555,15 @@ func _drive_gear(jd: Dictionary, delta: float) -> void:
 	var conn: Connection = jd["conn"]
 	var a: RigidBody3D = jd["a"]
 	var b: RigidBody3D = jd["b"]
-	var axis := conn.axis_vector().normalized()
+	var axis := _joint_axis(conn, a)
 	var r := conn.effective_gear_ratio()
 	var sa := PhysicsServer3D.body_get_direct_state(a.get_rid())
 	var sb := PhysicsServer3D.body_get_direct_state(b.get_rid())
 	if sa == null or sb == null:
 		return
-	var inv_ia := axis.dot(sa.inverse_inertia_tensor * axis)
-	var inv_ib := axis.dot(sb.inverse_inertia_tensor * axis)
+	# Inercia del CONJUNTO de cada rueda (rueda + piezas fijadas a ella).
+	var inv_ia := _group_inv_inertia(jd.get("grp_a", [a]), a.global_position, axis)
+	var inv_ib := _group_inv_inertia(jd.get("grp_b", [b]), b.global_position, axis)
 	var denom := r * r * inv_ia + inv_ib
 	if denom <= 0.0:
 		return
@@ -545,14 +591,61 @@ func _drive_gear(jd: Dictionary, delta: float) -> void:
 		# Proyección de posición: corrige la interpenetración girando la rueda b
 		# (sin añadir velocidad), para que no se desincronicen con el tiempo.
 		var slop := deg_to_rad(0.05)
-		if absf(pen) > slop:
+		if absf(pen) > slop and inv_ib > 0.0:
 			var corr := (pen - signf(pen) * slop) * 0.5
-			var xf := sb.transform
-			xf.basis = Basis(axis, -corr) * xf.basis
-			sb.transform = xf
+			_rotate_group(jd.get("grp_b", [b]), b.global_position, axis, -corr)
 			phase -= corr
 	jd["phase"] = phase
 	jd["torque"] = torque
+
+## Cuerpos unidos rígidamente (uniones FIJAS, transitivo) a "body", incluido él.
+func _rigid_group(body: RigidBody3D) -> Array:
+	var group := [body]
+	var i := 0
+	while i < group.size():
+		var cur: RigidBody3D = group[i]
+		for c in _connections:
+			if c.tipo != Connection.Tipo.FIJA:
+				continue
+			var other: RigidBody3D = null
+			if _bodies.get(c.a_uid) == cur: other = _bodies.get(c.b_uid)
+			elif _bodies.get(c.b_uid) == cur: other = _bodies.get(c.a_uid)
+			if other and not group.has(other):
+				group.append(other)
+		i += 1
+	return group
+
+## Inversa del momento de inercia de un grupo rígido respecto de la recta
+## (center, axis) — teorema de Steiner. 0 si el grupo está anclado.
+func _group_inv_inertia(group: Array, center: Vector3, axis: Vector3) -> float:
+	var total := 0.0
+	for b in group:
+		var body: RigidBody3D = b
+		if body.freeze:
+			return 0.0
+		var st := PhysicsServer3D.body_get_direct_state(body.get_rid())
+		if st == null:
+			continue
+		var inv: Basis = st.inverse_inertia_tensor
+		var i_axis := 0.0
+		if absf(inv.determinant()) > 1e-30:
+			i_axis = axis.dot(inv.inverse() * axis)
+		var r := body.global_position - center
+		r -= axis * r.dot(axis)
+		total += i_axis + body.mass * r.length_squared()
+	return 1.0 / total if total > 0.0 else 0.0
+
+## Gira rígidamente un grupo de cuerpos alrededor de la recta (center, axis).
+func _rotate_group(group: Array, center: Vector3, axis: Vector3, ang: float) -> void:
+	var rot := Basis(axis, ang)
+	for b in group:
+		var st := PhysicsServer3D.body_get_direct_state((b as RigidBody3D).get_rid())
+		if st == null:
+			continue
+		var xf := st.transform
+		xf.origin = center + rot * (xf.origin - center)
+		xf.basis = rot * xf.basis
+		st.transform = xf
 
 ## Par transmitido por un engranaje (N·m, último paso) — telemetría.
 func gear_torque(uid: String) -> float:

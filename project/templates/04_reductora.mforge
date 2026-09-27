@@ -1,0 +1,276 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [],
+	"creado": "2026-09-27T20:31:16",
+	"descripcion": "Motor con control de velocidad que invierte el giro; el engranaje Z60 gira 3.75 veces más lento y muestra el huelgo.",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Motor a ±10 rad/s, invierte cada ~6 s (observa el huelgo al invertir).\noutput = 10 if sin(0.5 * t) > 0 else -10",
+		"union": 0
+	},
+	"nombre": "Reductora de engranajes 16:60",
+	"piezas": [
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "aluminio",
+			"pos": [
+				0.0,
+				0.00400000018998981,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1489857_4717"
+		},
+		{
+			"def_id": "engranaje_m1_z16",
+			"dims_mm": {
+				"agujero": 5.0,
+				"ancho": 8.0,
+				"dientes": 16.0,
+				"modulo": 1.0
+			},
+			"fijo": false,
+			"material": "acero",
+			"pos": [
+				-0.0379999987781048,
+				0.0153999999165535,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1490176_58785"
+		},
+		{
+			"def_id": "engranaje_m1_z60",
+			"dims_mm": {
+				"agujero": 5.0,
+				"ancho": 8.0,
+				"dientes": 60.0,
+				"modulo": 1.0
+			},
+			"fijo": false,
+			"material": "cobre",
+			"pos": [
+				0.0,
+				0.0153999999165535,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1492925_29537"
+		},
+		{
+			"def_id": "perfil_2020_100",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 40.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "aluminio_anodizado",
+			"pos": [
+				0.00499999988824129,
+				0.0348000004887581,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1499541_97818"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1489857_4717",
+			"anchor": [
+				-0.0379999987781048,
+				0.0153999999165535,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1490176_58785",
+			"control_mode": 2,
+			"ctrl_kd": 0.0,
+			"ctrl_ki": 1.5,
+			"ctrl_kp": 0.3,
+			"ctrl_setpoint": 10.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 20.0,
+			"motor_stall_torque": 1.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1500262_40046"
+		},
+		{
+			"a": "p1489857_4717",
+			"anchor": [
+				0.0,
+				0.0153999999165535,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1492925_29537",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1500281_6769"
+		},
+		{
+			"a": "p1490176_58785",
+			"anchor": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1492925_29537",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 2.0,
+			"gear_efficiency": 0.95,
+			"gear_ratio": 1.0,
+			"gear_z1": 16,
+			"gear_z2": 60,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 4,
+			"uid": "c1500290_66312"
+		},
+		{
+			"a": "p1492925_29537",
+			"anchor": [
+				0.0,
+				0.0153999999165535,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1499541_97818",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1500301_48421"
+		}
+	],
+	"version": 3,
+	"vista": {
+		"distancia": 0.3,
+		"objetivo": [
+			-0.00999999977648258,
+			0.0149999996647239,
+			0.0
+		],
+		"pitch": -0.785398163397448,
+		"yaw": -0.436332312998582
+	}
+}

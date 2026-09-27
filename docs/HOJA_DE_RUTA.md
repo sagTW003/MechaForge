@@ -152,6 +152,17 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       marcadores de uniones mal orientados, búfer HTTP.
 - [x] Pruebas `mffinal` (37/37).
 
+## ✅ Proyectos de ejemplo e instalación de la skill
+- [x] **9 proyectos de ejemplo** en `project/templates/*.mforge` (menú «Ejemplos»):
+      brazo 4 GDL, seguidor de línea, evita-obstáculos, reductora 16:60, banco PID,
+      circuito LED, grúa, puente con carga y péndulo doble. Generador reproducible
+      (`-- mfgen`) y prueba que abre y simula cada uno (`-- mfejemplos`, 29/29).
+- [x] Los proyectos guardan programa del microcontrolador, vista y entorno.
+- [x] Skill `mechaforge` instalada en OpenClaw (`openclaw skills info mechaforge` → Ready).
+- [x] Correcciones de física halladas con los ejemplos: inercia del conjunto rígido
+      en engranajes, prealimentación en control de posición, ángulo de unión exacto
+      (sin deriva) y eje de la unión solidario al cuerpo (vehículos que giran).
+
 ## ✅ Fase 6 — Pulido y empaquetado
 - [x] Rendimiento verificado: **119 FPS** promedio (1 % bajo 111) con 200 piezas en
       Ultra (RTX 5060); mallas compartidas, texturas en hilos, física de cables con

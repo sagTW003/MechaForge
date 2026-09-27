@@ -1,0 +1,1041 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [],
+	"creado": "2026-09-27T20:31:16",
+	"descripcion": "Dos sensores IR sobre una pista de cinta y control diferencial de velocidad de las ruedas.",
+	"entorno": 1,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Seguidor de línea: dos sensores a los lados de la cinta.\nbase = 6\nerr = linea1 - linea2\nm1 = base - 7 * err\nm2 = base + 7 * err\noutput = m1",
+		"union": 0
+	},
+	"nombre": "Carro seguidor de línea",
+	"piezas": [
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.300000011920929,
+				0.000300000014249235,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1416690_11816"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.0000000000000000555111512312578,
+				0.000300000014249235,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1417279_22313"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.300000011920929,
+				0.000300000014249235,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1417438_39143"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.300000011920929,
+				0.000300000014249235,
+				0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1417646_63057"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.0000000000000000555111512312578,
+				0.000300000014249235,
+				0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1417803_98996"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 302.0,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.300000011920929,
+				0.000300000014249235,
+				0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1417911_44557"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.482631534337997,
+				0.000300000014249235,
+				-0.247861221432686
+			],
+			"rot": [
+				0.0,
+				0.130899697542191,
+				0.0
+			],
+			"uid": "p1418043_58939"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.545670866966248,
+				0.000300000014249235,
+				-0.230969876050949
+			],
+			"rot": [
+				0.0,
+				0.392699092626572,
+				0.0
+			],
+			"uid": "p1418304_19390"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.602190375328064,
+				0.000300000014249235,
+				-0.198338329792023
+			],
+			"rot": [
+				0.0,
+				0.65449845790863,
+				0.0
+			],
+			"uid": "p1418493_82153"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.648338317871094,
+				0.000300000014249235,
+				-0.152190357446671
+			],
+			"rot": [
+				0.0,
+				0.916297852993011,
+				0.0
+			],
+			"uid": "p1418612_84168"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.680969893932343,
+				0.000300000014249235,
+				-0.0956708565354347
+			],
+			"rot": [
+				0.0,
+				1.17809724807739,
+				0.0
+			],
+			"uid": "p1418716_49993"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.697861194610596,
+				0.000300000014249235,
+				-0.0326315462589264
+			],
+			"rot": [
+				0.0,
+				1.43989658355713,
+				0.0
+			],
+			"uid": "p1418820_11667"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.697861194610596,
+				0.000300000014249235,
+				0.0326315462589264
+			],
+			"rot": [
+				0.0,
+				1.70169603824615,
+				0.0
+			],
+			"uid": "p1418922_99967"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.680969893932343,
+				0.000300000014249235,
+				0.0956708565354347
+			],
+			"rot": [
+				0.0,
+				1.96349537372589,
+				0.0
+			],
+			"uid": "p1419026_48180"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.648338317871094,
+				0.000300000014249235,
+				0.152190357446671
+			],
+			"rot": [
+				0.0,
+				2.22529482841492,
+				0.0
+			],
+			"uid": "p1419137_50904"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.602190375328064,
+				0.000300000014249235,
+				0.198338329792023
+			],
+			"rot": [
+				0.0,
+				2.48709416389465,
+				0.0
+			],
+			"uid": "p1419237_27588"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.545670866966248,
+				0.000300000014249235,
+				0.230969876050949
+			],
+			"rot": [
+				0.0,
+				2.74889349937439,
+				0.0
+			],
+			"uid": "p1419337_38208"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				-0.482631534337997,
+				0.000300000014249235,
+				0.247861221432686
+			],
+			"rot": [
+				0.0,
+				3.01069307327271,
+				0.0
+			],
+			"uid": "p1419433_26758"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.482631534337997,
+				0.000300000014249235,
+				-0.247861221432686
+			],
+			"rot": [
+				0.0,
+				-0.130899697542191,
+				0.0
+			],
+			"uid": "p1419535_81643"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.545670866966248,
+				0.000300000014249235,
+				-0.230969876050949
+			],
+			"rot": [
+				0.0,
+				-0.392699092626572,
+				0.0
+			],
+			"uid": "p1419638_73875"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.602190375328064,
+				0.000300000014249235,
+				-0.198338329792023
+			],
+			"rot": [
+				0.0,
+				-0.65449845790863,
+				0.0
+			],
+			"uid": "p1419759_66220"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.648338317871094,
+				0.000300000014249235,
+				-0.152190357446671
+			],
+			"rot": [
+				0.0,
+				-0.916297852993011,
+				0.0
+			],
+			"uid": "p1419978_11476"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.680969893932343,
+				0.000300000014249235,
+				-0.0956708565354347
+			],
+			"rot": [
+				0.0,
+				-1.17809724807739,
+				0.0
+			],
+			"uid": "p1420123_77297"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.697861194610596,
+				0.000300000014249235,
+				-0.0326315462589264
+			],
+			"rot": [
+				0.0,
+				-1.43989658355713,
+				0.0
+			],
+			"uid": "p1420245_37704"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.697861194610596,
+				0.000300000014249235,
+				0.0326315462589264
+			],
+			"rot": [
+				0.0,
+				-1.70169603824615,
+				0.0
+			],
+			"uid": "p1420357_77896"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.680969893932343,
+				0.000300000014249235,
+				0.0956708565354347
+			],
+			"rot": [
+				0.0,
+				-1.96349537372589,
+				0.0
+			],
+			"uid": "p1420480_33861"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.648338317871094,
+				0.000300000014249235,
+				0.152190357446671
+			],
+			"rot": [
+				0.0,
+				-2.22529482841492,
+				0.0
+			],
+			"uid": "p1420672_38989"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.602190375328064,
+				0.000300000014249235,
+				0.198338329792023
+			],
+			"rot": [
+				0.0,
+				-2.48709416389465,
+				0.0
+			],
+			"uid": "p1420838_28720"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497873,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.545670866966248,
+				0.000300000014249235,
+				0.230969876050949
+			],
+			"rot": [
+				0.0,
+				-2.74889349937439,
+				0.0
+			],
+			"uid": "p1420992_46195"
+		},
+		{
+			"def_id": "cinta_linea",
+			"dims_mm": {
+				"x": 68.4498469497874,
+				"y": 0.6,
+				"z": 19.0
+			},
+			"fijo": true,
+			"material": "caucho",
+			"pos": [
+				0.482631534337997,
+				0.000300000014249235,
+				0.247861221432686
+			],
+			"rot": [
+				0.0,
+				-3.01069307327271,
+				0.0
+			],
+			"uid": "p1421145_30949"
+		},
+		{
+			"def_id": "placa_chasis_160x120",
+			"dims_mm": {
+				"x": 160.0,
+				"y": 3.0,
+				"z": 120.0
+			},
+			"fijo": false,
+			"material": "aluminio",
+			"pos": [
+				0.100000001490116,
+				0.0219999998807907,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1421295_52181"
+		},
+		{
+			"def_id": "rueda_65",
+			"dims_mm": {
+				"altura": 26.0,
+				"radio": 32.5
+			},
+			"fijo": false,
+			"material": "caucho",
+			"pos": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.174999997019768
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1421744_4314"
+		},
+		{
+			"def_id": "rueda_65",
+			"dims_mm": {
+				"altura": 26.0,
+				"radio": 32.5
+			},
+			"fijo": false,
+			"material": "caucho",
+			"pos": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.324999988079071
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1424840_36411"
+		},
+		{
+			"def_id": "bola_loca_20",
+			"dims_mm": {
+				"radio": 10.0
+			},
+			"fijo": false,
+			"material": "ptfe",
+			"pos": [
+				0.0399999991059303,
+				0.00999999977648258,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1426110_61235"
+		},
+		{
+			"def_id": "sensor_linea",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 8.0,
+				"z": 10.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.025000000372529,
+				0.016499999910593,
+				-0.236000001430511
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1426554_1228"
+		},
+		{
+			"def_id": "sensor_linea",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 8.0,
+				"z": 10.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.025000000372529,
+				0.016499999910593,
+				-0.263999998569489
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1427826_20508"
+		},
+		{
+			"def_id": "bateria_lipo_3s",
+			"dims_mm": {
+				"x": 105.0,
+				"y": 25.0,
+				"z": 34.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.109999999403954,
+				0.0359999984502792,
+				-0.25
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1428100_78626"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.174999997019768
+			],
+			"axis": 2,
+			"b": "p1421744_4314",
+			"control_mode": 2,
+			"ctrl_kd": 0.0,
+			"ctrl_ki": 1.5,
+			"ctrl_kp": 0.3,
+			"ctrl_setpoint": 6.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 14.0,
+			"motor_stall_torque": 0.8,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1428332_85545"
+		},
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.144999995827675,
+				0.0324999988079071,
+				-0.324999988079071
+			],
+			"axis": 2,
+			"b": "p1424840_36411",
+			"control_mode": 2,
+			"ctrl_kd": 0.0,
+			"ctrl_ki": 1.5,
+			"ctrl_kp": 0.3,
+			"ctrl_setpoint": 6.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 14.0,
+			"motor_stall_torque": 0.8,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1428345_29214"
+		},
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.0399999991059303,
+				0.00999999977648258,
+				-0.25
+			],
+			"axis": 1,
+			"b": "p1426110_61235",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1428355_82705"
+		},
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.025000000372529,
+				0.016499999910593,
+				-0.236000001430511
+			],
+			"axis": 1,
+			"b": "p1426554_1228",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1428360_58749"
+		},
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.025000000372529,
+				0.016499999910593,
+				-0.263999998569489
+			],
+			"axis": 1,
+			"b": "p1427826_20508",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1428367_96646"
+		},
+		{
+			"a": "p1421295_52181",
+			"anchor": [
+				0.109999999403954,
+				0.0359999984502792,
+				-0.25
+			],
+			"axis": 1,
+			"b": "p1428100_78626",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1428373_96506"
+		}
+	],
+	"version": 3,
+	"vista": {
+		"distancia": 1.6,
+		"objetivo": [
+			0.0,
+			0.0,
+			0.0
+		],
+		"pitch": -0.785398163397448,
+		"yaw": -0.610865238198015
+	}
+}

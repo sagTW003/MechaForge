@@ -1,0 +1,295 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [],
+	"creado": "2026-09-27T20:31:17",
+	"descripcion": "Viga de acero sobre dos pilares con dos placas de carga. Activa «Esfuerzos» para ver el mapa de color.",
+	"entorno": 2,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Giro de la pluma: barrido de ±60° (PID de posición).\noutput = 60 * sin(0.3 * t)",
+		"union": -1
+	},
+	"nombre": "Puente con carga",
+	"piezas": [
+		{
+			"def_id": "perfil_2020_200",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 200.0,
+				"z": 20.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.25,
+				0.100000001490116,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1629524_68409"
+		},
+		{
+			"def_id": "perfil_2020_200",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 200.0,
+				"z": 20.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.25,
+				0.100000001490116,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1629726_91215"
+		},
+		{
+			"def_id": "viga_acero_500",
+			"dims_mm": {
+				"x": 30.0,
+				"y": 500.0,
+				"z": 30.0
+			},
+			"fijo": false,
+			"material": "acero",
+			"pos": [
+				0.0,
+				0.204999998211861,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1629837_66894"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": false,
+			"material": "acero",
+			"pos": [
+				-0.119999997317791,
+				0.224000006914139,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1635256_37663"
+		},
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": false,
+			"material": "acero",
+			"pos": [
+				0.119999997317791,
+				0.224000006914139,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1635726_86111"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1629524_68409",
+			"anchor": [
+				-0.25,
+				0.200000002980232,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1629837_66894",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1630131_2956"
+		},
+		{
+			"a": "p1629726_91215",
+			"anchor": [
+				0.25,
+				0.200000002980232,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1629837_66894",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1630144_89602"
+		},
+		{
+			"a": "p1629837_66894",
+			"anchor": [
+				-0.119999997317791,
+				0.224000006914139,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1635256_37663",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1635705_73286"
+		},
+		{
+			"a": "p1629837_66894",
+			"anchor": [
+				0.119999997317791,
+				0.224000006914139,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1635726_86111",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1635914_7749"
+		}
+	],
+	"version": 3,
+	"vista": {
+		"distancia": 1.2,
+		"objetivo": [
+			0.0,
+			0.119999997317791,
+			0.0
+		],
+		"pitch": -0.349065850398866,
+		"yaw": -0.523598775598299
+	}
+}

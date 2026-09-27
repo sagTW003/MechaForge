@@ -1,0 +1,195 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [],
+	"creado": "2026-09-27T20:31:16",
+	"descripcion": "Brazo en voladizo con PID de posición siguiendo una onda (programa por bloques) y encoder en el eje. Mira la gráfica.",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Generado por el editor de bloques.\nang = (60) * sin(2 * pi * (0.25) * t)\nang = clamp(ang, -75, 75)\noutput = ang",
+		"union": 0
+	},
+	"nombre": "Banco de control PID",
+	"piezas": [
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				0.0,
+				0.00400000018998981,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1517312_71885"
+		},
+		{
+			"def_id": "perfil_4040_300",
+			"dims_mm": {
+				"x": 40.0,
+				"y": 300.0,
+				"z": 40.0
+			},
+			"fijo": true,
+			"material": "aluminio_anodizado",
+			"pos": [
+				0.0,
+				0.158000007271767,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1517834_89832"
+		},
+		{
+			"def_id": "perfil_2020_200",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 200.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "aluminio",
+			"pos": [
+				0.100000001490116,
+				0.28999999165535,
+				0.0350000001490116
+			],
+			"rot": [
+				0.0,
+				0.0,
+				1.57079637050629
+			],
+			"uid": "p1518024_62898"
+		},
+		{
+			"def_id": "encoder",
+			"dims_mm": {
+				"altura": 20.0,
+				"radio": 15.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.28999999165535,
+				0.0560000017285347
+			],
+			"rot": [
+				1.57079637050629,
+				0.0,
+				0.0
+			],
+			"uid": "p1518158_79827"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1517834_89832",
+			"anchor": [
+				0.0,
+				0.28999999165535,
+				0.0350000001490116
+			],
+			"axis": 2,
+			"b": "p1518024_62898",
+			"control_mode": 1,
+			"ctrl_kd": 0.4,
+			"ctrl_ki": 1.0,
+			"ctrl_kp": 8.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 3.0,
+			"motor_stall_torque": 8.0,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1518564_4603"
+		},
+		{
+			"a": "p1518024_62898",
+			"anchor": [
+				0.0,
+				0.28999999165535,
+				0.0560000017285347
+			],
+			"axis": 1,
+			"b": "p1518158_79827",
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1518582_61624"
+		}
+	],
+	"version": 3,
+	"vista": {
+		"distancia": 0.9,
+		"objetivo": [
+			0.0500000007450581,
+			0.200000002980232,
+			0.0
+		],
+		"pitch": -0.261799387799149,
+		"yaw": -0.349065850398866
+	}
+}
