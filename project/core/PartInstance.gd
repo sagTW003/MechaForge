@@ -28,7 +28,34 @@ func setup(definition: Dictionary, instance_uid: String = "") -> void:
 	material_id = def.get("material", "aluminio")
 	uid = instance_uid if instance_uid != "" else _new_uid()
 	name = "Part_%s" % uid
+	# La protoboard genera su matriz de terminales (columnas + rieles) con grupos.
+	if def.get("apariencia", "") == "protoboard":
+		def["terminales"] = gen_protoboard_terminals(def.get("dimensiones_mm", {}))
 	_build_visual()
+
+## Genera los terminales de una protoboard: columnas de 5 (a-e y f-j, cada columna
+## un grupo interno) y cuatro rieles de alimentación, como una breadboard real.
+static func gen_protoboard_terminals(dm: Dictionary) -> Array:
+	var x := float(dm.get("x", 165.0))
+	var y := float(dm.get("y", 9.0))
+	var z := float(dm.get("z", 55.0))
+	var yt := y * 0.5
+	var terms := []
+	var cols := 12
+	for c in range(cols):
+		var px := -x * 0.4 + x * 0.8 * float(c) / float(cols - 1)
+		for r in range(5):
+			terms.append({"id": "a%d_%d" % [c, r], "tipo": "signal", "grupo": "TA%d" % c, "pos_mm": [px, yt, z * 0.06 + z * 0.05 * r]})
+		for r in range(5):
+			terms.append({"id": "b%d_%d" % [c, r], "tipo": "signal", "grupo": "TB%d" % c, "pos_mm": [px, yt, -z * 0.06 - z * 0.05 * r]})
+	var rp := 8
+	for k in range(rp):
+		var px := -x * 0.42 + x * 0.84 * float(k) / float(rp - 1)
+		terms.append({"id": "P1_%d" % k, "tipo": "power", "grupo": "P1", "pos_mm": [px, yt, z * 0.44]})
+		terms.append({"id": "N1_%d" % k, "tipo": "gnd", "grupo": "N1", "pos_mm": [px, yt, z * 0.37]})
+		terms.append({"id": "P2_%d" % k, "tipo": "power", "grupo": "P2", "pos_mm": [px, yt, -z * 0.37]})
+		terms.append({"id": "N2_%d" % k, "tipo": "gnd", "grupo": "N2", "pos_mm": [px, yt, -z * 0.44]})
+	return terms
 
 func _new_uid() -> String:
 	return "p%d_%d" % [Time.get_ticks_usec(), randi() % 100000]
@@ -132,6 +159,14 @@ func make_visual_clone() -> Node3D:
 	mi.material_override = MaterialLibrary.get_visual(material_id)
 	return mi
 
+## Reconstruye la malla/colisión tras cambiar dimensiones o material.
+func rebuild() -> void:
+	_build_visual()
+	if _selected and _selection_box:
+		_selection_box.queue_free()
+		_selection_box = _make_selection_box()
+		add_child(_selection_box)
+
 ## Activa/desactiva el cuerpo de selección (se apaga durante la simulación).
 func set_pick_enabled(value: bool) -> void:
 	if _pick_body:
@@ -173,4 +208,5 @@ func to_dict() -> Dictionary:
 		"material": material_id,
 		"pos": [position.x, position.y, position.z],
 		"rot": [rotation.x, rotation.y, rotation.z],
+		"dims_mm": def.get("dimensiones_mm", {}),
 	}

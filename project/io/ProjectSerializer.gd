@@ -93,6 +93,11 @@ static func apply_document(doc: Dictionary, parts_root: Node3D) -> int:
 		parts_root.add_child(inst)
 		inst.setup(def, p.get("uid", ""))
 		inst.material_id = p.get("material", def.get("material", "aluminio"))
+		# Dimensiones personalizadas guardadas.
+		var dm = p.get("dims_mm", null)
+		if typeof(dm) == TYPE_DICTIONARY and not dm.is_empty():
+			inst.def["dimensiones_mm"] = dm
+		inst.rebuild()
 		var pos: Array = p.get("pos", [0, 0, 0])
 		var rot: Array = p.get("rot", [0, 0, 0])
 		inst.position = Vector3(pos[0], pos[1], pos[2])

@@ -7,6 +7,23 @@ extends Node
 
 var _materials: Dictionary = {}          # id -> Dictionary de propiedades
 var _cache: Dictionary = {}              # id -> StandardMaterial3D (perezoso)
+var _detail_normal: Texture2D            # microrelieve procedural compartido
+
+## Textura de normales procedural (ruido) para dar microrelieve realista.
+func _get_detail_normal() -> Texture2D:
+	if _detail_normal:
+		return _detail_normal
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.05
+	var nt := NoiseTexture2D.new()
+	nt.width = 256; nt.height = 256
+	nt.seamless = true
+	nt.as_normal_map = true
+	nt.bump_strength = 1.5
+	nt.noise = noise
+	_detail_normal = nt
+	return _detail_normal
 
 # Tabla de materiales: densidad en kg/m³, colores en sRGB.
 const DATA := {
@@ -92,6 +109,11 @@ func get_visual(id: String) -> StandardMaterial3D:
 	m.metallic_specular = 0.5
 	if col.a < 1.0:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Microrelieve para realismo (más marcado en metales).
+	m.normal_enabled = true
+	m.normal_texture = _get_detail_normal()
+	m.normal_scale = 0.35 if d.get("metalico", 0.0) > 0.5 else 0.15
+	m.uv1_scale = Vector3(6, 6, 6)
 	_cache[id] = m
 	return m
 

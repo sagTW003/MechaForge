@@ -113,6 +113,7 @@ var counts_label: Label
 var parts_tree: Tree
 var prop_container: VBoxContainer
 var mat_option: OptionButton
+var _prop_mass_label: Label
 var profile_option: OptionButton
 var snap_check: CheckButton
 var encaje_check: CheckButton
@@ -195,6 +196,41 @@ func _ready() -> void:
 		call_deferred("_run_components_shot")
 	elif "mfshot9" in OS.get_cmdline_user_args():
 		call_deferred("_run_phase5_shot")
+	elif "mfshot10" in OS.get_cmdline_user_args():
+		call_deferred("_run_protoboard_shot")
+
+func _run_protoboard_shot() -> void:
+	var uargs := OS.get_cmdline_user_args()
+	var i := uargs.find("mfshot10")
+	var out_path := "user://mechaforge_protoboard.png"
+	if i >= 0 and i + 1 < uargs.size():
+		out_path = uargs[i + 1]
+	var pb := _spawn("protoboard", "abs", Vector3(0, 0.005, 0))
+	var bat := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.013, -0.06))
+	var res := _spawn("resistencia_100", "abs", Vector3(-0.06, 0.012, 0.02))
+	var led := _spawn("led", "abs", Vector3(0.02, 0.012, 0.02))
+	wires = [
+		{"uid": "w1", "a_key": _key(bat.uid, "V+"), "b_key": _key(pb.uid, "P1_2"), "tipo": "power"},
+		{"uid": "w2", "a_key": _key(pb.uid, "P1_5"), "b_key": _key(res.uid, "A"), "tipo": "power"},
+		{"uid": "w3", "a_key": _key(res.uid, "B"), "b_key": _key(pb.uid, "a5_0"), "tipo": "power"},
+		{"uid": "w4", "a_key": _key(led.uid, "anodo"), "b_key": _key(pb.uid, "a5_2"), "tipo": "power"},
+		{"uid": "w5", "a_key": _key(led.uid, "catodo"), "b_key": _key(pb.uid, "N1_4"), "tipo": "gnd"},
+		{"uid": "w6", "a_key": _key(bat.uid, "GND"), "b_key": _key(pb.uid, "N1_1"), "tipo": "gnd"},
+	]
+	_redraw_wires()
+	_analyze_circuit()
+	circuito_panel.set_collapsed(false)
+	_update_counts()
+	for p in [biblioteca_panel, propiedades_panel, uniones_panel]:
+		if p: p.visible = false
+	camera.target = Vector3(-0.01, 0.02, 0); camera.distance = 0.4
+	camera._pitch = deg_to_rad(-30); camera._yaw = deg_to_rad(-20); camera._update_transform()
+	await get_tree().create_timer(2.0).timeout
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT10] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
 
 func _run_phase5_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -428,6 +464,26 @@ func _run_elec_tests() -> void:
 	_check(absf(_mcu_run(["sin(pi/2) * 10"], 0.0, 0.0, 0.008) - 10.0) < 1.0e-4, "MCU: funciones matemáticas (sin)")
 	_check(absf(_mcu_run(["x * 3 + t"], 5.0, 2.0, 0.008) - 11.0) < 1.0e-6, "MCU: usa entradas t y x")
 	_check(is_nan(_mcu_run(["sin("], 0.0, 0.0, 0.008)), "MCU: script inválido se detecta")
+
+	# 8) Protoboard funcional: circuito cerrado por columnas y rieles internos.
+	_on_new()
+	var pb := _spawn("protoboard", "abs", Vector3(0, 0.005, 0))
+	var bat := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.02, -0.12))
+	var res := _spawn("resistencia_100", "abs", Vector3(0.12, 0.01, 0))
+	wires = [
+		{"uid": "w1", "a_key": _key(bat.uid, "V+"), "b_key": _key(pb.uid, "a0_0"), "tipo": "power"},
+		{"uid": "w2", "a_key": _key(res.uid, "A"), "b_key": _key(pb.uid, "a0_2"), "tipo": "power"},
+		{"uid": "w3", "a_key": _key(res.uid, "B"), "b_key": _key(pb.uid, "N1_0"), "tipo": "gnd"},
+		{"uid": "w4", "a_key": _key(bat.uid, "GND"), "b_key": _key(pb.uid, "N1_5"), "tipo": "gnd"},
+	]
+	var wp := []
+	for w in wires:
+		wp.append({"a": w["a_key"], "b": w["b_key"]})
+	wp.append_array(_protoboard_virtual_wires())
+	var rpb := WiringSolver.solve(_build_components(), wp)
+	_check(rpb["ok"] and float(rpb["current"]) > 0.05, "Protoboard funcional: circuito cierra por columnas/rieles (%.3f A)" % float(rpb["current"]))
+	wires = []
+	_on_new()
 
 	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
 	get_tree().quit(1 if _test_fail > 0 else 0)
@@ -1797,11 +1853,22 @@ func _refresh_properties() -> void:
 	mat_option.item_selected.connect(_on_material_changed)
 	prop_container.add_child(mat_option)
 
-	var dims := PartLibrary.dims_m(def)
-	_add_prop_row("Dimensiones", "%s × %s × %s" % [Units.fmt_length(dims.x), Units.fmt_length(dims.y), Units.fmt_length(dims.z)])
-	_add_prop_row("Volumen", Units.fmt_volume_cm3(PartLibrary.volume_m3(def)))
+	# Dimensiones editables.
+	var forma: String = def.get("forma", "caja")
+	if forma != "custom":
+		prop_container.add_child(_label("Dimensiones (mm):"))
+		var dm: Dictionary = def.get("dimensiones_mm", {})
+		if forma == "cilindro" or forma == "tubo":
+			_add_dim_spin("Radio", "radio", dm.get("radio", 10.0))
+			_add_dim_spin("Altura", "altura", dm.get("altura", 100.0))
+			if forma == "tubo":
+				_add_dim_spin("Espesor", "espesor", dm.get("espesor", 2.0))
+		else:
+			_add_dim_spin("Ancho (X)", "x", dm.get("x", 20.0))
+			_add_dim_spin("Alto (Y)", "y", dm.get("y", 20.0))
+			_add_dim_spin("Fondo (Z)", "z", dm.get("z", 20.0))
+	_prop_mass_label = _add_prop_row_ref("Masa", Units.fmt_mass(selected_part.mass_kg()))
 	_add_prop_row("Densidad", "%.0f kg/m³" % MaterialLibrary.density(selected_part.material_id))
-	_add_prop_row("Masa", Units.fmt_mass(selected_part.mass_kg()))
 	_add_prop_row("Posición", "X %.3f  Y %.3f  Z %.3f m" % [selected_part.position.x, selected_part.position.y, selected_part.position.z])
 	_add_prop_row("Rotación Y", Units.fmt_angle(selected_part.rotation.y))
 
@@ -1817,6 +1884,9 @@ func _refresh_properties() -> void:
 	prop_container.add_child(hint)
 
 func _add_prop_row(k: String, v: String) -> void:
+	_add_prop_row_ref(k, v)
+
+func _add_prop_row_ref(k: String, v: String) -> Label:
 	var hb := HBoxContainer.new()
 	var kl := _label(k + ":")
 	kl.custom_minimum_size = Vector2(110, 0)
@@ -1827,6 +1897,39 @@ func _add_prop_row(k: String, v: String) -> void:
 	vl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hb.add_child(vl)
 	prop_container.add_child(hb)
+	return vl
+
+func _add_dim_spin(label: String, key: String, val_mm: float) -> void:
+	var hb := HBoxContainer.new()
+	var kl := _label(label)
+	kl.custom_minimum_size = Vector2(110, 0)
+	kl.add_theme_color_override("font_color", Color(0.6, 0.63, 0.68))
+	hb.add_child(kl)
+	var s := SpinBox.new()
+	s.min_value = 0.5
+	s.max_value = 3000.0
+	s.step = 0.5
+	s.value = val_mm
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.value_changed.connect(func(v): _set_dimension(key, v))
+	hb.add_child(s)
+	prop_container.add_child(hb)
+
+func _set_dimension(key: String, mm: float) -> void:
+	if selected_part == null:
+		return
+	if not selected_part.def.has("dimensiones_mm"):
+		selected_part.def["dimensiones_mm"] = {}
+	selected_part.def["dimensiones_mm"][key] = mm
+	selected_part.rebuild()
+	if _prop_mass_label and is_instance_valid(_prop_mass_label):
+		_prop_mass_label.text = Units.fmt_mass(selected_part.mass_kg())
+	selected_part.set_selected(true)
+	if connections.size() > 0:
+		_redraw_connection_markers()
+	if wires.size() > 0:
+		_redraw_wires()
+	Config.project_dirty = true
 
 func _on_material_changed(i: int) -> void:
 	if selected_part == null:
@@ -2701,11 +2804,11 @@ func _build_terminal_markers() -> void:
 			body.collision_layer = WIRE_PICK_LAYER
 			body.collision_mask = 0
 			var cs := CollisionShape3D.new()
-			var sh := SphereShape3D.new(); sh.radius = 0.007
+			var sh := SphereShape3D.new(); sh.radius = 0.0045
 			cs.shape = sh
 			body.add_child(cs)
 			var mi := MeshInstance3D.new()
-			var sm := SphereMesh.new(); sm.radius = 0.006; sm.height = 0.012
+			var sm := SphereMesh.new(); sm.radius = 0.0022; sm.height = 0.0044
 			mi.mesh = sm
 			var mat := StandardMaterial3D.new()
 			mat.albedo_color = _term_color(term.get("tipo", "signal"))
@@ -2785,7 +2888,83 @@ func _redraw_wires() -> void:
 		var pb = _terminal_pos_by_key(w["b_key"])
 		if pa == null or pb == null:
 			continue
-		wires_root.add_child(_make_link_marker(pa, pb, _term_color(w["tipo"])))
+		wires_root.add_child(_make_cable(pa, pb, _wire_color(w["tipo"])))
+
+func _wire_color(tipo: String) -> Color:
+	match tipo:
+		"power": return Color(0.85, 0.13, 0.13)
+		"gnd": return Color(0.05, 0.05, 0.06)
+		_: return Color(0.15, 0.45, 0.9)
+
+## Construye un cable curvo realista (con caída) entre dos puntos.
+func _make_cable(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
+	var holder := Node3D.new()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.42
+	mat.metallic = 0.0
+	# Curva cuadrática con caída (catenaria simple).
+	var dist := p1.distance_to(p2)
+	var mid := (p1 + p2) * 0.5
+	mid.y -= minf(0.03, dist * 0.28)
+	var pts := PackedVector3Array()
+	var segs := 18
+	for i in range(segs + 1):
+		var t := float(i) / float(segs)
+		var a := p1.lerp(mid, t)
+		var b := mid.lerp(p2, t)
+		pts.append(a.lerp(b, t))
+	var mi := MeshInstance3D.new()
+	mi.mesh = _tube_mesh(pts, 0.0016)
+	mi.material_override = mat
+	holder.add_child(mi)
+	# Conectores metálicos en los extremos.
+	var pin := StandardMaterial3D.new()
+	pin.albedo_color = Color(0.75, 0.75, 0.78); pin.metallic = 0.9; pin.roughness = 0.3
+	for p in [p1, p2]:
+		var pc := MeshInstance3D.new()
+		var cm := CylinderMesh.new(); cm.top_radius = 0.0022; cm.bottom_radius = 0.0022; cm.height = 0.006; cm.radial_segments = 8
+		pc.mesh = cm; pc.material_override = pin; pc.position = p
+		holder.add_child(pc)
+	return holder
+
+## Malla de tubo extruyendo un anillo a lo largo de una polilínea.
+func _tube_mesh(points: PackedVector3Array, radius: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ring := 6
+	var rings := []
+	var up := Vector3.UP
+	for i in range(points.size()):
+		var tangent: Vector3
+		if i == 0:
+			tangent = (points[1] - points[0])
+		elif i == points.size() - 1:
+			tangent = (points[i] - points[i - 1])
+		else:
+			tangent = (points[i + 1] - points[i - 1])
+		tangent = tangent.normalized()
+		var n1 := up.cross(tangent)
+		if n1.length() < 0.01:
+			n1 = Vector3.RIGHT.cross(tangent)
+		n1 = n1.normalized()
+		var n2 := tangent.cross(n1).normalized()
+		var r := []
+		for k in range(ring):
+			var ang := TAU * float(k) / float(ring)
+			r.append(points[i] + (n1 * cos(ang) + n2 * sin(ang)) * radius)
+		rings.append(r)
+	for i in range(rings.size() - 1):
+		for k in range(ring):
+			var k2 := (k + 1) % ring
+			var a: Vector3 = rings[i][k]
+			var b: Vector3 = rings[i][k2]
+			var c: Vector3 = rings[i + 1][k2]
+			var d: Vector3 = rings[i + 1][k]
+			st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+			st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+	st.generate_normals()
+	return st.commit()
 
 func _build_components() -> Array:
 	var comps := []
@@ -2816,7 +2995,31 @@ func _analyze_circuit() -> void:
 	var wire_pairs := []
 	for w in wires:
 		wire_pairs.append({"a": w["a_key"], "b": w["b_key"]})
+	# Conexiones internas de las protoboards (columnas y rieles).
+	wire_pairs.append_array(_protoboard_virtual_wires())
 	_show_circuit_result(WiringSolver.solve(_build_components(), wire_pairs))
+
+## Une internamente los terminales del mismo grupo de cada protoboard
+## (columnas de 5 y rieles), como el cobre interno de una breadboard real.
+func _protoboard_virtual_wires() -> Array:
+	var vw := []
+	for part in _electronic_parts():
+		if part.def.get("apariencia", "") != "protoboard":
+			continue
+		var groups := {}
+		for t in part.def.get("terminales", []):
+			var g := str(t.get("grupo", ""))
+			if g == "":
+				continue
+			var key := _key(part.uid, str(t["id"]))
+			if not groups.has(g):
+				groups[g] = []
+			groups[g].append(key)
+		for g in groups:
+			var keys: Array = groups[g]
+			for i in range(1, keys.size()):
+				vw.append({"a": keys[0], "b": keys[i]})
+	return vw
 
 func _clear_wires() -> void:
 	wires.clear()
