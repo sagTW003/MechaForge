@@ -171,6 +171,8 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       `dist/MechaForge_portable` + `.zip`): runtime .NET de Godot incluido, proyecto
       precompilado, lanzador sin consola (`MechaForge.vbs`). Verificada ejecutando
       las pruebas dentro de la copia portable.
-- [ ] Opcional: ejecutable exportado con las plantillas de exportación **.NET** de
-      Godot 4.7.2 (no instaladas; requieren descarga).
+- [x] **Ejecutable exportado** (`tools/empaquetar.ps1 -Exe` → `dist/MechaForge_exe`)
+      con las plantillas oficiales .NET 4.7.2 (SHA-512 verificado), icono propio y
+      piezas/ejemplos incluidos; verificado ejecutando mftest, mfejemplos y mfphys
+      con el propio `.exe`.
 - [ ] Opcional futuro: rotura de piezas en simulación; correas/poleas.

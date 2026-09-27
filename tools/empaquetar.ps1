@@ -1,6 +1,10 @@
 # empaquetar.ps1 — Crea la versión PORTABLE de MechaForge para Windows.
 #
-#   powershell -ExecutionPolicy Bypass -File tools\empaquetar.ps1 [-Zip]
+#   powershell -ExecutionPolicy Bypass -File tools\empaquetar.ps1 [-Zip] [-Exe]
+#
+# -Exe: además exporta el ejecutable oficial (preset "Windows Desktop") en
+#       dist\MechaForge_exe\ — requiere las plantillas de exportación .NET 4.7.2
+#       en %APPDATA%\Godot\export_templates\4.7.2.stable.mono.
 #
 # Resultado: dist\MechaForge_portable\
 #   MechaForge.vbs        lanzador sin ventana de consola (doble clic)
@@ -8,7 +12,7 @@
 #   motor\                runtime de Godot 4.7.2 .NET (incluye GodotSharp)
 #   app\                  proyecto importado y con los ensamblados C# compilados
 # No requiere instalar nada salvo el runtime de .NET 8 (Microsoft.NETCore.App).
-param([switch]$Zip)
+param([switch]$Zip, [switch]$Exe)
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -36,10 +40,10 @@ Copy-Item -Recurse -Force (Join-Path $godotDir "*") (Join-Path $out "motor")
 Write-Host "[4/5] Copiando la aplicación..."
 # Se excluyen cachés del editor y artefactos intermedios que no hacen falta para ejecutar.
 robocopy $proj (Join-Path $out "app") /E /NFL /NDL /NJH /NJS /NP `
-    /XD "$proj\.godot\editor" "$proj\.godot\shader_cache" "$proj\obj" "$proj\.godot\mono\temp\obj" | Out-Null
+    /XD "$proj\.godot\editor" "$proj\.godot\shader_cache" "$proj\.godot\exported" "$proj\.godot\mono\temp\bin\ExportRelease" "$proj\.godot\mono\temp\bin\ExportDebug" "$proj\obj" "$proj\.godot\mono\temp\obj" | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falló ($LASTEXITCODE)" }
 
-$exe = "Godot_v4.7.2-stable_mono_win64.exe"
+$godotExe = "Godot_v4.7.2-stable_mono_win64.exe"
 Set-Content -Encoding ASCII (Join-Path $out "MechaForge.bat") @"
 @echo off
 rem MechaForge (portable) - lanzador con registro en consola
@@ -49,7 +53,7 @@ Set-Content -Encoding ASCII (Join-Path $out "MechaForge.vbs") @"
 ' MechaForge (portable) - lanzador sin ventana de consola
 Set fso = CreateObject("Scripting.FileSystemObject")
 d = fso.GetParentFolderName(WScript.ScriptFullName)
-CreateObject("WScript.Shell").Run """" & d & "\motor\$exe"" --path """ & d & "\app""", 1, False
+CreateObject("WScript.Shell").Run """" & d & "\motor\$godotExe"" --path """ & d & "\app""", 1, False
 "@
 Set-Content -Encoding UTF8 (Join-Path $out "LEEME.txt") @"
 MechaForge - version portable
@@ -72,6 +76,32 @@ if ($Zip) {
     if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
     Compress-Archive -Path (Join-Path $out "*") -DestinationPath $zipPath -CompressionLevel Optimal
     Write-Host "ZIP: $zipPath"
+}
+if ($Exe) {
+    $tpl = Join-Path $env:APPDATA "Godot\export_templates\4.7.2.stable.mono"
+    if (-not (Test-Path (Join-Path $tpl "windows_release_x86_64.exe"))) { throw "Faltan las plantillas .NET en $tpl" }
+    $exeDir = Join-Path $dist "MechaForge_exe"
+    if (Test-Path $exeDir) { Remove-Item -Recurse -Force $exeDir }
+    New-Item -ItemType Directory -Force $exeDir | Out-Null
+    Write-Host "[Exe] Exportando con el preset 'Windows Desktop'..."
+    & $godotCon --headless --path $proj --export-release "Windows Desktop" (Join-Path $exeDir "MechaForge.exe") 2>&1 | Select-String -Pattern "ERROR" | Out-Host
+    Set-Content -Encoding UTF8 (Join-Path $exeDir "LEEME.txt") @"
+MechaForge - ejecutable para Windows
+====================================
+Doble clic en MechaForge.exe (MechaForge.console.exe muestra el registro).
+Requisitos: Windows 10/11, GPU con Vulkan y el runtime de .NET 8 (Microsoft.NETCore.App 8.x).
+Conserva juntos MechaForge.exe, MechaForge.pck y la carpeta data_MechaForge_windows_x86_64.
+Los datos del usuario (proyectos, autoguardado, API de OpenClaw, HDRI) estan en:
+  %APPDATA%\Godot\app_userdata\MechaForge
+"@
+    $t2 = & (Join-Path $exeDir "MechaForge.console.exe") --headless -- mftest 2>&1
+    Write-Host ("      Ejecutable: " + (($t2 | Select-String "\[TEST\] Resultado").ToString()))
+    if ($Zip) {
+        $zipExe = Join-Path $dist "MechaForge_windows.zip"
+        if (Test-Path $zipExe) { Remove-Item -Force $zipExe }
+        Compress-Archive -Path (Join-Path $exeDir "*") -DestinationPath $zipExe -CompressionLevel Optimal
+        Write-Host "ZIP: $zipExe"
+    }
 }
 $size = (Get-ChildItem -Recurse $out | Measure-Object -Sum Length).Sum / 1MB
 Write-Host ("Listo: {0} ({1:N0} MB)" -f $out, $size)

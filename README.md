@@ -239,14 +239,22 @@ cosas como *«usa mechaforge para analizar el diseño»*.
 Cada 2 minutos se guarda una copia en `autoguardado.mforge` si hay cambios; el botón
 **Recuperar** la abre.
 
-## Versión portable (Windows)
+## Ejecutable para Windows
 
 ```bat
-powershell -ExecutionPolicy Bypass -File tools\empaquetar.ps1 -Zip
+powershell -ExecutionPolicy Bypass -File tools\empaquetar.ps1 -Zip -Exe
 ```
-Genera `dist\MechaForge_portable\` (y un `.zip`): doble clic en **MechaForge.vbs**.
-Incluye el runtime de Godot .NET y el proyecto precompilado; solo requiere el
-runtime de **.NET 8**.
+Genera dos distribuciones en `dist\`:
+
+- **`MechaForge_exe\`** (+ `MechaForge_windows.zip`): ejecutable exportado con las
+  plantillas oficiales de Godot 4.7.2 .NET — `MechaForge.exe` (con su icono),
+  `MechaForge.console.exe` (muestra el registro), `MechaForge.pck` y la carpeta de
+  ensamblados .NET. Incluye las piezas y los proyectos de ejemplo.
+- **`MechaForge_portable\`** (+ `.zip`): alternativa que ejecuta el proyecto con el
+  runtime de Godot incluido (doble clic en `MechaForge.vbs`).
+
+Ambas requieren el runtime de **.NET 8** y una GPU con Vulkan. El script verifica
+cada copia ejecutando las pruebas dentro de ella.
 
 ## Pruebas
 
