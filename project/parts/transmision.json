@@ -1,0 +1,56 @@
+{
+  "piezas": [
+    {
+      "id": "engranaje_m1_z16",
+      "nombre": "Engranaje recto m1 Z16 (Ø18 mm)",
+      "categoria": "transmision",
+      "material": "acero",
+      "forma": "engranaje",
+      "dimensiones_mm": {
+        "dientes": 16,
+        "modulo": 1.0,
+        "ancho": 8,
+        "agujero": 5
+      }
+    },
+    {
+      "id": "engranaje_m1_z20",
+      "nombre": "Engranaje recto m1 Z20 (Ø22 mm)",
+      "categoria": "transmision",
+      "material": "acero",
+      "forma": "engranaje",
+      "dimensiones_mm": {
+        "dientes": 20,
+        "modulo": 1.0,
+        "ancho": 8,
+        "agujero": 5
+      }
+    },
+    {
+      "id": "engranaje_m1_z40",
+      "nombre": "Engranaje recto m1 Z40 (Ø42 mm)",
+      "categoria": "transmision",
+      "material": "abs",
+      "forma": "engranaje",
+      "dimensiones_mm": {
+        "dientes": 40,
+        "modulo": 1.0,
+        "ancho": 8,
+        "agujero": 5
+      }
+    },
+    {
+      "id": "engranaje_m1_z60",
+      "nombre": "Engranaje recto m1 Z60 (Ø62 mm)",
+      "categoria": "transmision",
+      "material": "abs",
+      "forma": "engranaje",
+      "dimensiones_mm": {
+        "dientes": 60,
+        "modulo": 1.0,
+        "ancho": 8,
+        "agujero": 5
+      }
+    }
+  ]
+}

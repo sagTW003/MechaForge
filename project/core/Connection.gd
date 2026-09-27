@@ -36,6 +36,9 @@ var gear_ratio: float = 1.0
 ## Dientes de los engranajes (si >0, la relación = Z1/Z2).
 var gear_z1: int = 0
 var gear_z2: int = 0
+## Huelgo entre dientes (grados en la rueda conducida) y rendimiento del engrane.
+var gear_backlash_deg: float = 0.5
+var gear_efficiency: float = 0.97
 
 # --- Tipo de motor (Fase F2) ---
 enum MotorType { DC, STEPPER, SERVO }
@@ -114,6 +117,7 @@ func to_dict() -> Dictionary:
 		"elec_current_noload": elec_current_noload, "elec_current_stall": elec_current_stall,
 		"elec_uid": elec_uid, "elec_voltaje_nominal": elec_voltaje_nominal,
 		"gear_z1": gear_z1, "gear_z2": gear_z2, "motor_type": motor_type,
+		"gear_backlash_deg": gear_backlash_deg, "gear_efficiency": gear_efficiency,
 		"step_deg": step_deg, "microsteps": microsteps,
 		"servo_min_deg": servo_min_deg, "servo_max_deg": servo_max_deg, "servo_sec_per_60": servo_sec_per_60,
 	}
@@ -146,6 +150,8 @@ static func from_dict(d: Dictionary) -> Connection:
 	c.elec_voltaje_nominal = d.get("elec_voltaje_nominal", 12.0)
 	c.gear_z1 = int(d.get("gear_z1", 0))
 	c.gear_z2 = int(d.get("gear_z2", 0))
+	c.gear_backlash_deg = d.get("gear_backlash_deg", 0.5)
+	c.gear_efficiency = d.get("gear_efficiency", 0.97)
 	c.motor_type = int(d.get("motor_type", MotorType.DC))
 	c.step_deg = d.get("step_deg", 1.8)
 	c.microsteps = int(d.get("microsteps", 1))

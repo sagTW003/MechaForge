@@ -59,20 +59,52 @@ static func build(def: Dictionary) -> Node3D:
 
 static func _pcb(d: Vector3, def: Dictionary) -> Node3D:
 	var n := Node3D.new()
-	var green := mat(Color(0.06, 0.32, 0.14), 0.1, 0.55)
-	n.add_child(_box(Vector3(d.x, d.y, d.z), green))
-	# Chip negro encima.
-	var chip := mat(Color(0.05, 0.05, 0.06), 0.2, 0.4)
-	n.add_child(_box(Vector3(d.x * 0.35, d.y * 1.4, d.z * 0.35), chip, Vector3(0, d.y * 0.9, 0)))
-	# Fila de pines dorados en un borde.
-	var gold := mat(Color(0.85, 0.68, 0.25), 0.9, 0.35)
-	var pins: int = int(clamp(d.z / 0.0025, 4, 16))
+	# Placa FR4 de 1.6 mm apoyada abajo (el resto de la altura son componentes).
+	var t := minf(0.0016, d.y * 0.5)
+	var y0 := -d.y * 0.5
+	var board := MeshInstance3D.new()
+	board.mesh = MeshFactory.chamfer_box(Vector3(d.x, t, d.z), t * 0.3)
+	board.material_override = MaterialLibrary.get_visual("baquelita")
+	board.position = Vector3(0, y0 + t * 0.5, 0)
+	n.add_child(board)
+	var top := y0 + t
+	# Chip (QFP/DIP) con patas.
+	var chip := mat(Color(0.04, 0.04, 0.045), 0.1, 0.35)
+	var ch := Vector3(d.x * 0.3, minf(0.003, d.y * 0.3), d.z * 0.3)
+	n.add_child(_box(ch, chip, Vector3(-d.x * 0.05, top + ch.y * 0.5, 0)))
+	var tin := MaterialLibrary.get_visual("estano")
+	for i in range(8):
+		var z := -ch.z * 0.4 + ch.z * 0.8 * i / 7.0
+		for sx: float in [-1.0, 1.0]:
+			n.add_child(_box(Vector3(0.0012, 0.0006, 0.0005), tin, Vector3(-d.x * 0.05 + sx * (ch.x * 0.5 + 0.0005), top + 0.0003, z)))
+	# Tira de pines macho: plástico negro + pines dorados verticales hasta arriba.
+	var gold := mat(Color(0.85, 0.68, 0.25), 0.95, 0.3)
+	var black := mat(Color(0.03, 0.03, 0.035), 0.0, 0.6)
+	var pins: int = int(clamp(d.z / 0.00254, 4, 20))
+	var hx := d.x * 0.5 - 0.003
+	n.add_child(_box(Vector3(0.0025, 0.0025, 0.00254 * pins), black, Vector3(hx, top + 0.00125, 0)))
+	var pin_h := maxf(0.004, (d.y * 0.5) - top)
+	var solder := MaterialLibrary.get_visual("estano")
 	for i in range(pins):
-		var z := -d.z * 0.45 + d.z * 0.9 * (float(i) / float(maxi(1, pins - 1)))
-		n.add_child(_box(Vector3(d.x * 0.05, d.y * 1.2, d.z * 0.03), gold, Vector3(d.x * 0.42, d.y * 0.6, z)))
-	# Condensadores (cilindros).
-	var cap := mat(Color(0.15, 0.18, 0.35), 0.3, 0.4)
-	n.add_child(_cyl(d.x * 0.06, d.y * 2.2, cap, Vector3(-d.x * 0.25, d.y * 1.1, d.z * 0.2)))
+		var z := -0.00254 * (pins - 1) * 0.5 + 0.00254 * i
+		n.add_child(_box(Vector3(0.00064, pin_h, 0.00064), gold, Vector3(hx, top + pin_h * 0.5, z)))
+		# Punto de soldadura brillante en la cara inferior.
+		var blob := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.0009; sm.height = 0.0011
+		blob.mesh = sm
+		blob.material_override = solder
+		blob.position = Vector3(hx, y0 - 0.0002, z)
+		n.add_child(blob)
+	# Condensador electrolítico y cristal.
+	var cap := mat(Color(0.1, 0.14, 0.4), 0.3, 0.35)
+	var cap_h := minf(0.008, d.y - t)
+	n.add_child(_cyl(minf(0.0035, d.x * 0.06), cap_h, cap, Vector3(-d.x * 0.32, top + cap_h * 0.5, d.z * 0.25)))
+	n.add_child(_box(Vector3(0.004, 0.0015, 0.0018), mat(Color(0.75, 0.76, 0.78), 1.0, 0.25), Vector3(-d.x * 0.3, top + 0.00075, -d.z * 0.25)))
+	# LED de encendido (emisivo: produce bloom).
+	var led := mat(Color(0.2, 1.0, 0.3), 0.0, 0.3, true)
+	led.emission_energy_multiplier = 4.0
+	n.add_child(_box(Vector3(0.0016, 0.0008, 0.0008), led, Vector3(d.x * 0.2, top + 0.0004, -d.z * 0.35)))
 	return n
 
 static func _led(d: Vector3) -> Node3D:
@@ -80,7 +112,7 @@ static func _led(d: Vector3) -> Node3D:
 	var r := d.x * 0.5
 	var col := Color(0.95, 0.2, 0.2, 0.7)
 	var body := mat(col, 0.0, 0.15, true)
-	body.emission_energy_multiplier = 1.2
+	body.emission_energy_multiplier = 3.0
 	# Cuerpo cilíndrico + cúpula.
 	n.add_child(_cyl(r, d.y * 0.6, body, Vector3(0, -d.y * 0.1, 0)))
 	var dome := MeshInstance3D.new()
@@ -97,8 +129,8 @@ static func _led(d: Vector3) -> Node3D:
 static func _motor(d: Vector3) -> Node3D:
 	var n := Node3D.new()
 	var r := d.x * 0.5
-	var steel := mat(Color(0.62, 0.64, 0.67), 1.0, 0.28)
-	n.add_child(_cyl(r, d.y, steel))
+	var steel := MaterialLibrary.get_visual("acero_inox")
+	n.add_child(_cyl(r, d.y, steel, Vector3.ZERO, 32))
 	# Tapa frontal.
 	var cap := mat(Color(0.3, 0.31, 0.34), 0.8, 0.4)
 	n.add_child(_cyl(r * 1.02, d.y * 0.12, cap, Vector3(0, d.y * 0.5, 0)))

@@ -80,6 +80,23 @@ func _update_transform() -> void:
 	)
 	global_position = target - dir * distance
 	look_at(target, Vector3.UP)
+	_update_dof()
+
+## Profundidad de campo con enfoque automático en el punto de interés: el fondo
+## se desenfoca levemente y, al acercarse mucho a una pieza, también el primer plano.
+var dof_enabled: bool = true
+
+func _update_dof() -> void:
+	var attr := attributes as CameraAttributesPractical
+	if attr == null:
+		return
+	attr.dof_blur_far_enabled = dof_enabled
+	attr.dof_blur_far_distance = distance * 1.8 + 0.2
+	attr.dof_blur_far_transition = distance * 2.5 + 0.5
+	attr.dof_blur_near_enabled = dof_enabled and distance < 0.6
+	attr.dof_blur_near_distance = distance * 0.35
+	attr.dof_blur_near_transition = distance * 0.25
+	attr.dof_blur_amount = 0.06
 
 ## Devuelve un rayo (origen, dirección) desde la cámara a través de un punto de pantalla.
 func screen_ray(screen_pos: Vector2) -> Dictionary:

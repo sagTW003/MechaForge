@@ -95,6 +95,10 @@ static func dims_m(def: Dictionary) -> Vector3:
 		var r: float = float(d.get("radio", 10.0)) / 1000.0
 		var h: float = float(d.get("altura", 100.0)) / 1000.0
 		return Vector3(r * 2.0, h, r * 2.0)
+	elif forma == "engranaje":
+		var ra := gear_tip_radius_m(def)
+		var w := float(def.get("dimensiones_mm", {}).get("ancho", 8.0)) / 1000.0
+		return Vector3(ra * 2.0, w * 1.6, ra * 2.0)
 	else:
 		var d: Dictionary = def.get("dimensiones_mm", {})
 		return Vector3(float(d.get("x", 20)), float(d.get("y", 20)), float(d.get("z", 20))) / 1000.0
@@ -114,6 +118,28 @@ static func volume_m3(def: Dictionary) -> float:
 			var e := float(d.get("espesor", 2.0)) / 1000.0
 			var ri := maxf(0.0, r - e)
 			return PI * (r * r - ri * ri) * h
+		"engranaje":
+			var rp := gear_pitch_radius_m(def)
+			var w := float(d.get("ancho", 8.0)) / 1000.0
+			return PI * rp * rp * w * 0.95
 		"placa", "caja", _:
 			var v := dims_m(def)
-			return v.x * v.y * v.z
+			# Perfiles en T: fracción maciza de la sección (2020 ≈ 0.5 kg/m).
+			var fill := float(def.get("relleno", 1.0))
+			return v.x * v.y * v.z * fill
+
+## Engranajes: número de dientes, módulo (mm) y radios en metros.
+static func gear_teeth(def: Dictionary) -> int:
+	return int(def.get("dimensiones_mm", {}).get("dientes", 20))
+
+static func gear_module_m(def: Dictionary) -> float:
+	return float(def.get("dimensiones_mm", {}).get("modulo", 1.0)) / 1000.0
+
+static func gear_pitch_radius_m(def: Dictionary) -> float:
+	return gear_module_m(def) * gear_teeth(def) * 0.5
+
+static func gear_tip_radius_m(def: Dictionary) -> float:
+	return gear_pitch_radius_m(def) + gear_module_m(def)
+
+static func gear_root_radius_m(def: Dictionary) -> float:
+	return gear_pitch_radius_m(def) - 1.25 * gear_module_m(def)

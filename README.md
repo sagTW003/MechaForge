@@ -5,11 +5,16 @@ ingeniería" para diseñar, ensamblar, programar y probar mecanismos, robots,
 vehículos, grúas, estructuras, transmisiones y sistemas de control, con física
 realista y gráficos de alta calidad.
 
-> Estado: **Fases 1–4 completadas** — construcción (1), **física** (2), **electrónica
-> y control** (3: solver eléctrico en C#, PID, cableado, microcontrolador) e
-> **integración con OpenClaw** (4: chat, diagnóstico y construcción por IA con
-> vista previa y confirmación).
-> Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
+> Estado: **Fases 1–5 completadas** y **refactor gráfico/construcción/física**
+> terminado: entornos Estudio/Taller/Exterior con HDRI, texturas PBR procedurales,
+> perfiles con ranura en T, gizmo 3D, encaje inteligente, cables con física,
+> soldadura y engranajes dinámicos con huelgo. Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
+
+![Refactor](docs/demo_refactor.png)
+*Estudio (HDRI procedural): bastidor de perfiles 2020 con ranura en T sobre placa perforada, tren de engranajes Z20/Z40, PCB y gizmo 3D.*
+
+![Cables y soldadura](docs/demo_cables_soldadura.png)
+*Taller: cables con física (catenaria, sin atravesar piezas), conectores Dupont, PCB con chip y tira de pines, fibra de carbono.*
 
 ![Demostración Fase 1](docs/demo_fase1.png)
 *Fase 1 — construcción.*
@@ -146,6 +151,28 @@ Pruebas de electrónica y control:
 ...\Godot_...mono_win64.exe --headless --path project -- mfelec
 ```
 
+### Entorno, gráficos y construcción (refactor)
+
+- Panel **Entorno y gráficos**: **Estudio** (softboxes, ideal para ver materiales),
+  **Taller** o **Exterior** (cielo físico con **ciclo día/noche**). Puedes añadir tus
+  propios **HDRI** (`.hdr`, `.exr`, `.png`) en `%APPDATA%\Godotpp_userdata\MechaForge\hdri`
+  y pulsar *⟳ Buscar HDRI*. Antialiasing TAA+MSAA / SMAA / FXAA, bloom, DOF.
+- **Gizmo 3D**: selecciona una pieza y arrastra sus flechas (mover) o anillos
+  (rotar). `W`/`E` cambian el modo; `R`, `Mayús+R`, `Alt+R` giran en Y/X/Z con pasos
+  `1`/`2`/`3` = 15°/45°/90°.
+- **Encaje inteligente**: al acercar una pieza a otra se ajusta a orificios, ejes,
+  extremos y ranuras en T (anillo verde).
+- **Cableado**: los terminales brillan al acercar la punta; cable provisional con
+  física; colores por función o personalizados. **🔥 Soldar** anima el cautín y el
+  estaño fundiéndose y solidificándose.
+- **Engranajes** de la biblioteca (*Transmisión*, Z16–Z60 módulo 1): al unir dos
+  con 🔗 *Conectar* se rellenan sus dientes; configura **huelgo** y **rendimiento**.
+
+Pruebas del refactor:
+```bat
+...\Godot_...mono_win64.exe --headless --path project -- mfrefactor
+```
+
 ## Arquitectura
 
 Modular por carpetas dentro de `project/`:
@@ -154,9 +181,9 @@ Modular por carpetas dentro de `project/`:
 |---|---|
 | `core/` | Escena, piezas (definidas por datos), materiales, uniones, unidades SI, cálculo (C#) |
 | `physics/` | Simulador Jolt: cuerpos rígidos, uniones, motores, engranajes, centro de masa |
-| `electronics/` | *(Fase 3)* Cableado y solver eléctrico |
+| `electronics/` | Solver eléctrico, cableado, física de cables y soldadura |
 | `control/` | *(Fase 3)* Microcontrolador virtual, PID, scripts |
-| `rendering/` | Perfiles gráficos, entorno, shaders |
+| `rendering/` | Perfiles gráficos, entorno (HDRI/día-noche), texturas procedurales, mallas, shaders |
 | `ui/` | Interfaz, cámara orbital, controlador principal |
 | `ai_bridge/` | *(Fase 4)* Puente con OpenClaw |
 | `io/` | Serialización de proyectos (JSON) |

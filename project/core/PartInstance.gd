@@ -73,15 +73,36 @@ func _build_visual() -> void:
 		_detail = detail
 		add_child(_detail)
 	else:
-		_mesh_instance = MeshInstance3D.new()
-		_mesh_instance.mesh = _make_mesh()
-		_mesh_instance.material_override = MaterialLibrary.get_visual(material_id)
-		if def.get("forma", "") == "custom":
-			_mesh_instance.scale = Vector3.ONE * float(def.get("_scale", 1.0))
-			if def.has("_offset"):
-				_mesh_instance.position = def["_offset"]
+		_mesh_instance = _make_mesh_node()
 		add_child(_mesh_instance)
 	_build_pick_body()
+
+## Malla principal con su material (y detalles como los orificios de placa).
+func _make_mesh_node() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _make_mesh()
+	mi.material_override = MaterialLibrary.get_visual(material_id)
+	if def.get("forma", "") == "custom":
+		mi.scale = Vector3.ONE * float(def.get("_scale", 1.0))
+		if def.has("_offset"):
+			mi.position = def["_offset"]
+	if has_holes():
+		var holes := MeshFactory.plate_holes(PartLibrary.dims_m(def))
+		if holes:
+			mi.add_child(holes)
+	return mi
+
+## Placas estructurales con patrón de orificios (M5 cada 20 mm).
+func has_holes() -> bool:
+	return def.get("forma", "") == "placa" and bool(def.get("agujeros", def.get("categoria", "") == "estructural"))
+
+## Radio de colisión de un engranaje: el de pie, para que los dientes no choquen
+## (el engrane lo resuelve la restricción de engranaje, no el contacto).
+func _gear_collision_shape() -> Shape3D:
+	var s := CylinderShape3D.new()
+	s.radius = maxf(0.001, PartLibrary.gear_root_radius_m(def))
+	s.height = PartLibrary.dims_m(def).y
+	return s
 
 ## Cuerpo estático solo para selección con el ratón (raycast físico).
 func _build_pick_body() -> void:
@@ -92,7 +113,12 @@ func _build_pick_body() -> void:
 	_pick_body.collision_mask = 0
 	var cs := CollisionShape3D.new()
 	var forma: String = def.get("forma", "caja")
-	if forma == "cilindro" or forma == "tubo":
+	if forma == "engranaje":
+		var gs := CylinderShape3D.new()
+		gs.radius = PartLibrary.gear_tip_radius_m(def)
+		gs.height = PartLibrary.dims_m(def).y
+		cs.shape = gs
+	elif forma == "cilindro" or forma == "tubo":
 		var d: Dictionary = def.get("dimensiones_mm", {})
 		var shape := CylinderShape3D.new()
 		shape.radius = float(d.get("radio", 10.0)) / 1000.0
@@ -109,21 +135,30 @@ func _make_mesh() -> Mesh:
 	var forma: String = def.get("forma", "caja")
 	if forma == "custom" and def.has("_mesh"):
 		return def["_mesh"]
+	var d: Dictionary = def.get("dimensiones_mm", {})
 	match forma:
-		"cilindro", "tubo":
-			var d: Dictionary = def.get("dimensiones_mm", {})
+		"cilindro":
 			var r := float(d.get("radio", 10.0)) / 1000.0
 			var h := float(d.get("altura", 100.0)) / 1000.0
 			var cyl := CylinderMesh.new()
 			cyl.top_radius = r
 			cyl.bottom_radius = r
 			cyl.height = h
-			cyl.radial_segments = 24
+			cyl.radial_segments = 32
 			return cyl
+		"tubo":
+			var r := float(d.get("radio", 10.0)) / 1000.0
+			var h := float(d.get("altura", 100.0)) / 1000.0
+			var e := float(d.get("espesor", 2.0)) / 1000.0
+			return MeshFactory.tube(r, maxf(0.0, r - e), h, 40)
+		"engranaje":
+			return MeshFactory.gear(PartLibrary.gear_teeth(def), PartLibrary.gear_module_m(def),
+				float(d.get("ancho", 8.0)) / 1000.0, float(d.get("agujero", 5.0)) / 1000.0)
 		_:
-			var box := BoxMesh.new()
-			box.size = PartLibrary.dims_m(def)
-			return box
+			var size := PartLibrary.dims_m(def)
+			if def.get("perfil", "") == "tslot":
+				return MeshFactory.tslot_profile(size)
+			return MeshFactory.chamfer_box(size)
 
 ## Masa en kg = densidad(material) * volumen.
 func mass_kg() -> float:
@@ -138,6 +173,8 @@ func restitution() -> float:
 ## Crea la forma de colisión que corresponde a la geometría de la pieza.
 func make_collision_shape() -> Shape3D:
 	var forma: String = def.get("forma", "caja")
+	if forma == "engranaje":
+		return _gear_collision_shape()
 	if forma == "cilindro" or forma == "tubo":
 		var d: Dictionary = def.get("dimensiones_mm", {})
 		var s := CylinderShape3D.new()
@@ -154,10 +191,7 @@ func make_visual_clone() -> Node3D:
 	var detail := PartVisuals.build(def)
 	if detail:
 		return detail
-	var mi := MeshInstance3D.new()
-	mi.mesh = _make_mesh()
-	mi.material_override = MaterialLibrary.get_visual(material_id)
-	return mi
+	return _make_mesh_node()
 
 ## Reconstruye la malla/colisión tras cambiar dimensiones o material.
 func rebuild() -> void:

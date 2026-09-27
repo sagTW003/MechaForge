@@ -31,8 +31,8 @@
 - `core/Connection.gd` — modelo de datos serializable de una unión.
 
 > Nota técnica: el motor angular de `Generic6DOFJoint3D` no es fiable con Jolt,
-> por eso las bisagras motorizadas usan `HingeJoint3D` (su eje de giro es el eje
-> **X local** del joint).
+> por eso las bisagras motorizadas usan `HingeJoint3D`. Su eje de giro es el eje
+> **Z local** del joint (convención Bullet/Jolt), por eso se orienta con `_axis_basis_z`.
 
 ### `electronics/` y `control/` — Electrónica y control (Fase 3, C#)
 - `electronics/ElectricalSolver.cs` — solver de circuitos DC por Análisis Nodal

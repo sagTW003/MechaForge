@@ -32,11 +32,19 @@ var _history: Dictionary = {}       # conn.uid -> {t:[], sp:[], meas:[]}
 var _sim_time: float = 0.0
 var _hist_accum: float = 0.0
 var _elec: Dictionary = {}          # último resultado eléctrico
+var _step_pos: Dictionary = {}      # conn.uid -> posición del paso actual del stepper (rad)
+var _step_timer: Dictionary = {}    # conn.uid -> tiempo acumulado hasta el siguiente paso
+var _stall_time: Dictionary = {}    # conn.uid -> tiempo en bloqueo (servo/motor)
+var _stalled: Dictionary = {}       # conn.uid -> true si el eje está bloqueado
 var _elec_accum: float = 0.0
 const HIST_MAX := 300
 const HIST_PERIOD := 0.033          # ~30 Hz de muestreo para las gráficas
 
 const WORLD_LAYER := 1
+## El motor de HingeJoint3D impulsa A respecto de B: con este signo, una consigna
+## positiva hace girar B en sentido positivo del eje respecto de A (convención de
+## la medida (ω_b - ω_a)·eje que usan el PID y la telemetría).
+const MOTOR_SIGN := 1.0
 
 func setup(parts_root: Node3D, sim_root: Node3D) -> void:
 	_parts_root = parts_root
@@ -54,15 +62,19 @@ func start(connections: Array) -> void:
 	_build_ground()
 	# 1) Crear un cuerpo rígido por pieza.
 	for child in _parts_root.get_children():
-		if child is PartInstance:
+		if child is PartInstance and not child.is_queued_for_deletion():
 			var part := child as PartInstance
 			part.initial_transform = part.transform
 			part.visible = false
 			part.set_pick_enabled(false)
 			_bodies[part.uid] = _make_body(part)
-	# 2) Crear las uniones.
+	# 2) Crear las uniones. Las piezas unidas no "duermen": en mecanismos pequeños
+	# la velocidad lineal cae bajo el umbral de reposo de Jolt y se congelarían.
 	for conn in _connections:
 		_make_joint(conn)
+		for u in [conn.a_uid, conn.b_uid]:
+			if _bodies.has(u):
+				(_bodies[u] as RigidBody3D).can_sleep = false
 	# 3) Marcador de centro de masa.
 	_com_marker = _make_com_marker()
 	_sim_root.add_child(_com_marker)
@@ -87,19 +99,22 @@ func stop() -> void:
 	if not _running:
 		return
 	set_physics_process(false)
+	# Se retiran del árbol YA (no solo queue_free): si no, siguen en el espacio
+	# físico hasta el final del frame y chocarían con los de un reinicio inmediato.
 	for j in _joints:
 		if is_instance_valid(j["joint"]):
-			j["joint"].queue_free()
+			_discard(j["joint"])
 	_joints.clear()
 	for uid in _bodies:
 		if is_instance_valid(_bodies[uid]):
-			_bodies[uid].queue_free()
+			_discard(_bodies[uid])
 	_bodies.clear()
-	if _com_marker: _com_marker.queue_free()
-	if _ground: _ground.queue_free()
+	if _com_marker: _discard(_com_marker)
+	if _ground: _discard(_ground)
 	for uid in _pid_ids:
 		Electronics.PidDestroy(_pid_ids[uid])
 	_pid_ids.clear(); _ctrl_angle.clear(); _runtime_target.clear()
+	_step_pos.clear(); _step_timer.clear(); _stall_time.clear(); _stalled.clear()
 	_motor_frac.clear(); _history.clear(); _elec = {}
 	# Restaurar piezas a su estado inicial.
 	for child in _parts_root.get_children():
@@ -110,6 +125,11 @@ func stop() -> void:
 			part.set_pick_enabled(true)
 	_running = false
 	simulation_stopped.emit()
+
+func _discard(n: Node) -> void:
+	if n.get_parent():
+		n.get_parent().remove_child(n)
+	n.queue_free()
 
 func _build_ground() -> void:
 	_ground = StaticBody3D.new()
@@ -160,14 +180,15 @@ func _make_joint(conn: Connection) -> void:
 	# El engranaje NO crea un joint físico: es un acoplamiento cinemático de
 	# velocidad. Cada engranaje se monta aparte con su propia bisagra.
 	if conn.tipo == Connection.Tipo.ENGRANAJE:
-		_joints.append({"conn": conn, "joint": null, "a": a, "b": b})
+		_joints.append({"conn": conn, "joint": null, "a": a, "b": b, "phase": 0.0, "torque": 0.0})
 		return
 
 	# La bisagra usa HingeJoint3D (motor y límites robustos en Jolt).
 	if conn.tipo == Connection.Tipo.BISAGRA:
 		var hinge := HingeJoint3D.new()
 		_sim_root.add_child(hinge)
-		hinge.global_transform = Transform3D(_axis_basis(conn.axis_vector()), conn.anchor)
+		# El eje de giro de HingeJoint3D es su Z LOCAL: se orienta Z hacia el eje pedido.
+		hinge.global_transform = Transform3D(_axis_basis_z(conn.axis_vector()), conn.anchor)
 		hinge.node_a = hinge.get_path_to(a)
 		hinge.node_b = hinge.get_path_to(b)
 		if conn.limit_enabled:
@@ -176,7 +197,7 @@ func _make_joint(conn: Connection) -> void:
 			hinge.set_param(HingeJoint3D.PARAM_LIMIT_UPPER, conn.limit_upper)
 		if conn.motor_enabled:
 			hinge.set_flag(HingeJoint3D.FLAG_ENABLE_MOTOR, true)
-			hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, conn.motor_target_speed)
+			hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, -conn.motor_target_speed * MOTOR_SIGN)
 			hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, conn.motor_stall_torque / 120.0)
 		_joints.append({"conn": conn, "joint": hinge, "a": a, "b": b})
 		return
@@ -278,7 +299,7 @@ func _physics_process(delta: float) -> void:
 			_update_control(jd, delta)
 			_drive_motor(jd)
 		elif conn.tipo == Connection.Tipo.ENGRANAJE:
-			_drive_gear(jd)
+			_drive_gear(jd, delta)
 	_update_com()
 	# Registro para gráficas y cálculo eléctrico periódico.
 	_hist_accum += delta
@@ -313,11 +334,55 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 	Electronics.PidSetSetpoint(pid, setpoint)
 	var meas: float = _ctrl_angle[conn.uid] if conn.control_mode == Connection.ControlMode.POSICION else omega
 	_ctrl_meas[conn.uid] = meas
+	if conn.motor_type == Connection.MotorType.STEPPER:
+		_runtime_target[conn.uid] = _stepper_command(conn, meas, setpoint, delta)
+		return
 	var cmd: float = Electronics.PidUpdate(pid, meas, delta)
-	_runtime_target[conn.uid] = clampf(cmd, -conn.motor_noload_speed, conn.motor_noload_speed)
+	var vmax := conn.motor_noload_speed
+	if conn.motor_type == Connection.MotorType.SERVO:
+		vmax = minf(vmax, conn.servo_speed())          # velocidad nominal (s/60°)
+	_runtime_target[conn.uid] = clampf(cmd, -vmax, vmax)
+	_update_stall(conn, setpoint - meas, omega, delta)
 
-## Motor de bisagra con curva torque–velocidad de motor DC:
-##   torque disponible = stall * (1 - |ω| / ω_sin_carga), acotado a [0, stall].
+## Motor paso a paso: la posición avanza a SALTOS discretos (paso/microstep) hacia
+## la consigna, a la frecuencia de pasos máxima; entre pasos el rotor se retiene
+## en el paso actual (par de retención magnético), lo que produce el movimiento
+## "a escalones" característico.
+func _stepper_command(conn: Connection, meas: float, setpoint: float, delta: float) -> float:
+	var step := deg_to_rad(conn.step_deg) / float(maxi(1, conn.microsteps))
+	var pos: float = _step_pos.get(conn.uid, conn.snap_to_step(meas))
+	var target := setpoint
+	if conn.control_mode == Connection.ControlMode.VELOCIDAD:
+		target = pos + signf(setpoint) * step * 2.0 if absf(setpoint) > 1e-4 else pos
+	var rate := absf(setpoint) if conn.control_mode == Connection.ControlMode.VELOCIDAD else conn.motor_noload_speed
+	var period := step / maxf(0.01, rate)                 # segundos por paso
+	var t: float = _step_timer.get(conn.uid, 0.0) + delta
+	while t >= period and absf(target - pos) > step * 0.5:
+		pos += signf(target - pos) * step
+		t -= period
+	if absf(target - pos) <= step * 0.5:
+		t = 0.0
+	_step_timer[conn.uid] = t
+	_step_pos[conn.uid] = pos
+	# Retención: lleva el rotor al paso actual con alta rigidez.
+	return clampf((pos - meas) * 90.0, -conn.motor_noload_speed * 3.0, conn.motor_noload_speed * 3.0)
+
+## Detecta bloqueo del eje (stall): error grande, velocidad casi nula y par al
+## máximo durante más de 0.4 s. El motor consume su corriente de bloqueo.
+func _update_stall(conn: Connection, err: float, omega: float, delta: float) -> void:
+	var stuck := absf(err) > deg_to_rad(5.0) and absf(omega) < 0.05
+	var t: float = (_stall_time.get(conn.uid, 0.0) + delta) if stuck else 0.0
+	_stall_time[conn.uid] = t
+	var was: bool = _stalled.get(conn.uid, false)
+	_stalled[conn.uid] = t > 0.4
+	if _stalled[conn.uid] and not was:
+		Config.notify("⚠ %s bloqueado (sobrecarga): par máximo %.2f N·m alcanzado." % [
+			"Servo" if conn.motor_type == Connection.MotorType.SERVO else "Motor", conn.motor_stall_torque], 4.0)
+
+func is_stalled(uid: String) -> bool:
+	return _stalled.get(uid, false)
+
+## Motor de bisagra con curva par–velocidad de motor DC (ver modelo abajo).
 func _drive_motor(jd: Dictionary) -> void:
 	var conn: Connection = jd["conn"]
 	var hinge: HingeJoint3D = jd["joint"]
@@ -326,28 +391,93 @@ func _drive_motor(jd: Dictionary) -> void:
 	var axis := conn.axis_vector().normalized()
 	# Curva torque–velocidad de motor DC: torque disponible cae con la velocidad.
 	var omega: float = (b.angular_velocity - a.angular_velocity).dot(axis)
-	var frac := clampf(1.0 - absf(omega) / maxf(0.001, conn.motor_noload_speed), 0.0, 1.0)
-	var torque := conn.motor_stall_torque * frac
-	_motor_frac[conn.uid] = frac
 	var step := 1.0 / float(Engine.physics_ticks_per_second)
 	# Objetivo efectivo: el del controlador si hay control, si no el fijo.
 	var target: float = _runtime_target.get(conn.uid, conn.motor_target_speed)
 	# Alimentación por circuito (F1): el voltaje/PWM cableado escala el motor.
 	var duty: float = clampf(conn.elec_duty, 0.0, 1.0)
-	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, target * duty)
-	hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque * duty * step)
+	target *= duty
+	# Modelo de motor DC: τ = τ_bloqueo · (u − ω/ω0), con u = consigna/ω0 (tensión
+	# relativa). Da el par máximo en arranque, cero a la velocidad objetivo y par de
+	# FRENADO (dinámico) si el eje gira más rápido que la consigna.
+	var w0 := maxf(0.001, conn.motor_noload_speed)
+	var frac := clampf(absf(target / w0 - omega / w0), 0.0, 1.0)
+	var torque := conn.motor_stall_torque * frac
+	_motor_frac[conn.uid] = frac
+	hinge.set_param(HingeJoint3D.PARAM_MOTOR_TARGET_VELOCITY, -target * MOTOR_SIGN)
+	hinge.set_param(HingeJoint3D.PARAM_MOTOR_MAX_IMPULSE, torque * step)
 
-## Engranaje acoplado cinemáticamente: ω_b(eje) = -ratio * ω_a(eje).
-func _drive_gear(jd: Dictionary) -> void:
+## Engranaje como RESTRICCIÓN DINÁMICA entre los dos cuerpos (no cinemática):
+##   ω_b + r·ω_a = 0   con r = Z1/Z2 (o la relación indicada).
+## Cada paso se aplican impulsos iguales y opuestos (ponderados por la inercia de
+## cada rueda sobre el eje), de modo que la carga del engranaje conducido se
+## refleja en el conductor y el par se transmite en proporción r (τ_a = r·τ_b).
+## - Huelgo (backlash): holgura angular en la que los dientes no están en contacto;
+##   dentro de ella no se transmite par (al invertir el giro hay un retardo).
+## - Rendimiento/fricción: se pierde (1-η) del par transmitido como fricción.
+## - Corrección de fase (Baumgarte): la posición relativa se integra y se corrige
+##   para que las ruedas no se desincronicen ni "atraviesen" a altas revoluciones.
+func _drive_gear(jd: Dictionary, delta: float) -> void:
 	var conn: Connection = jd["conn"]
 	var a: RigidBody3D = jd["a"]
 	var b: RigidBody3D = jd["b"]
 	var axis := conn.axis_vector().normalized()
-	var wa: float = a.angular_velocity.dot(axis)
-	var target_b := -conn.effective_gear_ratio() * wa
-	var wb_now: Vector3 = b.angular_velocity
-	# Sustituye solo la componente sobre el eje, preserva el resto.
-	b.angular_velocity = wb_now - axis * wb_now.dot(axis) + axis * target_b
+	var r := conn.effective_gear_ratio()
+	var sa := PhysicsServer3D.body_get_direct_state(a.get_rid())
+	var sb := PhysicsServer3D.body_get_direct_state(b.get_rid())
+	if sa == null or sb == null:
+		return
+	var inv_ia := axis.dot(sa.inverse_inertia_tensor * axis)
+	var inv_ib := axis.dot(sb.inverse_inertia_tensor * axis)
+	var denom := r * r * inv_ia + inv_ib
+	if denom <= 0.0:
+		return
+	var wa := sa.angular_velocity.dot(axis)
+	var wb := sb.angular_velocity.dot(axis)
+	var cdot := wb + r * wa
+	# Error de fase acumulado (rad, en la rueda b).
+	var phase: float = jd["phase"] + cdot * delta
+	var half_bl := deg_to_rad(conn.gear_backlash_deg) * 0.5
+	var torque := 0.0
+	if absf(phase) > half_bl:
+		var pen := phase - signf(phase) * half_bl
+		# Restricción de velocidad unilateral: el diente solo empuja (sin rebote).
+		var lam := -cdot / denom
+		lam = minf(lam, 0.0) if pen > 0.0 else maxf(lam, 0.0)
+		if lam != 0.0:
+			sb.apply_torque_impulse(axis * lam)
+			sa.apply_torque_impulse(axis * (lam * r))
+			torque = lam / delta
+			# Pérdidas por fricción del engrane: se oponen al giro de la rueda conducida.
+			var loss := (1.0 - clampf(conn.gear_efficiency, 0.0, 1.0)) * absf(lam)
+			var wb_new := wb + inv_ib * lam
+			if loss > 0.0 and absf(wb_new) > 1e-4:
+				sb.apply_torque_impulse(axis * (-signf(wb_new) * minf(loss, absf(wb_new) / maxf(inv_ib, 1e-9))))
+		# Proyección de posición: corrige la interpenetración girando la rueda b
+		# (sin añadir velocidad), para que no se desincronicen con el tiempo.
+		var slop := deg_to_rad(0.05)
+		if absf(pen) > slop:
+			var corr := (pen - signf(pen) * slop) * 0.5
+			var xf := sb.transform
+			xf.basis = Basis(axis, -corr) * xf.basis
+			sb.transform = xf
+			phase -= corr
+	jd["phase"] = phase
+	jd["torque"] = torque
+
+## Par transmitido por un engranaje (N·m, último paso) — telemetría.
+func gear_torque(uid: String) -> float:
+	for jd in _joints:
+		if (jd["conn"] as Connection).uid == uid:
+			return jd.get("torque", 0.0)
+	return 0.0
+
+## Error de fase dentro del huelgo (rad) — telemetría/pruebas.
+func gear_phase(uid: String) -> float:
+	for jd in _joints:
+		if (jd["conn"] as Connection).uid == uid:
+			return jd.get("phase", 0.0)
+	return 0.0
 
 func _update_com() -> void:
 	var com := center_of_mass()
@@ -409,7 +539,7 @@ func _compute_electrical() -> void:
 	var resistors := []
 	for conn in _connections:
 		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
-			var frac: float = _motor_frac.get(conn.uid, 0.0)
+			var frac: float = 1.0 if _stalled.get(conn.uid, false) else _motor_frac.get(conn.uid, 0.0)
 			var i_motor: float = conn.elec_current_noload + (conn.elec_current_stall - conn.elec_current_noload) * frac
 			resistors.append([1, 0, v / maxf(0.001, i_motor)])
 	if resistors.is_empty():

@@ -78,6 +78,7 @@ static func load_document(path: String) -> Dictionary:
 ## Devuelve el número de piezas instanciadas.
 static func apply_document(doc: Dictionary, parts_root: Node3D) -> int:
 	for child in parts_root.get_children():
+		parts_root.remove_child(child)   # fuera del árbol ya, no al final del frame
 		child.queue_free()
 	if doc.has("grid_mm"):
 		Config.set_grid_size_mm(float(doc["grid_mm"]))

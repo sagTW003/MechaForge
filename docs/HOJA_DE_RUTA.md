@@ -85,19 +85,48 @@ Entrega por fases. Cada fase se valida antes de pasar a la siguiente.
 - [ ] Opcional futuro: rotura de piezas al superar el límite en simulación;
       persistencia de mallas importadas al guardar el proyecto.
 
-## 🔧 Refactor gráfico / construcción / física (plan externo)
-Progreso del plan de mejora (fotorrealismo, maniobrabilidad, física):
+## ✅ Refactor gráfico / construcción / física (plan externo, completado)
+Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] **G1 Gráficos**: materiales nuevos (cobre, estaño, baquelita/PCB, fibra de
-      carbono, acrílico), microrelieve procedural, Depth of Field, bloom para LEDs.
-      (PBR/SDFGI, soft shadows, SSAO/SSR, TAA/FSR ya existían.)
-- [x] **F1 Motor↔circuito**: el voltaje/PWM cableado mueve el motor en tiempo real.
-- [x] **F2 Steppers/Servos**: pasos discretos (1.8°/microstep); servo con rango y
-      velocidad (sec/60°) y stall.
-- [x] **F3 Engranajes**: relación por dientes Z1/Z2 (además de ratio directo).
-- [x] Cables realistas (catenaria + conectores), protoboard funcional, editar dims.
-- [ ] **M1**: gizmo 3D de 3 ejes · snapping a orificios/puertos · glow de pines.
-- [ ] **M2**: colisión básica de cables. **M3**: mecánica de soldadura.
-- [ ] **F3+**: backlash y fricción de engranajes. **G+**: HDRI, texturas foto.
+      carbono, acrílico), Depth of Field, bloom para LEDs.
+- [x] **G+ Iluminación / HDRI**: `rendering/WorkEnvironment.gd` con entornos
+      **Estudio** (HDRI procedural de softboxes), **Taller** (nave con ventanales y
+      tubos fluorescentes) y **Exterior** (cielo físico, **ciclo día/noche**); carga
+      de **HDRI propios** (.hdr/.exr/.png en `user://hdri`). Sombras PCSS suaves.
+- [x] **G+ Texturas PBR procedurales** (`rendering/ProceduralTextures.gd`): albedo,
+      rugosidad y normales por material (aluminio cepillado, anodizado granallado,
+      acero laminado, cobre oxidado, PCB con pistas y vías, fibra de carbono en
+      sarga 2x2 con laca, madera, hormigón...), mapeo triplanar a escala real,
+      generadas en hilos de trabajo.
+- [x] **G+ Mallas realistas** (`rendering/MeshFactory.gd`): perfiles 2020/4040 con
+      **ranuras en T**, cajas **achaflanadas**, **tubo hueco**, **engranajes con
+      dientes**, placas con **orificios M5** cada 20 mm, PCB con chip QFP, tira de
+      pines y puntos de soldadura. Suelo con rejilla de grosor constante en píxeles.
+- [x] **G+ Post-procesado**: antialiasing seleccionable **TAA+MSAA / SMAA / FXAA**,
+      bloom, DOF con **autoenfoque** en el punto de interés, exposición.
+- [x] **M1 Maniobrabilidad**: **gizmo 3D** de 3 ejes (mover/rotar, `W`/`E`),
+      rotación en X/Y/Z por teclado (`R`, `Mayús+R`, `Alt+R`) con pasos **15/45/90°**
+      (`1`/`2`/`3`); **encaje inteligente** (`core/SnapPoints.gd`) a orificios, ejes,
+      extremos y ranuras en T con indicador (anillo y fantasma verdes).
+- [x] **M1 Cableado**: **glow** de terminales por cercanía de la punta del cable y
+      compatibilidad; **cable provisional** que sigue al cursor; color por función
+      (VCC/GND/señal) o elegido.
+- [x] **M2 Física de cables** (`electronics/CableSim.gd`): cuerda Verlet con
+      gravedad (catenaria), longitud con holgura y **colisión** con piezas y suelo.
+- [x] **M3 Soldadura** (`electronics/SolderingTool.gd`, `rendering/solder.gdshader`):
+      cautín animado con punto de contacto exacto, estaño **sólido → líquido
+      brillante → solidificado** en menisco, humo de fundente.
+- [x] **F1 Motor↔circuito**, **F2 Steppers/Servos**, **F3 Engranajes Z1/Z2**.
+- [x] **F2+**: stepper con **saltos discretos reales** (1.8°/microstep); servo
+      limitado a su velocidad **s/60°** y detección de **bloqueo (stall)**.
+- [x] **F3+ Engranajes dinámicos**: restricción por impulsos entre ambos cuerpos
+      (la carga se refleja al motor, τ_a = r·τ_b), **huelgo** configurable,
+      **rendimiento** (fricción) y corrección de fase sin desincronización.
+- [x] Motor DC con modelo τ = τ_bloqueo·(u − ω/ω0) (incluye frenado dinámico).
+- [x] **Correcciones**: eje de giro de las bisagras (era el X local, Jolt usa el Z
+      local) y sentido del motor; cuerpos "fantasma" al reiniciar en el mismo frame.
+- [x] Pruebas `mfrefactor` (39/39). Benchmark: **119 FPS** promedio (1 % bajo 111)
+      con 200 piezas en Ultra (RTX 5060).
 
 ## ⏳ Fase 6 — Pulido y empaquetado
 - [ ] Optimización en este hardware, perfiles finos.

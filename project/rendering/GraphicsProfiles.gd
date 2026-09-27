@@ -36,6 +36,11 @@ const SETTINGS := {
 }
 
 var current_profile: int = Profile.ALTO
+
+## Antialiasing elegido por el usuario (-1 = el del perfil: TAA + MSAA).
+enum AA { PERFIL, TAA_MSAA, SMAA, FXAA, NINGUNO }
+const AA_NAMES := ["Automático (perfil)", "TAA + MSAA", "SMAA", "FXAA", "Sin AA"]
+var aa_mode: int = AA.PERFIL
 var adapter_name: String = ""
 var adapter_vendor: String = ""
 
@@ -86,6 +91,9 @@ func apply_profile(p: int, env: Environment, viewport: Viewport) -> void:
 	viewport.msaa_3d = s["msaa"]
 	viewport.screen_space_aa = (Viewport.SCREEN_SPACE_AA_DISABLED)
 	viewport.use_taa = s["taa"]
+	_apply_aa()
+
+	RenderingServer.directional_shadow_atlas_set_size(int(s["shadow_size"]), true)
 
 	# Environment: GI, oclusión, reflejos, glow, niebla.
 	if env:
@@ -98,6 +106,39 @@ func apply_profile(p: int, env: Environment, viewport: Viewport) -> void:
 
 	Config.quality_profile_changed.emit(profile_name(p))
 	Config.notify("Perfil gráfico: %s (GPU: %s)" % [profile_name(p), adapter_name], 4.0)
+
+## Cambia el modo de antialiasing (post-procesado SMAA/FXAA o temporal TAA).
+func set_aa_mode(m: int) -> void:
+	aa_mode = m
+	_apply_aa()
+
+func _apply_aa() -> void:
+	if _viewport == null:
+		return
+	var s: Dictionary = SETTINGS[current_profile]
+	match aa_mode:
+		AA.TAA_MSAA:
+			_viewport.use_taa = true
+			_viewport.msaa_3d = Viewport.MSAA_4X
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		AA.SMAA:
+			_viewport.use_taa = false
+			_viewport.msaa_3d = Viewport.MSAA_DISABLED
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_SMAA
+		AA.FXAA:
+			_viewport.use_taa = false
+			_viewport.msaa_3d = Viewport.MSAA_DISABLED
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+		AA.NINGUNO:
+			_viewport.use_taa = false
+			_viewport.msaa_3d = Viewport.MSAA_DISABLED
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		_:
+			_viewport.use_taa = s["taa"]
+			_viewport.msaa_3d = s["msaa"]
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+	# FSR2 necesita datos temporales; sin TAA se usa escalado bilineal.
+	_viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if _viewport.use_taa else Viewport.SCALING_3D_MODE_BILINEAR
 
 ## Aplica automáticamente el perfil recomendado.
 func apply_auto(env: Environment, viewport: Viewport) -> int:

@@ -15,6 +15,11 @@ var sun: DirectionalLight3D
 var fill_light: DirectionalLight3D
 var camera: CameraOrbit
 var floor_mesh: MeshInstance3D
+var work_env: WorkEnvironment
+var gizmo: TransformGizmo
+var snap_indicator: MeshInstance3D
+var _last_port_snap: Dictionary = {}
+var graphics_panel: GraphicsPanel
 var parts_root: Node3D
 var ghost: PartInstance
 
@@ -47,6 +52,13 @@ var wire_first: Dictionary = {}       # primer terminal elegido
 var wires_root: Node3D
 var terminals_root: Node3D            # marcadores de terminales (solo en modo cableado)
 var wire_button: Button
+var solder_button: Button
+var solder_mode: bool = false
+var soldering: SolderingTool
+var wire_color_choice: String = "auto"
+var _term_markers: Array = []          # [{body, mi, mat, pos, tipo, part_uid, term_id}]
+var _wire_preview: MeshInstance3D
+var _hover_term: Dictionary = {}
 var circuito_panel: FloatingPanel
 var circuito_label: Label
 const WIRE_PICK_LAYER := 4
@@ -129,6 +141,7 @@ func _ready() -> void:
 	_build_environment()
 	_build_camera()
 	_build_floor()
+	_build_gizmo()
 	parts_root = Node3D.new()
 	parts_root.name = "Piezas"
 	add_child(parts_root)
@@ -198,6 +211,20 @@ func _ready() -> void:
 		call_deferred("_run_phase5_shot")
 	elif "mfshot10" in OS.get_cmdline_user_args():
 		call_deferred("_run_protoboard_shot")
+	elif "mfshot11" in OS.get_cmdline_user_args():
+		var ua := OS.get_cmdline_user_args()
+		var i11 := ua.find("mfshot11")
+		var out11: String = ua[i11 + 1] if i11 + 1 < ua.size() else "user://mechaforge_refactor.png"
+		var ei := ua.find("env")
+		var ds: Node = load("res://tests/DemoShots.gd").new()
+		ds.main = self
+		add_child(ds)
+		ds.call_deferred("run", out11, int(ua[ei + 1]) if ei >= 0 else 0, "gizmo" in ua, "close" in ua)
+	elif "mfrefactor" in OS.get_cmdline_user_args():
+		var rt: Node = load("res://tests/RefactorTests.gd").new()
+		rt.main = self
+		add_child(rt)
+		rt.call_deferred("run")
 
 func _run_protoboard_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -633,14 +660,17 @@ func _run_phys_tests() -> void:
 	cm.motor_enabled = true; cm.motor_target_speed = 6.0
 	cm.motor_stall_torque = 3.0; cm.motor_noload_speed = 8.0
 	simulator.start([cm])
+	for bb0 in [simulator.get_body(base.uid), simulator.get_body(arm.uid)]:
+		bb0.gravity_scale = 0.0          # banco de pruebas en el aire (sin contacto)
 	await _phys_wait(150)
 	var ba := simulator.get_body(base.uid)
 	var bb := simulator.get_body(arm.uid)
 	var rel := absf((bb.angular_velocity - ba.angular_velocity).dot(cm.axis_vector()))
-	_pcheck(rel > 0.2, "El motor genera giro relativo entre piezas (Δω=%.2f rad/s)" % rel)
+	var rel_signed := (bb.angular_velocity - ba.angular_velocity).dot(cm.axis_vector())
+	_pcheck(absf(rel_signed - 6.0) < 0.3, "Motor: Δω = consigna (+6 rad/s) en el eje y sentido pedidos (%.2f)" % rel_signed)
 	simulator.stop()
 
-	# --- 4) Engranaje: acoplamiento cinemático ω_b = -ratio·ω_a ---
+	# --- 4) Engranaje: restricción dinámica ω_b = -ratio·ω_a (conserva el momento) ---
 	_on_new()
 	var g1 := _spawn("eje_acero_d10_150", "acero", Vector3(-0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
 	var g2 := _spawn("eje_acero_d10_150", "acero", Vector3(0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
@@ -648,9 +678,11 @@ func _run_phys_tests() -> void:
 	cg.tipo = Connection.Tipo.ENGRANAJE; cg.axis = 1; cg.gear_ratio = 2.0
 	simulator.start([cg])
 	simulator.get_body(g1.uid).angular_velocity = Vector3.UP * 2.0
-	await _phys_wait(5)
+	await _phys_wait(8)
+	var wa := simulator.get_body(g1.uid).angular_velocity.dot(Vector3.UP)
 	var wb := simulator.get_body(g2.uid).angular_velocity.dot(Vector3.UP)
-	_pcheck(absf(wb - (-4.0)) < 0.6, "Engranaje ratio 2: ω_b ≈ -4 rad/s (obtenido %.2f)" % wb)
+	_pcheck(absf(wa) > 0.05 and absf(wb / wa + 2.0) < 0.25, "Engranaje ratio 2: ω_b/ω_a ≈ -2 (obtenido %.2f / %.2f)" % [wb, wa])
+	_pcheck(wa < 2.0 and wa > 0.0, "La carga del engranaje frena al conductor (ω_a %.2f < 2.0)" % wa)
 	simulator.stop()
 
 	# --- Control PID de posición: la bisagra alcanza el ángulo consigna ---
@@ -664,6 +696,8 @@ func _run_phys_tests() -> void:
 	cc.control_mode = Connection.ControlMode.POSICION; cc.ctrl_setpoint = 1.0
 	cc.ctrl_kp = 8.0; cc.ctrl_ki = 1.0; cc.ctrl_kd = 0.4
 	simulator.start([cc])
+	for bb1 in [simulator.get_body(cb.uid), simulator.get_body(ca.uid)]:
+		bb1.gravity_scale = 0.0
 	await _phys_wait(400)
 	var ang := simulator.control_measure(cc.uid)
 	_pcheck(absf(ang - 1.0) < 0.3, "Control PID alcanza el ángulo consigna (%.2f rad)" % ang)
@@ -718,13 +752,13 @@ func _run_tests() -> void:
 
 	# 2. Cálculo de masa (perfil 20x20x200 mm de aluminio).
 	var def := PartLibrary.get_def("perfil_2020_200")
-	var vol := PartLibrary.volume_m3(def)          # 0.02*0.2*0.02 = 8e-5 m³
-	_check(absf(vol - 8.0e-5) < 1.0e-7, "Volumen del perfil 20x20x200 correcto")
+	var vol := PartLibrary.volume_m3(def)          # 0.02*0.2*0.02 * 0.463 (sección en T) = 3.7e-5 m³
+	_check(absf(vol - 8.0e-5 * 0.463) < 1.0e-7, "Volumen del perfil 20x20x200 (sección en T) correcto")
 	var inst := PartInstance.new()
 	add_child(inst)
 	inst.setup(def)
-	var masa := inst.mass_kg()                     # 2700 * 8e-5 = 0.216 kg
-	_check(absf(masa - 0.216) < 1.0e-3, "Masa del perfil (aluminio) ≈ 0.216 kg")
+	var masa := inst.mass_kg()                     # 2700 * 8e-5 * 0.463 (sección en T) = 0.100 kg
+	_check(absf(masa - 0.100) < 1.0e-3, "Masa del perfil 2020 (aluminio, sección en T) ≈ 0.100 kg (0.5 kg/m)")
 	inst.queue_free()
 
 	# 3. Snapping a la rejilla.
@@ -820,8 +854,13 @@ func _run_screenshot() -> void:
 	_spawn_from_dict({"def_id": "eje_acero_d10_150", "material": "acero_inox", "pos": [0, 0.26, 0], "rot": [0,0,1.5708]})
 	_update_counts()
 	_select(null)
+	var env_i := uargs.find("env")
+	if env_i >= 0 and env_i + 1 < uargs.size():
+		work_env.set_mode(int(uargs[env_i + 1]))
 	camera.target = Vector3(0, 0.12, 0)
 	camera.distance = 0.75
+	camera._update_transform()
+	MaterialLibrary.wait_textures()             # texturas procedurales listas
 	await get_tree().create_timer(3.0).timeout  # deja converger SDFGI
 	await RenderingServer.frame_post_draw       # asegura un frame dibujado
 	await RenderingServer.frame_post_draw
@@ -865,19 +904,26 @@ func _run_benchmark() -> void:
 	_bench_active = true
 	print("[BENCH] %d piezas colocadas. Midiendo FPS con perfil %s..." % [n, GraphicsProfiles.profile_name()])
 
+var _bench_dts: PackedFloat32Array = PackedFloat32Array()
+
 func _bench_tick(delta: float) -> void:
-	# Ignora el primer medio segundo (calentamiento).
+	# Ignora 1.5 s de calentamiento (compilación de shaders, SDFGI, texturas).
 	_bench_time += delta
-	if _bench_time < 0.5:
+	if _bench_time < 1.5:
 		return
 	_bench_frames += 1
-	var fps := Engine.get_frames_per_second()
-	_bench_sum_fps += fps
-	_bench_min_fps = minf(_bench_min_fps, fps)
-	if _bench_time >= 5.0:
-		var avg := _bench_sum_fps / maxf(1.0, _bench_frames)
+	_bench_dts.append(delta)
+	if _bench_time >= 7.5:
+		var total := 0.0
+		for d in _bench_dts:
+			total += d
+		var avg := _bench_dts.size() / maxf(total, 1e-6)
+		var sorted := _bench_dts.duplicate()
+		sorted.sort()
+		var worst := sorted[sorted.size() - 1]
+		var p99 := sorted[int(sorted.size() * 0.99) - 1]
 		print("[BENCH] Resultado -> Perfil: %s | GPU: %s" % [GraphicsProfiles.profile_name(), GraphicsProfiles.adapter_name])
-		print("[BENCH] FPS promedio: %.1f | FPS minimo: %.1f | Piezas: 200 | Escala 3D: %.2f" % [avg, _bench_min_fps, GraphicsProfiles.current_scale()])
+		print("[BENCH] FPS promedio: %.1f | 1%% bajo: %.1f | mínimo: %.1f | Piezas: 200 | Escala 3D: %.2f" % [avg, 1.0 / p99, 1.0 / worst, GraphicsProfiles.current_scale()])
 		_bench_active = false
 		get_tree().quit()
 
@@ -885,78 +931,15 @@ func _bench_tick(delta: float) -> void:
 
 #region ENTORNO 3D --------------------------------------------------------------
 
+## Entorno (cielo/HDRI, luces, suelo): módulo rendering/WorkEnvironment.gd.
 func _build_environment() -> void:
-	world_env = WorldEnvironment.new()
-	world_env.name = "Entorno"
-	var env := Environment.new()
-
-	# Cielo físico para iluminación ambiental realista.
-	var sky := Sky.new()
-	var sky_mat := PhysicalSkyMaterial.new()
-	sky_mat.rayleigh_coefficient = 2.0
-	sky_mat.mie_coefficient = 0.005
-	sky_mat.turbidity = 6.0
-	sky_mat.sun_disk_scale = 1.0
-	sky.sky_material = sky_mat
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 1.0
-	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-
-	# Tonemapping filmico (ACES) y exposición.
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
-
-	# Oclusión ambiental, iluminación indirecta y reflejos en pantalla.
-	env.ssao_enabled = true
-	env.ssao_radius = 0.5
-	env.ssao_intensity = 2.0
-	env.ssil_enabled = true
-	env.ssr_enabled = true
-	env.ssr_max_steps = 32
-
-	# Iluminación global en tiempo real.
-	env.sdfgi_enabled = true
-	env.sdfgi_use_occlusion = true
-	env.sdfgi_cascades = 4
-
-	# Glow / bloom para brillos metálicos e indicadores LED.
-	env.glow_enabled = true
-	env.glow_intensity = 0.45
-	env.glow_bloom = 0.1
-	env.glow_hdr_threshold = 0.9
-	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-
-	# Niebla volumétrica sutil (ambiente de taller).
-	env.volumetric_fog_enabled = true
-	env.volumetric_fog_density = 0.008
-	env.volumetric_fog_albedo = Color(0.7, 0.75, 0.8)
-
-	world_env.environment = env
-	add_child(world_env)
-
-	# Sol direccional con sombras suaves.
-	sun = DirectionalLight3D.new()
-	sun.name = "Sol"
-	sun.rotation_degrees = Vector3(-50, -40, 0)
-	sun.light_energy = 1.4
-	sun.light_color = Color(1.0, 0.97, 0.92)
-	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_blend_splits = true
-	sun.shadow_blur = 1.5
-	add_child(sun)
-
-	# Luz de relleno fría para las zonas en sombra.
-	fill_light = DirectionalLight3D.new()
-	fill_light.name = "Relleno"
-	fill_light.rotation_degrees = Vector3(-20, 140, 0)
-	fill_light.light_energy = 0.25
-	fill_light.light_color = Color(0.7, 0.8, 1.0)
-	fill_light.shadow_enabled = false
-	add_child(fill_light)
+	work_env = WorkEnvironment.new()
+	work_env.name = "EntornoTrabajo"
+	add_child(work_env)
+	world_env = work_env.world_env
+	sun = work_env.sun
+	fill_light = work_env.fill_light
+	floor_mesh = work_env.floor_mesh
 
 func _build_camera() -> void:
 	camera = CameraOrbit.new()
@@ -974,24 +957,37 @@ func _build_camera() -> void:
 	camera.current = true
 
 func _build_floor() -> void:
-	floor_mesh = MeshInstance3D.new()
-	floor_mesh.name = "Suelo"
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(60, 60)
-	floor_mesh.mesh = plane
-	var shader := load("res://rendering/floor_grid.gdshader")
-	if shader:
-		var mat := ShaderMaterial.new()
-		mat.shader = shader
-		mat.set_shader_parameter("minor_step", Config.grid_size_m)
-		floor_mesh.material_override = mat
-	floor_mesh.position = Vector3.ZERO
-	add_child(floor_mesh)
-	Config.grid_settings_changed.connect(_update_floor_grid)
+	pass  # el suelo lo crea WorkEnvironment
 
-func _update_floor_grid() -> void:
-	if floor_mesh and floor_mesh.material_override is ShaderMaterial:
-		(floor_mesh.material_override as ShaderMaterial).set_shader_parameter("minor_step", Config.grid_size_m)
+## Gizmo 3D de 3 ejes (mover/rotar) e indicador de encaje inteligente.
+func _build_gizmo() -> void:
+	gizmo = TransformGizmo.new()
+	gizmo.name = "Gizmo"
+	gizmo.camera = camera
+	add_child(gizmo)
+	gizmo.dragged.connect(_on_gizmo_dragged)
+	gizmo.drag_finished.connect(_on_gizmo_finished)
+	snap_indicator = MeshInstance3D.new()
+	snap_indicator.name = "IndicadorEncaje"
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.0035
+	tm.outer_radius = 0.0055
+	tm.rings = 24
+	tm.ring_segments = 8
+	snap_indicator.mesh = tm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.3, 1.0, 0.55)
+	m.no_depth_test = true
+	m.render_priority = 9
+	snap_indicator.material_override = m
+	snap_indicator.visible = false
+	add_child(snap_indicator)
+	soldering = SolderingTool.new()
+	soldering.name = "Cautin"
+	soldering.camera = camera
+	add_child(soldering)
+	soldering.finished.connect(_on_solder_finished)
 
 #endregion
 
@@ -1025,6 +1021,9 @@ func _build_ui() -> void:
 	_build_mcu_panel()
 	_build_music_panel()
 	_build_ai_panel()
+	graphics_panel = GraphicsPanel.new(work_env, camera)
+	ui_layer.add_child(graphics_panel)
+	graphics_panel.set_collapsed(true)
 	call_deferred("_layout_panels")
 
 func _build_music_panel() -> void:
@@ -1548,6 +1547,10 @@ func _build_topbar() -> Control:
 	wire_button = _button("🔌  Cablear", _toggle_wiring_mode)
 	wire_button.toggle_mode = true
 	hb.add_child(wire_button)
+	solder_button = _button("🔥  Soldar", _toggle_solder_mode)
+	solder_button.toggle_mode = true
+	solder_button.tooltip_text = "Suelda los extremos de los cables a sus terminales (cautín virtual)."
+	hb.add_child(solder_button)
 	hb.add_child(_vsep())
 
 	snap_check = CheckButton.new()
@@ -1740,6 +1743,8 @@ func _layout_panels() -> void:
 		ai_panel.position = Vector2(vp.x - ai_panel.size.x - 8, 300)
 	if music_panel:
 		music_panel.position = Vector2(vp.x - music_panel.size.x - 8, 250)
+	if graphics_panel:
+		graphics_panel.position = Vector2(vp.x - graphics_panel.size.x - 8, 350)
 	# Reajusta los paneles cuando cambie el tamaño de la ventana.
 	if not get_viewport().size_changed.is_connected(_clamp_panels):
 		get_viewport().size_changed.connect(_clamp_panels)
@@ -1749,7 +1754,7 @@ func _layout_panels() -> void:
 func _clamp_panels() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	for p in [biblioteca_panel, propiedades_panel, uniones_panel, elec_panel,
-			circuito_panel, mcu_panel, music_panel, ai_panel]:
+			circuito_panel, mcu_panel, music_panel, ai_panel, graphics_panel]:
 		if p == null or not p.visible:
 			continue
 		var pos: Vector2 = p.position
@@ -1794,7 +1799,11 @@ CONSTRUCCIÓN
 [Flechas]             Mover por rejilla (X/Z)
 [Re Pág] / [Av Pág]   Subir / bajar (altura)
 [Clic derecho / Esc]  Cancelar / deseleccionar
-[R]                   Rotar la pieza seleccionada
+[Gizmo 3D]            Arrastra una flecha (mover) o un anillo (rotar)
+[W] / [E]             Gizmo: modo mover / modo rotar
+[R]                   Rotar en Y   ·  [Mayús+R] en X  ·  [Alt+R] en Z
+[1] [2] [3]           Paso de rotación 15° / 45° / 90°
+(Encaje inteligente)  Orificios, ejes, ranuras en T: anillo verde = encaja
 [Supr]                Eliminar la pieza seleccionada
 [Ctrl+D]              Duplicar la pieza seleccionada
 [Ctrl+Z] / [Ctrl+Y]   Deshacer / Rehacer
@@ -1803,7 +1812,12 @@ CONSTRUCCIÓN
 SIMULACIÓN Y UNIONES
 [Espacio]             Iniciar / detener la simulación
 [⟲ Reiniciar]         Volver al estado inicial
-[🔗 Conectar]         Unir dos piezas (bisagra, fija, etc.)
+[🔗 Conectar]         Unir dos piezas (bisagra, fija, engranaje…)
+
+ELECTRÓNICA
+[🔌 Cablear]          Acerca la punta a un terminal (brilla) y clic, luego otro
+[Clic derecho]        Cancelar el cable en curso
+[🔥 Soldar]           Clic en el extremo de un cable para soldarlo
 
 PROYECTO / CÁMARA
 [Ctrl+S] / [Ctrl+O]   Guardar / Abrir proyecto
@@ -1898,7 +1912,12 @@ func _refresh_properties() -> void:
 	if forma != "custom":
 		prop_container.add_child(_label("Dimensiones (mm):"))
 		var dm: Dictionary = def.get("dimensiones_mm", {})
-		if forma == "cilindro" or forma == "tubo":
+		if forma == "engranaje":
+			_add_dim_spin("Dientes (Z)", "dientes", dm.get("dientes", 20))
+			_add_dim_spin("Módulo", "modulo", dm.get("modulo", 1.0))
+			_add_dim_spin("Ancho", "ancho", dm.get("ancho", 8.0))
+			_add_prop_row("Ø primitivo", "%.1f mm" % (PartLibrary.gear_pitch_radius_m(def) * 2000.0))
+		elif forma == "cilindro" or forma == "tubo":
 			_add_dim_spin("Radio", "radio", dm.get("radio", 10.0))
 			_add_dim_spin("Altura", "altura", dm.get("altura", 100.0))
 			if forma == "tubo":
@@ -1960,6 +1979,8 @@ func _set_dimension(key: String, mm: float) -> void:
 		return
 	if not selected_part.def.has("dimensiones_mm"):
 		selected_part.def["dimensiones_mm"] = {}
+	if key == "dientes":
+		mm = maxf(6.0, round(mm))
 	selected_part.def["dimensiones_mm"][key] = mm
 	selected_part.rebuild()
 	if _prop_mass_label and is_instance_valid(_prop_mass_label):
@@ -2009,6 +2030,7 @@ func _start_placing() -> void:
 	add_child(ghost)
 	ghost.setup(def)
 	ghost.material_id = current_material if MaterialLibrary.has_material(current_material) else def.get("material", "aluminio")
+	_ghost_valid_state = -1
 	_make_ghost_visual(ghost)
 	Config.notify("Colocando: %s. Clic para confirmar, clic derecho/Esc para cancelar." % def.get("nombre", current_def_id), 4.0)
 
@@ -2025,6 +2047,19 @@ func _apply_ghost_recursive(node: Node, gmat: StandardMaterial3D) -> void:
 		else:
 			_apply_ghost_recursive(c, gmat)
 
+## Fantasma verde cuando encaja en un puerto, azul en colocación libre.
+var _ghost_valid_state: int = -1
+func _set_ghost_valid(inst: PartInstance, snapped: bool) -> void:
+	var st := 1 if snapped else 0
+	if st == _ghost_valid_state:
+		return
+	_ghost_valid_state = st
+	var m := MaterialLibrary.get_ghost(inst.material_id, true)
+	if snapped:
+		m.albedo_color = Color(0.35, 1.0, 0.55, 0.5)
+		m.emission = m.albedo_color
+	_apply_ghost_recursive(inst, m)
+
 func _clear_ghost() -> void:
 	if ghost:
 		ghost.queue_free()
@@ -2033,6 +2068,7 @@ func _clear_ghost() -> void:
 func _cancel_placing() -> void:
 	placing = false
 	_clear_ghost()
+	if snap_indicator: snap_indicator.visible = false
 	if parts_tree.get_selected():
 		parts_tree.deselect_all()
 
@@ -2087,7 +2123,7 @@ func _process(_delta: float) -> void:
 			_update_elec_panel()
 			_circuit_tick()
 	if placing and ghost:
-		var dims := PartLibrary.dims_m(ghost.def)
+		var dims := SnapPoints.world_aabb(ghost, ghost.def, Transform3D(ghost.basis, Vector3.ZERO)).size
 		var mouse := get_viewport().get_mouse_position()
 		var snap := _try_surface_snap(mouse, dims, null)
 		if not snap.is_empty():
@@ -2098,6 +2134,7 @@ func _process(_delta: float) -> void:
 				var pos: Vector3 = Config.snap_vector(p)
 				pos.y = dims.y * 0.5  # apoya sobre el suelo
 				ghost.position = pos
+		_set_ghost_valid(ghost, _apply_port_snap(ghost))
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
@@ -2110,12 +2147,18 @@ func _unhandled_input(event: InputEvent) -> void:
 					_connect_pick(mb.position)
 				elif wiring_mode:
 					_wire_pick(mb.position)
+				elif solder_mode:
+					_solder_pick(mb.position)
 				elif simulator.is_running():
 					_try_select(mb.position)
+				elif gizmo.visible and gizmo.begin_drag(mb.position):
+					pass
 				else:
 					_begin_pointer(mb.position)
 			else:  # soltar
-				if not placing and not connect_mode and not wiring_mode and not simulator.is_running():
+				if gizmo.is_dragging():
+					gizmo.end_drag()
+				elif not placing and not connect_mode and not wiring_mode and not solder_mode and not simulator.is_running():
 					_end_drag()
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
 			if placing:
@@ -2123,11 +2166,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif connect_mode:
 				_set_connect_mode(false)
 			elif wiring_mode:
-				_set_wiring_mode(false)
+				if not wire_first.is_empty():
+					wire_first = {}
+					_update_wire_preview(Vector2(-1, -1))
+					Config.notify("Cable cancelado.")
+				else:
+					_set_wiring_mode(false)
+			elif solder_mode:
+				_set_solder_mode(false)
 			else:
 				_select(null)
+	elif event is InputEventMouseMotion and gizmo.is_dragging():
+		gizmo.update_drag((event as InputEventMouseMotion).position)
 	elif event is InputEventMouseMotion and dragging_part:
 		_update_drag(event as InputEventMouseMotion)
+	elif event is InputEventMouseMotion:
+		if gizmo.visible:
+			gizmo.hover((event as InputEventMouseMotion).position)
+		if wiring_mode or solder_mode:
+			_wire_hover((event as InputEventMouseMotion).position)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
@@ -2144,9 +2201,11 @@ func _confirm_placement() -> void:
 			"rot": [ghost.rotation.x, ghost.rotation.y, ghost.rotation.z],
 		}
 	}
+	var keep_basis := ghost.basis
 	_do(cmd)
-	# Mantener el modo colocación para poner varias piezas seguidas.
+	# Mantener el modo colocación para poner varias piezas seguidas (misma orientación).
 	_start_placing()
+	if ghost: ghost.basis = keep_basis
 
 func _try_select(screen_pos: Vector2) -> void:
 	var ray := camera.screen_ray(screen_pos)
@@ -2173,6 +2232,8 @@ func _select(part) -> void:
 	selected_part = part
 	if selected_part:
 		selected_part.set_selected(true)
+	if gizmo:
+		gizmo.attach(selected_part if (selected_part and not simulator.is_running()) else null)
 	_refresh_properties()
 
 # --- Mover piezas colocadas ---
@@ -2205,7 +2266,7 @@ func _update_drag(event: InputEventMouseMotion) -> void:
 		dragging_part.position.y = maxf(0.0, Config.snap_scalar(new_y))
 		_show_drag_status()
 	else:
-		var dims := PartLibrary.dims_m(dragging_part.def)
+		var dims := SnapPoints.world_aabb(dragging_part, dragging_part.def, Transform3D(dragging_part.basis, Vector3.ZERO)).size
 		var snap := _try_surface_snap(event.position, dims, dragging_part)
 		if not snap.is_empty():
 			dragging_part.position = snap["pos"]
@@ -2220,11 +2281,13 @@ func _update_drag(event: InputEventMouseMotion) -> void:
 				dragging_part.position.x = snapped.x
 				dragging_part.position.z = snapped.z
 			_show_drag_status()
+		if _apply_port_snap(dragging_part) and status_label:
+			status_label.text = "Encaje inteligente: %s   ·   suelta para fijar" % SnapPoints.describe(_last_port_snap)
 	drag_moved = true
 	if connections.size() > 0:
 		_redraw_connection_markers()
 	if wires.size() > 0:
-		_redraw_wires()
+		_redraw_wires(true)
 
 func _show_drag_status() -> void:
 	if status_label and dragging_part:
@@ -2237,6 +2300,7 @@ func _end_drag() -> void:
 		return
 	var part := dragging_part
 	dragging_part = null
+	snap_indicator.visible = false
 	part.set_pick_enabled(true)  # reactiva la selección de la pieza
 	if drag_moved and part.position.distance_to(drag_start_pos) > 1.0e-6:
 		_do({
@@ -2283,7 +2347,20 @@ func _handle_key(k: InputEventKey) -> void:
 			Config.snap_enabled = not Config.snap_enabled
 			snap_check.button_pressed = Config.snap_enabled
 		KEY_R when not editing_locked:
-			_rotate_selected()
+			if k.shift_pressed: _rotate_selected(0)
+			elif k.alt_pressed: _rotate_selected(2)
+			else: _rotate_selected(1)
+		KEY_W when not ctrl:
+			gizmo.set_mode(TransformGizmo.Mode.MOVER)
+			Config.notify("Gizmo: mover (flechas X/Y/Z)")
+		KEY_E when not ctrl:
+			gizmo.set_mode(TransformGizmo.Mode.ROTAR)
+			Config.notify("Gizmo: rotar (anillos X/Y/Z, paso %d°)" % int(Config.rotation_step_deg))
+		KEY_1, KEY_2, KEY_3:
+			var idx: int = {KEY_1: 1, KEY_2: 2, KEY_3: 3}[k.keycode]
+			Config.rotation_step_deg = ROT_STEP_OPTIONS[idx]
+			if rot_option: rot_option.select(idx)
+			Config.notify("Paso de rotación: %d°" % int(Config.rotation_step_deg))
 		KEY_DELETE when not editing_locked:
 			_delete_selected()
 		KEY_Z when ctrl and not editing_locked:
@@ -2309,18 +2386,74 @@ func _handle_key(k: InputEventKey) -> void:
 		KEY_PAGEDOWN when not editing_locked:
 			_nudge(Vector3(0, -1, 0))
 
-func _rotate_selected() -> void:
+## Rota la pieza seleccionada (o la pieza en colocación) sobre un eje del mundo
+## (0=X, 1=Y, 2=Z) el paso de rotación configurado.
+func _rotate_selected(axis: int = 1) -> void:
+	var ax: Vector3 = TransformGizmo.AXES[axis]
+	var step := deg_to_rad(Config.rotation_step_deg)
 	if selected_part == null:
 		if placing and ghost:
-			ghost.rotation.y += deg_to_rad(Config.rotation_step_deg)
+			ghost.basis = (Basis(ax, step) * ghost.basis).orthonormalized()
 		return
-	var old_rot := selected_part.rotation
-	var new_rot := old_rot
-	new_rot.y += deg_to_rad(Config.rotation_step_deg)
-	_do({
-		"type": "transform", "uid": selected_part.uid,
-		"old": _xf_of(selected_part), "new": {"pos": _arr(selected_part.position), "rot": _arr(new_rot)},
-	})
+	var old := _xf_of(selected_part)
+	var nb := (Basis(ax, step) * selected_part.basis).orthonormalized()
+	var new_rot := nb.get_euler()
+	var new_pos := selected_part.position
+	# Mantiene la pieza apoyada (no atraviesa el suelo tras girar).
+	var half_y := SnapPoints.world_aabb(selected_part, selected_part.def, Transform3D(nb, new_pos)).size.y * 0.5
+	new_pos.y = maxf(new_pos.y, half_y)
+	_do({"type": "transform", "uid": selected_part.uid, "old": old,
+		"new": {"pos": _arr(new_pos), "rot": _arr(new_rot)}})
+
+## Arrastre del gizmo: vista previa en vivo (sin comando hasta soltar).
+func _on_gizmo_dragged(pos: Vector3, b: Basis) -> void:
+	if selected_part == null:
+		return
+	selected_part.global_transform = Transform3D(b, pos)
+	if gizmo.mode == TransformGizmo.Mode.MOVER:
+		_apply_port_snap(selected_part)
+	if status_label:
+		var r := selected_part.rotation_degrees
+		var enc := ("· Encaje: " + SnapPoints.describe(_last_port_snap)) if not _last_port_snap.is_empty() else ""
+		status_label.text = "Gizmo · X %.3f  Y %.3f  Z %.3f m · Rot %.0f° %.0f° %.0f°  %s" % [
+			selected_part.position.x, selected_part.position.y, selected_part.position.z, r.x, r.y, r.z, enc]
+	_redraw_connection_markers()
+	if wires.size() > 0:
+		_redraw_wires(true)
+
+func _on_gizmo_finished(old_pos: Vector3, old_basis: Basis, _new_pos: Vector3, _new_basis: Basis) -> void:
+	snap_indicator.visible = false
+	if selected_part == null:
+		return
+	var old_rot := old_basis.get_euler()
+	if selected_part.position.distance_to(old_pos) < 1e-7 and selected_part.basis.is_equal_approx(old_basis):
+		return
+	_do({"type": "transform", "uid": selected_part.uid,
+		"old": {"pos": _arr(old_pos), "rot": _arr(old_rot)},
+		"new": {"pos": _arr(selected_part.position), "rot": _arr(selected_part.rotation)}})
+
+## Encaje inteligente a puertos: ajusta la pieza al punto compatible más cercano
+## (orificio, eje, ranura...) y muestra el indicador. Devuelve true si encajó.
+func _apply_port_snap(node: Node3D) -> bool:
+	_last_port_snap = {}
+	snap_indicator.visible = false
+	if not Config.surface_snap_enabled:
+		return false
+	var reach := clampf(camera.distance * 0.02, 0.006, 0.03)
+	var snap := SnapPoints.find_snap(node, node.def, node.global_transform, parts_root.get_children(), reach)
+	if snap.is_empty():
+		return false
+	node.global_position += snap["offset"]
+	_last_port_snap = snap
+	snap_indicator.visible = true
+	snap_indicator.global_position = snap["to"]
+	var n: Vector3 = Vector3.UP
+	for q in SnapPoints.world_points(snap["target"], snap["target"].def):
+		if (q["p"] as Vector3).distance_to(snap["to"]) < 1e-6:
+			n = (q["n"] as Vector3).normalized()
+			break
+	snap_indicator.basis = Basis(Quaternion(Vector3.UP, n)) if absf(n.dot(Vector3.UP)) < 0.999 else Basis.IDENTITY
+	return true
 
 #endregion
 
@@ -2345,13 +2478,15 @@ func _apply(cmd: Dictionary) -> void:
 			var inst := _find_part(cmd["data"]["uid"])
 			if inst:
 				if selected_part == inst: _select(null)
-				inst.queue_free()
+				_free_part(inst)
 		"transform":
 			var inst := _find_part(cmd["uid"])
 			if inst:
 				inst.position = _vec(cmd["new"]["pos"])
 				inst.rotation = _vec(cmd["new"]["rot"])
 				if selected_part == inst: _refresh_properties()
+				_redraw_connection_markers()
+				if wires.size() > 0: _redraw_wires()
 
 func _revert(cmd: Dictionary) -> void:
 	match cmd["type"]:
@@ -2359,7 +2494,7 @@ func _revert(cmd: Dictionary) -> void:
 			var inst := _find_part(cmd["data"]["uid"])
 			if inst:
 				if selected_part == inst: _select(null)
-				inst.queue_free()
+				_free_part(inst)
 		"remove":
 			_spawn_from_dict(cmd["data"])
 		"transform":
@@ -2368,6 +2503,8 @@ func _revert(cmd: Dictionary) -> void:
 				inst.position = _vec(cmd["old"]["pos"])
 				inst.rotation = _vec(cmd["old"]["rot"])
 				if selected_part == inst: _refresh_properties()
+				_redraw_connection_markers()
+				if wires.size() > 0: _redraw_wires()
 
 func undo() -> void:
 	if _undo.is_empty():
@@ -2418,6 +2555,14 @@ func _spawn_from_dict(d: Dictionary) -> PartInstance:
 	inst.position = _vec(d.get("pos", [0, 0, 0]))
 	inst.rotation = _vec(d.get("rot", [0, 0, 0]))
 	return inst
+
+## Quita una pieza de la escena YA (remove_child) y la libera: con solo
+## queue_free seguiría en parts_root hasta fin de frame (y el simulador o los
+## recuentos la verían).
+func _free_part(n: Node) -> void:
+	if n.get_parent():
+		n.get_parent().remove_child(n)
+	n.queue_free()
 
 func _find_part(uid: String) -> PartInstance:
 	for c in parts_root.get_children():
@@ -2470,7 +2615,7 @@ func _on_new() -> void:
 	if simulator.is_running():
 		simulator.stop()
 	for c in parts_root.get_children():
-		c.queue_free()
+		_free_part(c)
 	connections.clear()
 	wires.clear()
 	_redraw_connection_markers()
@@ -2558,6 +2703,7 @@ func _toggle_simulation() -> void:
 		_cancel_placing()
 		_set_connect_mode(false)
 		_set_wiring_mode(false)
+		_set_solder_mode(false)
 		simulator.start(connections)
 
 func _reset_simulation() -> void:
@@ -2737,6 +2883,21 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 	gear_hb.add_child(_label("Z1")); gear_hb.add_child(z1_spin)
 	gear_hb.add_child(_label("Z2")); gear_hb.add_child(z2_spin)
 	vb.add_child(gear_hb)
+	var gear_hb2 := HBoxContainer.new()
+	var bl_spin := _spin(0, 10, 0.1, 0.5)
+	var eff_spin := _spin(50, 100, 0.5, 97)
+	gear_hb2.add_child(_label("Huelgo (°)")); gear_hb2.add_child(bl_spin)
+	gear_hb2.add_child(_label("Rendimiento (%)")); gear_hb2.add_child(eff_spin)
+	vb.add_child(gear_hb2)
+	# Dos engranajes de la biblioteca: engranaje preseleccionado con sus dientes.
+	if a.def.get("forma", "") == "engranaje" and b.def.get("forma", "") == "engranaje":
+		tipo_opt.select(4)
+		z1_spin.value = PartLibrary.gear_teeth(a.def)
+		z2_spin.value = PartLibrary.gear_teeth(b.def)
+		var cd := a.global_position.distance_to(b.global_position)
+		var ideal := PartLibrary.gear_pitch_radius_m(a.def) + PartLibrary.gear_pitch_radius_m(b.def)
+		vb.add_child(_label("Distancia entre ejes: %.1f mm (ideal %.1f mm)%s" % [cd * 1000.0, ideal * 1000.0,
+			"" if absf(cd - ideal) < 0.0015 else "  ⚠ no engranan bien"]))
 
 	ui_layer.add_child(dlg)
 	dlg.confirmed.connect(func():
@@ -2769,6 +2930,8 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		c.step_deg = step_spin.value
 		c.gear_z1 = int(z1_spin.value)
 		c.gear_z2 = int(z2_spin.value)
+		c.gear_backlash_deg = bl_spin.value
+		c.gear_efficiency = eff_spin.value / 100.0
 		connections.append(c)
 		Config.project_dirty = true
 		_redraw_connection_markers()
@@ -2777,7 +2940,7 @@ func _open_connection_dialog(a: PartInstance, b: PartInstance) -> void:
 		Config.notify("Unión creada: %s (%s)." % [c.tipo_nombre(), Connection.AXIS_NOMBRE[c.axis]])
 		dlg.queue_free())
 	dlg.canceled.connect(func(): dlg.queue_free())
-	dlg.popup_centered(Vector2i(380, 460))
+	dlg.popup_centered(Vector2i(400, 520))
 
 func _spin(mn: float, mx: float, step: float, val: float) -> SpinBox:
 	var s := SpinBox.new()
@@ -2847,11 +3010,13 @@ func _set_wiring_mode(on: bool) -> void:
 	if on:
 		_cancel_placing()
 		_set_connect_mode(false)
+		if solder_mode: _set_solder_mode(false)
 		_select(null)
 		_build_terminal_markers()
-		Config.notify("Cableado: clic en un terminal y luego en otro para unirlos.", 6.0)
+		Config.notify("Cableado: acerca el cursor a un terminal (brilla) y haz clic; luego en otro. Clic derecho cancela.", 6.0)
 	else:
 		_clear_terminal_markers()
+		_update_wire_preview(Vector2(-1, -1))
 
 func _electronic_parts() -> Array:
 	var out := []
@@ -2894,10 +3059,14 @@ func _build_terminal_markers() -> void:
 			body.set_meta("term_id", str(term.get("id", "")))
 			body.set_meta("term_tipo", term.get("tipo", "signal"))
 			terminals_root.add_child(body)
+			_term_markers.append({"body": body, "mi": mi, "mat": mat, "pos": body.global_position,
+				"tipo": term.get("tipo", "signal"), "part_uid": part.uid, "term_id": str(term.get("id", ""))})
 
 func _clear_terminal_markers() -> void:
 	for c in terminals_root.get_children():
 		c.queue_free()
+	_term_markers.clear()
+	_hover_term = {}
 
 func _wire_pick(screen_pos: Vector2) -> void:
 	var ray := camera.screen_ray(screen_pos)
@@ -2905,22 +3074,26 @@ func _wire_pick(screen_pos: Vector2) -> void:
 	var params := PhysicsRayQueryParameters3D.create(
 		ray["origin"], ray["origin"] + ray["dir"] * 1000.0, WIRE_PICK_LAYER)
 	var hit := space.intersect_ray(params)
-	if hit.is_empty():
+	var info := {}
+	if not hit.is_empty():
+		var body: Node = hit["collider"]
+		info = {"part_uid": body.get_meta("part_uid"), "term_id": body.get_meta("term_id"), "tipo": body.get_meta("term_tipo")}
+	elif not _hover_term.is_empty():
+		# Tolerancia en pantalla: el terminal resaltado bajo la punta del cable.
+		info = {"part_uid": _hover_term["part_uid"], "term_id": _hover_term["term_id"], "tipo": _hover_term["tipo"]}
+	if info.is_empty():
 		return
-	var body: Node = hit["collider"]
-	var info := {
-		"part_uid": body.get_meta("part_uid"),
-		"term_id": body.get_meta("term_id"),
-		"tipo": body.get_meta("term_tipo"),
-	}
 	if wire_first.is_empty():
 		wire_first = info
 		Config.notify("1.er terminal: %s. Elige el segundo." % info["term_id"])
 	elif info["part_uid"] == wire_first["part_uid"] and info["term_id"] == wire_first["term_id"]:
 		Config.notify("Elige un terminal distinto.")
 	else:
+		if _terminal_compat(wire_first, info) == 1:
+			Config.notify("⚠ Unes un terminal de alimentación con uno de tierra: revisa que haya una carga en el circuito.", 5.0)
 		_add_wire(wire_first, info)
 		wire_first = {}
+		_update_wire_preview(Vector2(-1, -1))
 
 func _key(part_uid: String, term_id: String) -> String:
 	return "%s:%s" % [part_uid, term_id]
@@ -2936,6 +3109,7 @@ func _add_wire(a: Dictionary, b: Dictionary) -> void:
 		"a_key": _key(a["part_uid"], a["term_id"]),
 		"b_key": _key(b["part_uid"], b["term_id"]),
 		"tipo": tipo,
+		"color": wire_color_choice,
 	})
 	Config.project_dirty = true
 	_redraw_wires()
@@ -2954,91 +3128,193 @@ func _terminal_pos_by_key(key: String):
 			return _terminal_world(part, term)
 	return null
 
-func _redraw_wires() -> void:
+## Redibuja todos los cables con física (CableSim): catenaria por gravedad y
+## sin atravesar piezas. "quick" reduce iteraciones (durante arrastres).
+func _redraw_wires(quick: bool = false) -> void:
 	for c in wires_root.get_children():
 		c.queue_free()
+	if wires.is_empty():
+		return
+	var obstacles := []
+	for part in parts_root.get_children():
+		if part is PartInstance:
+			obstacles.append({"xf": part.global_transform, "half": PartLibrary.dims_m(part.def) * 0.5})
 	for w in wires:
 		var pa = _terminal_pos_by_key(w["a_key"])
 		var pb = _terminal_pos_by_key(w["b_key"])
 		if pa == null or pb == null:
 			continue
-		wires_root.add_child(_make_cable(pa, pb, _wire_color(w["tipo"])))
+		var pts := CableSim.solve(pa, pb, obstacles, 1.15, 22, 25 if quick else 90)
+		var col := CableRenderer.color_for(w.get("tipo", "signal"), str(w.get("color", "auto")))
+		wires_root.add_child(CableRenderer.build(pts, col, bool(w.get("soldado_a", false)), bool(w.get("soldado_b", false))))
 
-func _wire_color(tipo: String) -> Color:
-	match tipo:
-		"power": return Color(0.85, 0.13, 0.13)
-		"gnd": return Color(0.05, 0.05, 0.06)
-		_: return Color(0.15, 0.45, 0.9)
+## Compatibilidad entre terminales: 0 = no (mismo terminal), 1 = precaución
+## (alimentación ↔ tierra), 2 = compatible.
+func _terminal_compat(a: Dictionary, b: Dictionary) -> int:
+	if a.get("part_uid") == b.get("part_uid") and a.get("term_id") == b.get("term_id"):
+		return 0
+	var ta := str(a.get("tipo", "signal"))
+	var tb := str(b.get("tipo", "signal"))
+	if (ta == "power" and tb == "gnd") or (ta == "gnd" and tb == "power"):
+		return 1
+	return 2
 
-## Construye un cable curvo realista (con caída) entre dos puntos.
-func _make_cable(p1: Vector3, p2: Vector3, color: Color) -> Node3D:
-	var holder := Node3D.new()
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 0.42
-	mat.metallic = 0.0
-	# Curva cuadrática con caída (catenaria simple).
-	var dist := p1.distance_to(p2)
-	var mid := (p1 + p2) * 0.5
-	mid.y -= minf(0.03, dist * 0.28)
-	var pts := PackedVector3Array()
-	var segs := 18
-	for i in range(segs + 1):
-		var t := float(i) / float(segs)
-		var a := p1.lerp(mid, t)
-		var b := mid.lerp(p2, t)
-		pts.append(a.lerp(b, t))
-	var mi := MeshInstance3D.new()
-	mi.mesh = _tube_mesh(pts, 0.0016)
-	mi.material_override = mat
-	holder.add_child(mi)
-	# Conectores metálicos en los extremos.
-	var pin := StandardMaterial3D.new()
-	pin.albedo_color = Color(0.75, 0.75, 0.78); pin.metallic = 0.9; pin.roughness = 0.3
-	for p in [p1, p2]:
-		var pc := MeshInstance3D.new()
-		var cm := CylinderMesh.new(); cm.top_radius = 0.0022; cm.bottom_radius = 0.0022; cm.height = 0.006; cm.radial_segments = 8
-		pc.mesh = cm; pc.material_override = pin; pc.position = p
-		holder.add_child(pc)
-	return holder
-
-## Malla de tubo extruyendo un anillo a lo largo de una polilínea.
-func _tube_mesh(points: PackedVector3Array, radius: float) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var ring := 6
-	var rings := []
-	var up := Vector3.UP
-	for i in range(points.size()):
-		var tangent: Vector3
-		if i == 0:
-			tangent = (points[1] - points[0])
-		elif i == points.size() - 1:
-			tangent = (points[i] - points[i - 1])
+## Resaltado (glow) de terminales según la cercanía de la punta del cable (cursor)
+## y su compatibilidad con el primer terminal elegido. Vista previa del cable.
+func _wire_hover(mouse: Vector2) -> void:
+	var best := {}
+	var best_d := 16.0
+	for tm in _term_markers:
+		if not is_instance_valid(tm["mi"]):
+			continue
+		var wp: Vector3 = tm["pos"]
+		if camera.is_position_behind(wp):
+			continue
+		var d := camera.unproject_position(wp).distance_to(mouse)
+		var prox := clampf(1.0 - d / 90.0, 0.0, 1.0)
+		var compat := 2 if wire_first.is_empty() else _terminal_compat(wire_first, tm)
+		var m: StandardMaterial3D = tm["mat"]
+		var base_col := _term_color(tm["tipo"])
+		if compat == 0:
+			m.emission = base_col
+			m.emission_energy_multiplier = 0.4
+		elif compat == 1:
+			m.emission = Color(1.0, 0.55, 0.1)        # precaución: ámbar
+			m.emission_energy_multiplier = 0.8 + prox * 3.0
 		else:
-			tangent = (points[i + 1] - points[i - 1])
-		tangent = tangent.normalized()
-		var n1 := up.cross(tangent)
-		if n1.length() < 0.01:
-			n1 = Vector3.RIGHT.cross(tangent)
-		n1 = n1.normalized()
-		var n2 := tangent.cross(n1).normalized()
-		var r := []
-		for k in range(ring):
-			var ang := TAU * float(k) / float(ring)
-			r.append(points[i] + (n1 * cos(ang) + n2 * sin(ang)) * radius)
-		rings.append(r)
-	for i in range(rings.size() - 1):
-		for k in range(ring):
-			var k2 := (k + 1) % ring
-			var a: Vector3 = rings[i][k]
-			var b: Vector3 = rings[i][k2]
-			var c: Vector3 = rings[i + 1][k2]
-			var d: Vector3 = rings[i + 1][k]
-			st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
-			st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
-	st.generate_normals()
-	return st.commit()
+			m.emission = base_col.lerp(Color(0.5, 1.0, 0.6), 0.35 * prox)
+			m.emission_energy_multiplier = 0.8 + prox * 6.0
+		(tm["mi"] as MeshInstance3D).scale = Vector3.ONE * (1.0 + prox * 0.9)
+		if d < best_d and compat > 0:
+			best_d = d
+			best = tm
+	if not best.is_empty():
+		(best["mi"] as MeshInstance3D).scale = Vector3.ONE * 2.2
+		(best["mat"] as StandardMaterial3D).emission_energy_multiplier = 9.0
+	_hover_term = best
+	if status_label and not best.is_empty():
+		var nm := {"power": "alimentación", "gnd": "tierra", "signal": "señal"}
+		var p := _find_part(best["part_uid"])
+		status_label.text = "Terminal %s (%s) · %s" % [best["term_id"], nm.get(best["tipo"], best["tipo"]), p.def.get("nombre", "") if p else ""]
+	if wiring_mode:
+		_update_wire_preview(mouse)
+
+## Cable provisional desde el primer terminal hasta la punta (cursor/terminal).
+func _update_wire_preview(mouse: Vector2) -> void:
+	if wire_first.is_empty() or mouse.x < 0.0:
+		if _wire_preview:
+			_wire_preview.visible = false
+		return
+	var pa = _terminal_pos_by_key(_key(wire_first["part_uid"], wire_first["term_id"]))
+	if pa == null:
+		return
+	var pb: Vector3
+	if not _hover_term.is_empty():
+		pb = _hover_term["pos"]
+	else:
+		var ray := camera.screen_ray(mouse)
+		var hit = Plane(Vector3.UP, (pa as Vector3).y).intersects_ray(ray["origin"], ray["dir"])
+		if hit == null:
+			return
+		pb = hit
+	if _wire_preview == null:
+		_wire_preview = MeshInstance3D.new()
+		_wire_preview.name = "CableProvisional"
+		add_child(_wire_preview)
+	var col := CableRenderer.color_for(str(wire_first.get("tipo", "signal")), wire_color_choice)
+	_wire_preview.mesh = CableRenderer.tube_mesh(CableSim.solve(pa, pb, [], 1.12, 14, 20), CableSim.RADIUS, 6)
+	var m := CableRenderer.insulation(col).duplicate() as StandardMaterial3D
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color.a = 0.75
+	_wire_preview.material_override = m
+	_wire_preview.visible = true
+
+#region SOLDADURA (M3) ----------------------------------------------------------
+
+func _toggle_solder_mode() -> void:
+	_set_solder_mode(not solder_mode)
+
+func _set_solder_mode(on: bool) -> void:
+	if simulator.is_running():
+		on = false
+	if on and wires.is_empty():
+		Config.notify("No hay cables que soldar. Crea cables con 🔌 Cablear.", 4.0)
+		on = false
+	solder_mode = on
+	if solder_button:
+		solder_button.button_pressed = on
+	if on:
+		_cancel_placing()
+		_set_connect_mode(false)
+		if wiring_mode: _set_wiring_mode(false)
+		_select(null)
+		_build_solder_markers()
+		Config.notify("Soldar: clic en el extremo de un cable (terminal resaltado) para soldarlo.", 6.0)
+	else:
+		_clear_terminal_markers()
+
+## Marcadores solo en los terminales con cables sin soldar.
+func _build_solder_markers() -> void:
+	_build_terminal_markers()
+	var pending := {}
+	for w in wires:
+		if not bool(w.get("soldado_a", false)): pending[w["a_key"]] = true
+		if not bool(w.get("soldado_b", false)): pending[w["b_key"]] = true
+	var keep := []
+	for tm in _term_markers:
+		if pending.has(_key(tm["part_uid"], tm["term_id"])):
+			keep.append(tm)
+		else:
+			tm["body"].queue_free()
+	_term_markers = keep
+
+func _solder_pick(screen_pos: Vector2) -> void:
+	if soldering.busy:
+		return
+	var ray := camera.screen_ray(screen_pos)
+	var params := PhysicsRayQueryParameters3D.create(ray["origin"], ray["origin"] + ray["dir"] * 1000.0, WIRE_PICK_LAYER)
+	var hit := get_world_3d().direct_space_state.intersect_ray(params)
+	var key := ""
+	if not hit.is_empty():
+		var body: Node = hit["collider"]
+		key = _key(body.get_meta("part_uid"), body.get_meta("term_id"))
+	elif not _hover_term.is_empty():
+		key = _key(_hover_term["part_uid"], _hover_term["term_id"])
+	if key == "":
+		return
+	var pos = _terminal_pos_by_key(key)
+	if pos == null:
+		return
+	soldering.solder_at(pos, key, wires_root)
+
+func _on_solder_finished(key: String) -> void:
+	var n := 0
+	for w in wires:
+		if w["a_key"] == key:
+			w["soldado_a"] = true; n += 1
+		if w["b_key"] == key:
+			w["soldado_b"] = true; n += 1
+	Config.project_dirty = true
+	_redraw_wires()
+	_refresh_circuito_panel()
+	if solder_mode:
+		_clear_terminal_markers()
+		_build_solder_markers()
+		if _term_markers.is_empty():
+			Config.notify("Todas las uniones están soldadas. ✔", 4.0)
+			_set_solder_mode(false)
+			return
+	Config.notify("Unión soldada (%d extremo%s)." % [n, "" if n == 1 else "s"], 3.0)
+
+## Número de extremos soldados y totales (para el panel de circuito).
+func _solder_stats() -> Vector2i:
+	var done := 0
+	for w in wires:
+		if bool(w.get("soldado_a", false)): done += 1
+		if bool(w.get("soldado_b", false)): done += 1
+	return Vector2i(done, wires.size() * 2)
+
+#endregion
 
 func _build_components() -> Array:
 	var comps := []
@@ -3116,6 +3392,7 @@ func _protoboard_virtual_wires() -> Array:
 
 func _clear_wires() -> void:
 	wires.clear()
+	if solder_mode: _set_solder_mode(false)
 	_redraw_wires()
 	_refresh_circuito_panel()
 	Config.project_dirty = true
@@ -3132,6 +3409,20 @@ func _build_circuito_panel() -> void:
 	hb.add_child(_button("Analizar circuito", _analyze_circuit))
 	hb.add_child(_button("Borrar cables", _clear_wires))
 	vb.add_child(hb)
+	var crow := HBoxContainer.new()
+	crow.add_child(_label("Color del cable:"))
+	var copt := OptionButton.new()
+	copt.focus_mode = Control.FOCUS_NONE
+	var cnames := {"auto": "Automático (VCC/GND/señal)", "rojo": "Rojo", "negro": "Negro", "azul": "Azul",
+		"amarillo": "Amarillo", "verde": "Verde", "blanco": "Blanco", "naranja": "Naranja"}
+	var ci := 0
+	for k in CableRenderer.WIRE_COLORS.keys():
+		copt.add_item(cnames.get(k, k))
+		copt.set_item_metadata(ci, k)
+		ci += 1
+	copt.item_selected.connect(func(i): wire_color_choice = str(copt.get_item_metadata(i)))
+	crow.add_child(copt)
+	vb.add_child(crow)
 	circuito_label = _label("Coloca una batería y cargas (LED, motor, resistencia),\nentra en 🔌 Cablear, une sus terminales y pulsa Analizar.")
 	circuito_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	circuito_label.custom_minimum_size = Vector2(292, 0)
@@ -3140,7 +3431,8 @@ func _build_circuito_panel() -> void:
 
 func _refresh_circuito_panel() -> void:
 	if circuito_panel:
-		circuito_panel.set_title("Circuito eléctrico (%d cables)" % wires.size())
+		var st := _solder_stats()
+		circuito_panel.set_title("Circuito eléctrico (%d cables · %d/%d soldados)" % [wires.size(), st.x, st.y])
 
 func _show_circuit_result(r: Dictionary) -> void:
 	if not circuito_label:

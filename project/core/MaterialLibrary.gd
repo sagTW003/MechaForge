@@ -8,6 +8,8 @@ extends Node
 var _materials: Dictionary = {}          # id -> Dictionary de propiedades
 var _cache: Dictionary = {}              # id -> StandardMaterial3D (perezoso)
 var _detail_normal: Texture2D            # microrelieve procedural compartido
+var _pending_tasks: Array = []           # tareas de generación de texturas
+var _textured: Dictionary = {}           # id -> true cuando tiene texturas
 
 ## Textura de normales procedural (ruido) para dar microrelieve realista.
 func _get_detail_normal() -> Texture2D:
@@ -28,59 +30,59 @@ func _get_detail_normal() -> Texture2D:
 # Tabla de materiales: densidad en kg/m³, colores en sRGB.
 const DATA := {
 	"aluminio": {
-		"nombre": "Aluminio 6063", "densidad": 2700.0, "friccion": 0.5, "restitucion": 0.1,
+		"nombre": "Aluminio 6063", "patron": "cepillado", "densidad": 2700.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.82, 0.84, 0.86), "metalico": 0.9, "rugosidad": 0.35, "limite_mpa": 214.0,
 	},
 	"aluminio_anodizado": {
-		"nombre": "Aluminio anodizado", "densidad": 2700.0, "friccion": 0.5, "restitucion": 0.1,
+		"nombre": "Aluminio anodizado", "patron": "granallado", "densidad": 2700.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.18, 0.19, 0.22), "metalico": 0.85, "rugosidad": 0.45, "limite_mpa": 214.0,
 	},
 	"acero": {
-		"nombre": "Acero estructural", "densidad": 7850.0, "friccion": 0.6, "restitucion": 0.15,
+		"nombre": "Acero estructural", "patron": "laminado", "densidad": 7850.0, "friccion": 0.6, "restitucion": 0.15,
 		"color": Color(0.58, 0.60, 0.63), "metalico": 1.0, "rugosidad": 0.4, "limite_mpa": 250.0,
 	},
 	"acero_inox": {
-		"nombre": "Acero inoxidable", "densidad": 8000.0, "friccion": 0.55, "restitucion": 0.2,
+		"nombre": "Acero inoxidable", "patron": "cepillado", "densidad": 8000.0, "friccion": 0.55, "restitucion": 0.2,
 		"color": Color(0.74, 0.76, 0.78), "metalico": 1.0, "rugosidad": 0.22, "limite_mpa": 520.0,
 	},
 	"cobre": {
-		"nombre": "Cobre", "densidad": 8960.0, "friccion": 0.5, "restitucion": 0.1,
+		"nombre": "Cobre", "patron": "cobre", "densidad": 8960.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.85, 0.53, 0.36), "metalico": 1.0, "rugosidad": 0.3, "limite_mpa": 210.0,
 	},
 	"abs": {
-		"nombre": "Plástico ABS", "densidad": 1050.0, "friccion": 0.4, "restitucion": 0.3,
+		"nombre": "Plástico ABS", "patron": "plastico", "densidad": 1050.0, "friccion": 0.4, "restitucion": 0.3,
 		"color": Color(0.15, 0.16, 0.18), "metalico": 0.0, "rugosidad": 0.6, "limite_mpa": 40.0,
 	},
 	"caucho": {
-		"nombre": "Caucho", "densidad": 1100.0, "friccion": 1.1, "restitucion": 0.6,
+		"nombre": "Caucho", "patron": "caucho", "densidad": 1100.0, "friccion": 1.1, "restitucion": 0.6,
 		"color": Color(0.05, 0.05, 0.06), "metalico": 0.0, "rugosidad": 0.9, "limite_mpa": 15.0,
 	},
 	"madera": {
-		"nombre": "Madera (pino)", "densidad": 500.0, "friccion": 0.5, "restitucion": 0.2,
+		"nombre": "Madera (pino)", "patron": "madera", "densidad": 500.0, "friccion": 0.5, "restitucion": 0.2,
 		"color": Color(0.62, 0.44, 0.26), "metalico": 0.0, "rugosidad": 0.75, "limite_mpa": 40.0,
 	},
 	"vidrio": {
-		"nombre": "Vidrio", "densidad": 2500.0, "friccion": 0.4, "restitucion": 0.1,
+		"nombre": "Vidrio", "patron": "vidrio", "densidad": 2500.0, "friccion": 0.4, "restitucion": 0.1,
 		"color": Color(0.6, 0.75, 0.8, 0.35), "metalico": 0.0, "rugosidad": 0.05, "limite_mpa": 50.0,
 	},
 	"concreto": {
-		"nombre": "Concreto", "densidad": 2400.0, "friccion": 0.7, "restitucion": 0.1,
+		"nombre": "Concreto", "patron": "concreto", "densidad": 2400.0, "friccion": 0.7, "restitucion": 0.1,
 		"color": Color(0.55, 0.55, 0.53), "metalico": 0.0, "rugosidad": 0.9, "limite_mpa": 30.0,
 	},
 	"estano": {
-		"nombre": "Estaño (soldadura)", "densidad": 7300.0, "friccion": 0.4, "restitucion": 0.1,
+		"nombre": "Estaño (soldadura)", "patron": "estano", "densidad": 7300.0, "friccion": 0.4, "restitucion": 0.1,
 		"color": Color(0.78, 0.79, 0.82), "metalico": 1.0, "rugosidad": 0.18, "limite_mpa": 15.0,
 	},
 	"baquelita": {
-		"nombre": "Baquelita / PCB", "densidad": 1400.0, "friccion": 0.5, "restitucion": 0.1,
+		"nombre": "Baquelita / PCB", "patron": "pcb", "densidad": 1400.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.09, 0.32, 0.15), "metalico": 0.0, "rugosidad": 0.55, "limite_mpa": 80.0,
 	},
 	"fibra_carbono": {
-		"nombre": "Fibra de carbono", "densidad": 1600.0, "friccion": 0.5, "restitucion": 0.1,
+		"nombre": "Fibra de carbono", "patron": "carbono", "densidad": 1600.0, "friccion": 0.5, "restitucion": 0.1,
 		"color": Color(0.06, 0.06, 0.07), "metalico": 0.2, "rugosidad": 0.35, "limite_mpa": 600.0,
 	},
 	"acrilico": {
-		"nombre": "Acrílico", "densidad": 1180.0, "friccion": 0.4, "restitucion": 0.2,
+		"nombre": "Acrílico", "patron": "vidrio", "densidad": 1180.0, "friccion": 0.4, "restitucion": 0.2,
 		"color": Color(0.7, 0.85, 0.95, 0.4), "metalico": 0.0, "rugosidad": 0.05, "limite_mpa": 70.0,
 	},
 }
@@ -113,6 +115,8 @@ func yield_strength_pa(id: String) -> float:
 	return get_data(id).get("limite_mpa", 100.0) * 1.0e6
 
 ## Devuelve (y cachea) el StandardMaterial3D PBR para un material dado.
+## Las texturas procedurales (albedo/rugosidad/normales) se generan en un hilo de
+## trabajo y se asignan al terminar; mientras tanto se usa el color plano.
 func get_visual(id: String) -> StandardMaterial3D:
 	if _cache.has(id):
 		return _cache[id]
@@ -125,13 +129,60 @@ func get_visual(id: String) -> StandardMaterial3D:
 	m.metallic_specular = 0.5
 	if col.a < 1.0:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	# Microrelieve para realismo (más marcado en metales).
+	# Mapeo triplanar en espacio local: la textura mantiene su escala real (m)
+	# sea cual sea el tamaño de la pieza.
+	var pat: String = d.get("patron", "")
+	m.uv1_triplanar = true
+	m.uv1_triplanar_sharpness = 4.0
+	m.uv1_scale = Vector3.ONE * ProceduralTextures.scale_for(pat)
 	m.normal_enabled = true
 	m.normal_texture = _get_detail_normal()
 	m.normal_scale = 0.35 if d.get("metalico", 0.0) > 0.5 else 0.15
-	m.uv1_scale = Vector3(6, 6, 6)
+	# Laca brillante sobre fibra de carbono y anodizado.
+	if pat == "carbono" or pat == "granallado":
+		m.clearcoat_enabled = true
+		m.clearcoat = 0.6 if pat == "carbono" else 0.25
+		m.clearcoat_roughness = 0.12
 	_cache[id] = m
+	if pat != "":
+		_request_textures(id, pat, col, m.roughness)
 	return m
+
+## Lanza la generación de texturas de un material en el WorkerThreadPool.
+func _request_textures(id: String, pat: String, col: Color, rough: float) -> void:
+	var seed := absi(id.hash()) % 10000
+	var task := func():
+		var imgs := ProceduralTextures.generate(pat, Color(col.r, col.g, col.b), rough, seed)
+		call_deferred("_on_textures_ready", id, imgs)
+	_pending_tasks.append(WorkerThreadPool.add_task(task, false, "Texturas %s" % id))
+
+func _on_textures_ready(id: String, imgs: Dictionary) -> void:
+	var m: StandardMaterial3D = _cache.get(id)
+	if m == null:
+		return
+	var a: Color = m.albedo_color
+	m.albedo_texture = ImageTexture.create_from_image(imgs["albedo"])
+	m.albedo_color = Color(1, 1, 1, a.a)
+	m.roughness_texture = ImageTexture.create_from_image(imgs["rough"])
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.roughness = 1.0
+	m.normal_texture = ImageTexture.create_from_image(imgs["normal"])
+	m.normal_scale = 0.6
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_textured[id] = true
+
+## True cuando las texturas procedurales del material ya están aplicadas.
+func is_textured(id: String) -> bool:
+	return _textured.has(id)
+
+## Genera ya (de forma síncrona) las texturas de todos los materiales en uso.
+func wait_textures() -> void:
+	for t in _pending_tasks:
+		WorkerThreadPool.wait_for_task_completion(t)
+	_pending_tasks.clear()
+
+func _exit_tree() -> void:
+	wait_textures()
 
 ## Material semitransparente para vistas previas "fantasma" (IA / colocación).
 func get_ghost(base_id: String, valid: bool = true) -> StandardMaterial3D:
