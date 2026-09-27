@@ -70,10 +70,30 @@ func _init(title_text: String = "") -> void:
 	root.add_child(margin)
 	content = VBoxContainer.new()
 	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	margin.add_child(content)
 	_content_margin = margin
 
+	# Tirador de redimensionado (esquina inferior derecha).
+	var grip_row := HBoxContainer.new()
+	var grow := Control.new()
+	grow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grip_row.add_child(grow)
+	_resize_grip = Label.new()
+	_resize_grip.text = "◢"
+	_resize_grip.add_theme_color_override("font_color", Color(0.5, 0.53, 0.58))
+	_resize_grip.mouse_filter = Control.MOUSE_FILTER_STOP
+	_resize_grip.mouse_default_cursor_shape = Control.CURSOR_FDIAGSIZE
+	_resize_grip.gui_input.connect(_on_grip_input)
+	grip_row.add_child(_resize_grip)
+	root.add_child(grip_row)
+
 var _content_margin: MarginContainer
+var _resize_grip: Label
+var _resizing: bool = false
+var _resize_start_min: Vector2 = Vector2.ZERO
+var _resize_start_mouse: Vector2 = Vector2.ZERO
 
 func set_title(t: String) -> void:
 	_title_label.text = t
@@ -107,7 +127,25 @@ func _on_title_input(event: InputEvent) -> void:
 		else:
 			_dragging = false
 
+func _on_grip_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed and not _collapsed:
+			_resizing = true
+			_resize_start_min = size
+			_resize_start_mouse = get_global_mouse_position()
+		else:
+			_resizing = false
+
 func _input(event: InputEvent) -> void:
+	if _resizing:
+		if event is InputEventMouseMotion:
+			var d := get_global_mouse_position() - _resize_start_mouse
+			custom_minimum_size = Vector2(
+				maxf(200.0, _resize_start_min.x + d.x),
+				maxf(120.0, _resize_start_min.y + d.y))
+		elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			_resizing = false
+		return
 	if not _dragging:
 		return
 	if event is InputEventMouseMotion:

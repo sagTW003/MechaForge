@@ -60,6 +60,9 @@ var mcu_enabled: bool = false
 var mcu_lines: Array = []
 var mcu_target_uid: String = ""
 var mcu_time: float = 0.0
+
+# --- Música (Spotify) ---
+var music_panel: FloatingPanel
 const MCU_DEFAULT := "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp"
 var sim_button: Button
 var reset_button: Button
@@ -239,6 +242,8 @@ func _run_ui_shot() -> void:
 	_redraw_connection_markers()
 	_refresh_uniones_panel()
 	uniones_panel.set_collapsed(false)
+	music_panel.set_collapsed(false)
+	music_panel.visible = true
 	_select(arm)
 	camera.target = Vector3(0, 0.1, 0); camera.distance = 0.9
 	await get_tree().create_timer(1.5).timeout
@@ -776,7 +781,43 @@ func _build_ui() -> void:
 	_build_elec_panel()
 	_build_circuito_panel()
 	_build_mcu_panel()
+	_build_music_panel()
 	call_deferred("_layout_panels")
+
+func _build_music_panel() -> void:
+	music_panel = FloatingPanel.new("Música (Spotify)")
+	ui_layer.add_child(music_panel)
+	music_panel.position = Vector2(1300, 470)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(240, 0)
+	music_panel.add_content(vb)
+	var row := HBoxContainer.new()
+	row.add_child(_button("⏮", func(): SystemMedia.Previous()))
+	row.add_child(_button("⏯", func(): SystemMedia.PlayPause()))
+	row.add_child(_button("⏭", func(): SystemMedia.Next()))
+	row.add_child(_button("⏹", func(): SystemMedia.StopMedia()))
+	vb.add_child(row)
+	var row2 := HBoxContainer.new()
+	row2.add_child(_button("🔉 Vol−", func(): SystemMedia.VolumeDown()))
+	row2.add_child(_button("🔊 Vol+", func(): SystemMedia.VolumeUp()))
+	row2.add_child(_button("🔇", func(): SystemMedia.Mute()))
+	vb.add_child(row2)
+	vb.add_child(_button("Abrir Spotify", func():
+		Config.notify("Abriendo Spotify…" if SystemMedia.OpenSpotify() else "No se pudo abrir Spotify.")))
+	var note := _label("Controla el reproductor activo del sistema (Spotify u otro) con las teclas multimedia de Windows.")
+	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_color_override("font_color", Color(0.6, 0.62, 0.66))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(232, 0)
+	vb.add_child(note)
+	music_panel.set_collapsed(true)
+
+func _toggle_music_panel() -> void:
+	if music_panel == null:
+		return
+	music_panel.visible = true
+	music_panel.set_collapsed(not music_panel.is_collapsed())
+	music_panel.move_to_front()
 
 func _panel(min_size: Vector2) -> PanelContainer:
 	var p := PanelContainer.new()
@@ -852,6 +893,9 @@ func _build_topbar() -> Control:
 	profile_option.item_selected.connect(_on_profile_selected)
 	hb.add_child(profile_option)
 
+	hb.add_child(_vsep())
+	hb.add_child(_button("🎵  Música", _toggle_music_panel))
+
 	var grow := Control.new()
 	grow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(grow)
@@ -868,6 +912,8 @@ func _build_left_panel() -> void:
 	biblioteca_panel.position = Vector2(8, 52)
 	parts_tree = Tree.new()
 	parts_tree.custom_minimum_size = Vector2(228, 320)
+	parts_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parts_tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parts_tree.hide_root = true
 	parts_tree.item_selected.connect(_on_part_tree_selected)
 	biblioteca_panel.add_content(parts_tree)
@@ -897,6 +943,8 @@ func _build_right_panel() -> void:
 	propiedades_panel.position = Vector2(1300, 52)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(276, 360)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	propiedades_panel.add_content(scroll)
 	prop_container = VBoxContainer.new()
@@ -2218,6 +2266,8 @@ func _build_mcu_panel() -> void:
 	mcu_panel.add_content(vb)
 	mcu_editor = TextEdit.new()
 	mcu_editor.custom_minimum_size = Vector2(320, 120)
+	mcu_editor.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mcu_editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mcu_editor.text = MCU_DEFAULT
 	vb.add_child(mcu_editor)
 	var hb := HBoxContainer.new()

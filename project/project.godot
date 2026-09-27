@@ -26,11 +26,13 @@ MaterialLibrary="*res://core/MaterialLibrary.gd"
 PartLibrary="*res://core/PartLibrary.gd"
 GraphicsProfiles="*res://rendering/GraphicsProfiles.gd"
 Electronics="*res://electronics/Electronics.cs"
+SystemMedia="*res://media/SystemMedia.cs"
 
 [display]
 
-window/size/viewport_width=1600
-window/size/viewport_height=900
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
