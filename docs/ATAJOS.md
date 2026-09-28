@@ -30,6 +30,16 @@
 | `Ctrl+D` | Duplicar la pieza seleccionada |
 | Soltar una resistencia/LED/integrado sobre la protoboard | Sus patas se **insertan** en los agujeros (un DIP debe cruzar el canal central) |
 
+## Laboratorio matemático (∑)
+| Control | Acción |
+|---|---|
+| Arrastrar (clic izq. o der.) | Orbitar · `Mayús` + clic der. o botón central: desplazar · rueda: zoom |
+| `1` / `2` / `3` | Vista perspectiva / superior 2D / isométrica |
+| `F` | Encuadrar el siguiente punto crítico |
+| `P` | Alternar la herramienta Orbitar / **Perturbar** |
+| `Espacio` / `R` | Pausa / reiniciar el módulo |
+| `Esc` | Volver a MechaForge |
+
 ## Multímetro (📟)
 | Control | Acción |
 |---|---|

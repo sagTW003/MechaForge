@@ -163,6 +163,20 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       en engranajes, prealimentación en control de posición, ángulo de unión exacto
       (sin deriva) y eje de la unión solidario al cuerpo (vehículos que giran).
 
+## ✅ Laboratorio matemático 3D
+- [x] Modo **∑ Laboratorio** dentro de MechaForge (la escena del simulador se conserva)
+      con escenario holodeck, post-procesado completo y cámara amortiguada con vistas
+      perspectiva / superior 2D / isométrica y encuadre de puntos críticos.
+- [x] `MathExpr`: analizador propio (implícitos, |x|, constantes, i) con evaluación real
+      y compleja, compilación a Expression nativa y **traducción a GLSL**.
+- [x] EDP en C# (`FieldSim.cs`: onda FDTD con Mur, calor con α por celda, Schrödinger
+      con Visscher y absorción en bordes) → textura RGBA float → malla deformada en GPU.
+- [x] 14 módulos: onda, calor, Schrödinger · raíces, sistemas, optimización,
+      interpolación y ajuste, integración, EDP numérica · coloreado de dominio,
+      mapeos conformes, fractales · campos vectoriales y teoremas de Gauss/Stokes.
+- [x] Herramienta Perturbar, tooltip 3D, planos de corte X/Y/Z.
+- [x] Pruebas `mflabtest` (69) que comprueban la matemática de cada módulo.
+
 ## ✅ Multímetro digital, integrados DIP y cortocircuitos
 - [x] Solver de circuito **no lineal** (MNA + Newton-Raphson, `electronics/CircuitSolver.cs`):
       LED como diodo de Shockley con resistencia serie, baterías con resistencia

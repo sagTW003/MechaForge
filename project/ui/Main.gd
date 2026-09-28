@@ -284,6 +284,8 @@ func _ready() -> void:
 		ft.main = self
 		add_child(ft)
 		ft.call_deferred("run")
+	elif "mflab" in OS.get_cmdline_user_args() or "mflabtest" in OS.get_cmdline_user_args() or "mflabshot" in OS.get_cmdline_user_args():
+		call_deferred("_open_math_lab")
 	elif "mfmulti" in OS.get_cmdline_user_args():
 		var mt: Node = load("res://tests/MultimetroTests.gd").new()
 		mt.main = self
@@ -1972,6 +1974,9 @@ func _build_topbar() -> Control:
 	hb.add_child(stress_chk)
 
 	hb.add_child(_vsep())
+	var lab_btn := _button("∑  Laboratorio", _open_math_lab)
+	lab_btn.tooltip_text = "Laboratorio matemático 3D: EDPs, métodos numéricos, análisis complejo y campos vectoriales"
+	hb.add_child(lab_btn)
 	hb.add_child(_button("🤖  IA", _toggle_ai_panel))
 	hb.add_child(_button("🎵  Música", _toggle_music_panel))
 	return panel
@@ -4996,5 +5001,53 @@ func _update_dmm_ui() -> void:
 			short_banner_label.text = txt
 			var vp: Vector2 = get_viewport().get_visible_rect().size
 			short_banner.position = Vector2((vp.x - short_banner.size.x) * 0.5, 54)
+
+#endregion
+
+#region LABORATORIO MATEMÁTICO -------------------------------------------------
+
+var math_lab: Node = null
+
+## Abre el Laboratorio matemático: MechaForge sale del árbol (conserva todo su
+## estado: proyecto, cámara, paneles) y el laboratorio ocupa la ventana.
+func _open_math_lab() -> void:
+	if math_lab != null:
+		return
+	if simulator.is_running():
+		simulator.stop()
+	if probes and probes.active:
+		_set_probe_mode(false)
+	math_lab = load("res://mathlab/MathLab.gd").new()
+	math_lab.main_scene = self
+	math_lab.closed.connect(_close_math_lab)
+	call_deferred("_swap_to_lab")
+
+func _swap_to_lab() -> void:
+	var tree := get_tree()
+	var root := tree.root
+	root.remove_child(self)
+	root.add_child(math_lab)
+	tree.current_scene = math_lab
+	var ua := OS.get_cmdline_user_args()
+	if "mflabtest" in ua or "mflabshot" in ua:
+		var t: Node = load("res://tests/LabTests.gd").new()
+		t.lab = math_lab
+		math_lab.add_child(t)
+		t.call_deferred("run")
+
+func _close_math_lab() -> void:
+	call_deferred("_swap_from_lab")
+
+func _swap_from_lab() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var root := tree.root
+	if math_lab and math_lab.get_parent():
+		root.remove_child(math_lab)
+		math_lab.queue_free()
+	math_lab = null
+	root.add_child(self)
+	tree.current_scene = self
+	camera.make_current()
+	Config.notify("De vuelta en MechaForge.", 3.0)
 
 #endregion

@@ -268,6 +268,56 @@ simulación forman un único cuerpo rígido. El Arduino Nano se alimenta por USB
 ![Fusible](docs/demo_fusible.png)
 *Amperímetro en paralelo con la pila: fusible de 400 mA fundido («FUSE»).*
 
+### ∑ Laboratorio matemático 3D
+
+Botón **∑ Laboratorio** de la barra superior (o `-- mflab`): un laboratorio interactivo
+para *entender* las matemáticas viéndolas. MechaForge queda en pausa con su escena
+intacta y se vuelve con **← MechaForge** (Esc).
+
+- **Escenario holodeck**: sala oscura con cielo procedural que actúa como mapa de
+  entorno (reflejos tipo HDRI), suelo con rejilla luminosa y reflejos (SSR), luz con
+  sombras suaves, bloom suave, SSAO, SSIL, niebla volumétrica, tonemapping AgX y
+  profundidad de campo opcional (**Macro**).
+- **Cámara** orbital amortiguada (arrastrar/rueda), vistas **Perspectiva**, **Superior
+  2D** (ortográfica, mapas de calor y contornos) e **Isométrica**, y **🎯 Encuadrar** (F)
+  que recorre los puntos críticos de cada módulo (crestas, ceros, polos, equilibrios…).
+- **✋ Perturbar** (P): clic/arrastre sobre la superficie para crear pulsos, inyectar calor,
+  pintar barreras de potencial, fijar puntos iniciales… **Tooltip 3D** flotante con
+  coordenadas y valores, y **planos de corte** X/Y/Z con la sección iluminada.
+- **Motor de expresiones propio** (`mathlab/MathExpr.gd`): la fórmula que escribes se
+  evalúa en CPU (real y compleja) y se **compila a GLSL**, así que las superficies
+  z = f(x, y), el coloreado de dominio y las partículas del campo se calculan en la GPU.
+  Las EDP 2D se integran en C# (`mathlab/solvers/FieldSim.cs`) y deforman la malla en la
+  GPU.
+
+| Pilar | Módulos |
+|---|---|
+| **EDPs y física** | Onda 2D (FDTD: pulsos, interferencia, fronteras fija/libre/absorbente, modos normales de tambor con Bessel) · Calor (materiales reales, fuentes, disipación, isotermas) · Schrödinger (paquete gaussiano, |ψ|² como altura y fase como color, barreras, doble rendija, pozo, oscilador, efecto túnel medido) |
+| **Métodos numéricos** | Raíces (bisección, Newton, secante, punto fijo con telaraña; orden observado) · Sistemas 3×3 (planos, Jacobi y Gauss-Seidel, residuo, radio espectral) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · Interpolación (spline cúbico 3D) y mínimos cuadrados (R²) · Integración doble (punto medio, trapecio, Simpson y su orden) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
+| **Análisis complejo** | Coloreado de dominio 3D con detección de ceros y polos por su índice · Mapeos conformes animados (eᶻ, z², 1/z, Joukowsky, Möbius…) · Mandelbrot y Julia en relieve |
+| **Campos vectoriales** | Flechas instanciadas, gradiente, líneas de corriente RK4, partículas GPU con estela, divergencia y rotacional (ruedas de paletas), equilibrios clasificados · Teoremas de Gauss y Stokes verificados numéricamente |
+
+![Onda](docs/demo_lab_onda.png)
+*Ecuación de onda: crestas naranjas y valles cian sobre la membrana pulida.*
+
+![Schrödinger](docs/demo_lab_schrodinger.png)
+*Efecto túnel: el paquete atraviesa la barrera de vidrio; la fase colorea la longitud de onda.*
+
+![Coloreado de dominio](docs/demo_lab_coloreado.png)
+*(z² − 1)/(z² + 1): ceros en ±1 y polos en ±i detectados automáticamente.*
+
+![Conforme](docs/demo_lab_conforme.png)
+*Joukowsky: el círculo desplazado se convierte en un perfil alar; f′ = 0 en la cúspide.*
+
+![Campo](docs/demo_lab_campo.png)
+*Vórtice: flechas, líneas de corriente y partículas con estela.*
+
+![Gauss](docs/demo_lab_teoremas.png)
+*Gauss: flujo 12.5678 frente a ∭∇·F = 12.5669 (4π).*
+
+![EDP numérica](docs/demo_lab_edp1d.png)
+*Calor 1D en espacio-tiempo: FTCS, Euler implícito y Crank-Nicolson con su error.*
+
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
 Once proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
@@ -365,6 +415,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
+| Laboratorio matemático (14 módulos y motor de expresiones) | `mflabtest` |
 
 ## Arquitectura
 
