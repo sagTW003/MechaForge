@@ -131,6 +131,16 @@ func start(connections: Array) -> void:
 	# 3) Marcador de centro de masa.
 	_com_marker = _make_com_marker()
 	_sim_root.add_child(_com_marker)
+	# Tamaño proporcional al conjunto (en una protoboard no debe tapar nada).
+	var box := AABB()
+	var first := true
+	for uid in _bodies:
+		var p: Vector3 = (_bodies[uid] as RigidBody3D).global_position
+		if first:
+			box = AABB(p, Vector3.ZERO); first = false
+		else:
+			box = box.expand(p)
+	_com_marker.scale = Vector3.ONE * clampf(box.get_longest_axis_size() * 0.04 / 0.02, 0.2, 1.0)
 	# 4) Control: crea un PID por bisagra con control de posición.
 	_sim_time = 0.0
 	for conn in _connections:

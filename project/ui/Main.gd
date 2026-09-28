@@ -2061,6 +2061,93 @@ func _select_connection(uid: String) -> void:
 			uniones_panel.set_collapsed(false)
 	_refresh_uniones_panel()
 
+# --- Señalar una unión desde la gráfica o el microcontrolador ---
+var _joint_ind: Node3D
+var _joint_ind_body: RigidBody3D
+var _joint_ind_local := Vector3.ZERO
+var _joint_ind_boxes: Array = []
+
+## Señala una unión en el modelo. En edición equivale a seleccionarla; durante la
+## simulación resalta los dos cuerpos en movimiento y pone una etiqueta con su
+## número que sigue al anclaje. "frame": además la encuadra con la cámara.
+func _indicate_connection(uid: String, frame: bool = false) -> void:
+	var conn := _find_conn(uid)
+	if conn == null:
+		return
+	if not simulator.is_running():
+		_select_connection(uid)
+		if frame: _focus_connection(uid)
+		return
+	_clear_joint_indicator()
+	var pa := _find_part(conn.a_uid)
+	var ba := simulator.get_body(conn.a_uid)
+	if pa == null or ba == null:
+		return
+	# Anclaje en el marco del cuerpo A (a partir de su transformación inicial).
+	_joint_ind_local = pa.initial_transform.affine_inverse() * conn.anchor
+	_joint_ind_body = ba
+	_joint_ind = Node3D.new()
+	_joint_ind.name = "IndicadorUnion"
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.3, 1.0, 1.0)
+	m.no_depth_test = true
+	m.render_priority = 8
+	var sph := MeshInstance3D.new()
+	var sm := SphereMesh.new(); sm.radius = 0.008; sm.height = 0.016
+	sph.mesh = sm
+	sph.material_override = m
+	_joint_ind.add_child(sph)
+	var lbl := Label3D.new()
+	lbl.text = "Unión %d" % (connections.find(conn) + 1)
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.no_depth_test = true
+	lbl.fixed_size = true
+	lbl.pixel_size = 0.0012
+	lbl.font_size = 22
+	lbl.outline_size = 8
+	lbl.modulate = Color(0.4, 1.0, 1.0)
+	lbl.position = Vector3(0, 0.03, 0)
+	_joint_ind.add_child(lbl)
+	sim_root.add_child(_joint_ind)
+	# Resaltado cian de los dos cuerpos simulados.
+	for pu in [conn.a_uid, conn.b_uid]:
+		var body := simulator.get_body(pu)
+		var part := _find_part(pu)
+		if body == null or part == null:
+			continue
+		var box := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = PartLibrary.dims_m(part.def) * 1.08
+		box.mesh = bm
+		var hm := StandardMaterial3D.new()
+		hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		hm.albedo_color = Color(0.2, 0.9, 1.0, 0.18)
+		hm.emission_enabled = true
+		hm.emission = Color(0.2, 0.9, 1.0)
+		hm.emission_energy_multiplier = 0.9
+		hm.cull_mode = BaseMaterial3D.CULL_FRONT
+		box.material_override = hm
+		body.add_child(box)
+		_joint_ind_boxes.append(box)
+	_update_joint_indicator()
+	if frame:
+		camera.target = _joint_ind.global_position
+		camera._update_transform()
+
+func _update_joint_indicator() -> void:
+	if _joint_ind and is_instance_valid(_joint_ind) and _joint_ind_body and is_instance_valid(_joint_ind_body):
+		_joint_ind.global_position = _joint_ind_body.global_transform * _joint_ind_local
+
+func _clear_joint_indicator() -> void:
+	if _joint_ind and is_instance_valid(_joint_ind):
+		_joint_ind.queue_free()
+	_joint_ind = null
+	_joint_ind_body = null
+	for b in _joint_ind_boxes:
+		if is_instance_valid(b):
+			b.queue_free()
+	_joint_ind_boxes.clear()
+
 ## Encuadra la cámara en el anclaje de una unión.
 func _focus_connection(uid: String) -> void:
 	var conn := _find_conn(uid)
@@ -2489,14 +2576,21 @@ func _try_surface_snap(screen_pos: Vector2, dims: Vector3, exclude: PartInstance
 		pos.y = maxf(dims.y * 0.5, P.y)
 	return {"pos": pos, "target": target}
 
+## Bucle del microcontrolador a paso fijo, sincronizado con la física (120 Hz):
+## la consigna no depende de los FPS (con fotogramas lentos no se queda atrás).
+func _physics_process(delta: float) -> void:
+	if simulator and simulator.is_running() and not simulator.paused:
+		_mcu_tick(delta)
+
 func _process(_delta: float) -> void:
+	_update_joint_indicator()
 	if fps_label:
 		fps_label.text = "FPS: %d  (x%.2f)" % [Engine.get_frames_per_second(), GraphicsProfiles.current_scale()]
 	GraphicsProfiles.update_dynamic(_delta)
 	if _bench_active:
 		_bench_tick(_delta)
 	if simulator and simulator.is_running() and not simulator.paused:
-		_mcu_tick(_delta)
+		pass   # el microcontrolador corre en _physics_process (paso fijo)
 		_tele_accum += _delta
 		if _tele_accum >= 0.1:
 			_tele_accum = 0.0
@@ -3060,6 +3154,11 @@ func _on_new() -> void:
 	connections.clear()
 	wires.clear()
 	project_meta = {}
+	# El microcontrolador también empieza de cero.
+	_stop_mcu()
+	mcu_target_uid = ""
+	if mcu_editor:
+		mcu_editor.text = MCU_DEFAULT
 	_redraw_connection_markers()
 	_redraw_wires()
 	_refresh_uniones_panel()
@@ -3291,6 +3390,8 @@ func _on_sim_started() -> void:
 	_populate_graph_selector()
 	_populate_mcu_targets()
 	_refresh_mcu_sensors()
+	if graph_uid != "":
+		call_deferred("_indicate_connection", graph_uid)
 	mcu_sensors.reset()
 	mcu_time = 0.0
 	await get_tree().process_frame
@@ -3299,6 +3400,7 @@ func _on_sim_started() -> void:
 	Config.notify("Simulación en marcha. Panel de electrónica y control abajo a la izquierda.", 4.0)
 
 func _on_sim_stopped() -> void:
+	_clear_joint_indicator()
 	sim_button.text = "▶  Simular"
 	_set_time_controls(false)
 	_select(null)
@@ -3769,12 +3871,18 @@ func _redraw_wires(quick: bool = false) -> void:
 	for part in parts_root.get_children():
 		if part is PartInstance:
 			obstacles.append({"xf": part.global_transform, "half": PartLibrary.dims_m(part.def) * 0.5})
+	var placed := []          # cables ya resueltos: los siguientes se apartan de ellos
+	var k := 0
 	for w in wires:
 		var pa = _terminal_pos_by_key(w["a_key"])
 		var pb = _terminal_pos_by_key(w["b_key"])
 		if pa == null or pb == null:
 			continue
-		var pts := CableSim.solve(pa, pb, obstacles, 1.15, 22, 25 if quick else 90)
+		# Holgura algo distinta por cable: las curvas no se superponen en haz.
+		var slack := 1.10 + 0.03 * (k % 4)
+		k += 1
+		var pts := CableSim.solve(pa, pb, obstacles, slack, 22, 25 if quick else 90, [] if quick else placed)
+		placed.append(pts)
 		var col := CableRenderer.color_for(w.get("tipo", "signal"), str(w.get("color", "auto")))
 		wires_root.add_child(CableRenderer.build(pts, col, bool(w.get("soldado_a", false)), bool(w.get("soldado_b", false))))
 
@@ -4160,7 +4268,18 @@ func _build_mcu_panel() -> void:
 	var hb := HBoxContainer.new()
 	hb.add_child(_label("Actúa sobre:"))
 	mcu_target_selector = OptionButton.new()
+	mcu_target_selector.tooltip_text = "Unión que recibe la consigna (se señala en el modelo)"
+	mcu_target_selector.item_selected.connect(func(i):
+		var uid: String = mcu_target_selector.get_item_metadata(i)
+		if mcu_enabled:
+			mcu_target_uid = uid
+		_indicate_connection(uid))
 	hb.add_child(mcu_target_selector)
+	var locate := _button("🎯", func():
+		if mcu_target_selector.item_count > 0:
+			_indicate_connection(mcu_target_selector.get_item_metadata(maxi(0, mcu_target_selector.selected)), true))
+	locate.tooltip_text = "Señalar y encuadrar la unión en el modelo"
+	hb.add_child(locate)
 	vb.add_child(hb)
 	var hb2 := HBoxContainer.new()
 	hb2.add_child(_button("Aplicar programa", _apply_mcu))
@@ -4337,7 +4456,11 @@ func _build_elec_panel() -> void:
 	gh.add_child(_label("Gráfica:"))
 	graph_selector = OptionButton.new()
 	graph_selector.item_selected.connect(_on_graph_selected)
+	graph_selector.tooltip_text = "Unión cuya gráfica se muestra (se señala en el modelo)"
 	gh.add_child(graph_selector)
+	var locate_g := _button("🎯", func(): if graph_uid != "": _indicate_connection(graph_uid, true))
+	locate_g.tooltip_text = "Señalar y encuadrar la unión en el modelo"
+	gh.add_child(locate_g)
 	gh.add_child(_button("Exportar CSV", _export_csv))
 	vb.add_child(gh)
 
@@ -4353,6 +4476,7 @@ func _find_conn(uid: String) -> Connection:
 
 func _on_graph_selected(i: int) -> void:
 	graph_uid = graph_selector.get_item_metadata(i)
+	_indicate_connection(graph_uid)
 
 func _populate_graph_selector() -> void:
 	graph_selector.clear()
@@ -4360,7 +4484,8 @@ func _populate_graph_selector() -> void:
 	var idx := 0
 	for uid in uids:
 		var c := _find_conn(uid)
-		var nombre := "Unión %d" % (idx + 1)
+		# Mismo número que en el panel «Uniones» y en las etiquetas 3D.
+		var nombre := "Unión %d" % (connections.find(c) + 1)
 		if c:
 			nombre += "  (%s)" % Connection.CONTROL_NOMBRE[c.control_mode]
 		graph_selector.add_item(nombre)
@@ -4392,7 +4517,7 @@ func _update_elec_panel() -> void:
 				sp_vals.append(rad_to_deg(v) if is_pos else v)
 			for v in h["meas"]:
 				me_vals.append(rad_to_deg(v) if is_pos else v)
-			graph.set_title("Control de %s" % ("posición [°]" if is_pos else "velocidad [rad/s]"))
+			graph.set_title("Unión %d · control de %s" % [connections.find(c) + 1, "posición [°]" if is_pos else "velocidad [rad/s]"])
 			graph.set_series(h["t"], [
 				{"nombre": "Consigna", "color": Color(0.96, 0.65, 0.14), "valores": sp_vals},
 				{"nombre": "Medida", "color": Color(0.35, 0.8, 1.0), "valores": me_vals},

@@ -6,58 +6,58 @@
 	},
 	"cables": [
 		{
-			"a_key": "p1244237_35133:V+",
-			"b_key": "p1240239_246:P1_2",
+			"a_key": "p1303889_35052:V+",
+			"b_key": "p1299986_39376:P1_2",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "power",
 			"uid": "e1"
 		},
 		{
-			"a_key": "p1240239_246:P1_5",
-			"b_key": "p1244531_17196:A",
+			"a_key": "p1299986_39376:P1_5",
+			"b_key": "p1304174_12838:A",
 			"color": "rojo",
 			"tipo": "power",
 			"uid": "e2"
 		},
 		{
-			"a_key": "p1244531_17196:B",
-			"b_key": "p1240239_246:a5_0",
+			"a_key": "p1304174_12838:B",
+			"b_key": "p1299986_39376:a5_0",
 			"color": "amarillo",
 			"tipo": "signal",
 			"uid": "e3"
 		},
 		{
-			"a_key": "p1245136_4098:anodo",
-			"b_key": "p1240239_246:a5_2",
+			"a_key": "p1304750_62543:anodo",
+			"b_key": "p1299986_39376:a5_2",
 			"color": "naranja",
 			"tipo": "signal",
 			"uid": "e4"
 		},
 		{
-			"a_key": "p1245136_4098:catodo",
-			"b_key": "p1240239_246:N1_4",
+			"a_key": "p1304750_62543:catodo",
+			"b_key": "p1299986_39376:N1_4",
 			"color": "auto",
 			"tipo": "gnd",
 			"uid": "e5"
 		},
 		{
-			"a_key": "p1244237_35133:GND",
-			"b_key": "p1240239_246:N1_1",
+			"a_key": "p1303889_35052:GND",
+			"b_key": "p1299986_39376:N1_1",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "gnd",
 			"uid": "e6"
 		}
 	],
-	"creado": "2026-09-27T21:40:19",
+	"creado": "2026-09-27T23:46:04",
 	"descripcion": "Batería LiPo, resistencia de 100 Ω y LED cableados en una protoboard. Pulsa «Analizar circuito».",
 	"entorno": 0,
 	"formato": "mechaforge",
 	"grid_mm": 10.0,
 	"microcontrolador": {
-		"activo": true,
-		"script": "# Generado por el editor de bloques.\nang = (60) * sin(2 * pi * (0.25) * t)\nang = clamp(ang, -75, 75)\noutput = ang",
+		"activo": false,
+		"script": "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp",
 		"union": -1
 	},
 	"nombre": "Circuito LED en protoboard",
@@ -81,7 +81,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1240239_246"
+			"uid": "p1299986_39376"
 		},
 		{
 			"def_id": "bateria_lipo_3s",
@@ -102,7 +102,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1244237_35133"
+			"uid": "p1303889_35052"
 		},
 		{
 			"def_id": "resistencia_100",
@@ -123,7 +123,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1244531_17196"
+			"uid": "p1304174_12838"
 		},
 		{
 			"def_id": "led",
@@ -143,7 +143,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1245136_4098"
+			"uid": "p1304750_62543"
 		}
 	],
 	"uniones": [],

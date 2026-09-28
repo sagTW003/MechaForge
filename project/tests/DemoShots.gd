@@ -12,6 +12,21 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template == "seguidor":
 		await _template_shot(out_path)
 		return
+	if template == "indicador":
+		main._open_example("res://templates/01_brazo_4gdl.mforge")
+		for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel]:
+			if p: p.visible = false
+		main._toggle_simulation()
+		await get_tree().create_timer(1.5).timeout
+		main.graph_selector.select(2)
+		main._on_graph_selected(2)
+		MaterialLibrary.wait_textures()
+		await get_tree().create_timer(2.0).timeout
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(out_path)
+		print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+		get_tree().quit()
+		return
 	if template == "uniones":
 		main._open_example("res://templates/01_brazo_4gdl.mforge")
 		for p in [main.biblioteca_panel, main.propiedades_panel, main.mcu_panel, main.circuito_panel]:
@@ -110,6 +125,13 @@ func _example_shot(path: String, out_path: String) -> void:
 	main._open_example(path)
 	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel]:
 		if p: p.visible = false
+	if "cerca" in OS.get_cmdline_user_args():
+		main.camera.distance *= 0.35
+		main.camera._pitch = deg_to_rad(-50)
+		main.camera._update_transform()
+		for p in [main.mcu_panel, main.elec_panel]:
+			if p: p.visible = false
+		main.set_process(true)
 	main._toggle_simulation()
 	MaterialLibrary.wait_textures()
 	await get_tree().create_timer(3.0).timeout

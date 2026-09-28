@@ -24,6 +24,8 @@ func run() -> void:
 	await _test_union_selection()
 	await _test_garage()
 	_test_textures()
+	_test_thin_cables()
+	await _test_joint_indicator()
 	main.work_env.set_mode(WorkEnvironment.Mode.ESTUDIO)
 	main._on_new()
 	print("[TEST] Entorno: %d OK, %d FALLOS" % [ok, fail])
@@ -131,3 +133,48 @@ func _test_textures() -> void:
 	var g := PartVisuals.mat(Color(0.85, 0.68, 0.25), 0.95, 0.3)
 	check(g.albedo_texture != null and g.metallic > 0.9, "Pines y contactos: metal satinado real")
 	check(main.work_env.find_hdris().has("res://assets/hdri/preller_drive_2k.hdr"), "HDRI incluido en la lista de entornos")
+
+func _test_thin_cables() -> void:
+	check(CableSim.RADIUS * 2.0 <= 0.0015, "Cables finos: Ø %.1f mm (jumper 22 AWG)" % (CableSim.RADIUS * 2000.0))
+	# Dos cables casi superpuestos: el segundo se aparta del primero.
+	var a1 := Vector3(-0.08, 0.01, 0.0)
+	var b1 := Vector3(0.08, 0.01, 0.0)
+	var c1 := CableSim.solve(a1, b1, [], 1.1)
+	var c2 := CableSim.solve(a1 + Vector3(0, 0, 0.0005), b1 + Vector3(0, 0, 0.0005), [], 1.1, 22, 80, [c1])
+	var min_d := INF
+	for i in range(10, c2.size() - 10):
+		for q in c1:
+			min_d = minf(min_d, c2[i].distance_to(q))
+	check(min_d >= CableSim.RADIUS * 2.0 + CableSim.GAP * 0.8, "Los cables no se atraviesan ni se enciman (separación mínima %.2f mm)" % (min_d * 1000.0))
+
+func _test_joint_indicator() -> void:
+	main._open_example("res://templates/01_brazo_4gdl.mforge")
+	main._toggle_simulation()
+	await wait_phys(30)
+	var n: int = main.graph_selector.item_count
+	check(n == 4 and main.graph_selector.get_item_text(1).begins_with("Unión 3"), "Gráfica: las uniones usan el mismo número que el panel (%s)" % main.graph_selector.get_item_text(1))
+	main.graph_selector.select(2)
+	main._on_graph_selected(2)
+	await wait_phys(30)
+	var conn: Connection = main._find_conn(main.graph_uid)
+	var lbl: Label3D = null
+	if main._joint_ind:
+		for c in main._joint_ind.get_children():
+			if c is Label3D: lbl = c
+	check(lbl != null and lbl.text == "Unión %d" % (main.connections.find(conn) + 1), "En simulación, la unión elegida en la gráfica se señala en el modelo (%s)" % (lbl.text if lbl else "-"))
+	check(main._joint_ind_boxes.size() == 2, "Sus dos piezas simuladas se resaltan")
+	# La etiqueta sigue al anclaje (en el marco del cuerpo A).
+	var b: RigidBody3D = main.simulator.get_body(conn.a_uid)
+	main._update_joint_indicator()     # se actualiza en cada fotograma dibujado
+	check(main._joint_ind.global_position.distance_to(b.global_transform * main._joint_ind_local) < 1e-4, "El indicador sigue al anclaje en movimiento")
+	# Selector del microcontrolador: también señala.
+	main.mcu_target_selector.select(1)
+	main.mcu_target_selector.item_selected.emit(1)
+	await wait_phys(2)
+	var uid_m: String = main.mcu_target_selector.get_item_metadata(1)
+	var lbl2: Label3D = null
+	for c in main._joint_ind.get_children():
+		if c is Label3D: lbl2 = c
+	check(lbl2 != null and lbl2.text == "Unión %d" % (main.connections.find(main._find_conn(uid_m)) + 1), "Microcontrolador: «Actúa sobre» señala la unión en el modelo")
+	main._toggle_simulation()
+	check(main._joint_ind == null, "Al detener la simulación el indicador se retira")

@@ -63,14 +63,15 @@ static func build(points: PackedVector3Array, color: Color, solder_a: bool = fal
 		else:
 			# Conector Dupont: carcasa sobre el terminal y pin que entra en él.
 			var hc := MeshInstance3D.new()
-			var hm := BoxMesh.new(); hm.size = Vector3(0.0026, 0.007, 0.0026)
+			# Carcasa fina (1.6 mm) para que en la protoboard se vea en qué agujero entra.
+			var hm := BoxMesh.new(); hm.size = Vector3(0.0016, 0.0045, 0.0016)
 			hc.mesh = hm
 			hc.material_override = _housing
-			hc.position = p + Vector3(0, 0.0045, 0)
+			hc.position = p + Vector3(0, 0.0028, 0)
 			holder.add_child(hc)
 			var pc := MeshInstance3D.new()
 			var cm := CylinderMesh.new()
-			cm.top_radius = 0.0005; cm.bottom_radius = 0.0005; cm.height = 0.003; cm.radial_segments = 6
+			cm.top_radius = 0.0003; cm.bottom_radius = 0.0003; cm.height = 0.0016; cm.radial_segments = 6
 			pc.mesh = cm
 			pc.material_override = _pin
 			pc.position = p
@@ -81,7 +82,7 @@ static func build(points: PackedVector3Array, color: Color, solder_a: bool = fal
 static func solder_joint(p: Vector3, melt_done: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.name = "Soldadura"
-	mi.mesh = MeshFactory.solder_fillet(0.0022, CableSim.RADIUS * 0.9, 0.0032)
+	mi.mesh = MeshFactory.solder_fillet(0.0013, CableSim.RADIUS * 0.9, 0.0022)
 	var sm := ShaderMaterial.new()
 	sm.shader = load("res://rendering/solder.gdshader")
 	sm.set_shader_parameter("melt", 0.0)

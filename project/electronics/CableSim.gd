@@ -9,11 +9,16 @@ extends RefCounted
 ## componentes. Los extremos salen verticales del conector (como un Dupont real).
 ## El resultado se suaviza con Catmull-Rom para construir el tubo.
 
-const RADIUS := 0.0016
+## Radio del cable: jumper de calibre 22 AWG (≈1.4 mm de diámetro con aislamiento).
+const RADIUS := 0.0007
+## Holgura mínima entre dos cables (además de sus radios).
+const GAP := 0.0006
 
 ## Obstáculo: {"xf": Transform3D, "half": Vector3}. Devuelve los puntos del cable.
-static func solve(p1: Vector3, p2: Vector3, obstacles: Array, slack: float = 1.15, segs: int = 22, iters: int = 80) -> PackedVector3Array:
-	var lead := 0.006                      # tramo vertical saliendo del conector
+## "others": cables ya colocados (PackedVector3Array); este cable se separa de ellos
+## para que no se atraviesen ni se encimen.
+static func solve(p1: Vector3, p2: Vector3, obstacles: Array, slack: float = 1.15, segs: int = 22, iters: int = 80, others: Array = []) -> PackedVector3Array:
+	var lead := 0.005                      # tramo vertical saliendo del conector
 	var a := p1 + Vector3.UP * lead
 	var b := p2 + Vector3.UP * lead
 	var span := a.distance_to(b)
@@ -93,6 +98,8 @@ static func solve(p1: Vector3, p2: Vector3, obstacles: Array, slack: float = 1.1
 	raw.append_array(pts)
 	raw.append(p2)
 	var smooth := _catmull(raw, 3)
+	if not others.is_empty():
+		_separate(smooth, others, near)
 	# El suavizado puede recortar esquinas: se vuelve a expulsar (salvo los extremos).
 	for i in range(6, smooth.size() - 6):
 		var p := smooth[i]
@@ -101,6 +108,48 @@ static func solve(p1: Vector3, p2: Vector3, obstacles: Array, slack: float = 1.1
 		p.y = maxf(p.y, RADIUS)
 		smooth[i] = p
 	return smooth
+
+## Separa el cable de los ya colocados: cada punto (salvo los tramos junto a los
+## terminales) se aparta de los puntos cercanos de otros cables hasta dejar una
+## distancia de 2·radio + holgura; si coinciden casi exactamente, sube.
+static func _separate(pts: PackedVector3Array, others: Array, near: Array) -> void:
+	var box := AABB(pts[0], Vector3.ZERO)
+	for p in pts:
+		box = box.expand(p)
+	box = box.grow(RADIUS * 4.0 + GAP)
+	var cand := PackedVector3Array()
+	for o in others:
+		for q in (o as PackedVector3Array):
+			if box.has_point(q):
+				cand.append(q)
+	if cand.is_empty():
+		return
+	var min_d := RADIUS * 2.0 + GAP
+	var n := pts.size()
+	var skip := mini(8, n / 4)
+	for _pass in range(6):
+		var moved := false
+		for i in range(skip, n - skip):
+			var p := pts[i]
+			for q in cand:
+				var d := p - q
+				var dl := d.length()
+				if dl < min_d:
+					var dir := d / dl if dl > 1e-6 else Vector3.UP
+					if absf(dir.y) < 0.2 and p.y <= RADIUS * 1.5:
+						dir = (dir + Vector3.UP * 0.5).normalized()
+					p += dir * (min_d - dl)
+					moved = true
+			p.y = maxf(p.y, RADIUS)
+			for o in near:
+				p = _push_out(p, o)
+			pts[i] = p
+		# Suavizado ligero para que el desvío sea gradual.
+		var prevp := pts.duplicate()
+		for i in range(skip, n - skip):
+			pts[i] = prevp[i] * 0.6 + (prevp[i - 1] + prevp[i + 1]) * 0.2
+		if not moved:
+			break
 
 ## Expulsa un punto del interior de una caja orientada hacia la cara más cercana.
 static func _push_out(p: Vector3, o: Dictionary) -> Vector3:

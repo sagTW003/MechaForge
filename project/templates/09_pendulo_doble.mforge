@@ -5,14 +5,14 @@
 		"voltaje": 12.0
 	},
 	"cables": [],
-	"creado": "2026-09-27T21:40:19",
+	"creado": "2026-09-27T23:46:04",
 	"descripcion": "Dos eslabones articulados que parten horizontales: movimiento caótico, sensible a las condiciones iniciales.",
 	"entorno": 0,
 	"formato": "mechaforge",
 	"grid_mm": 10.0,
 	"microcontrolador": {
-		"activo": true,
-		"script": "# Giro de la pluma: barrido de ±60° (PID de posición).\noutput = 60 * sin(0.3 * t)",
+		"activo": false,
+		"script": "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp",
 		"union": -1
 	},
 	"nombre": "Péndulo doble (caótico)",
@@ -36,7 +36,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1397685_53139"
+			"uid": "p1441944_32905"
 		},
 		{
 			"def_id": "perfil_4040_300",
@@ -57,7 +57,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1397829_2518"
+			"uid": "p1442091_94984"
 		},
 		{
 			"def_id": "perfil_2020_200",
@@ -78,7 +78,7 @@
 				0.0,
 				1.57079637050629
 			],
-			"uid": "p1397908_59368"
+			"uid": "p1442215_73967"
 		},
 		{
 			"def_id": "perfil_2020_200",
@@ -99,19 +99,19 @@
 				0.0,
 				1.57079637050629
 			],
-			"uid": "p1398039_97164"
+			"uid": "p1442287_68545"
 		}
 	],
 	"uniones": [
 		{
-			"a": "p1397829_2518",
+			"a": "p1442091_94984",
 			"anchor": [
 				0.0,
 				0.579999983310699,
 				0.0350000001490116
 			],
 			"axis": 2,
-			"b": "p1397908_59368",
+			"b": "p1442215_73967",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -140,17 +140,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 1,
-			"uid": "c1398120_64081"
+			"uid": "c1442358_45700"
 		},
 		{
-			"a": "p1397908_59368",
+			"a": "p1442215_73967",
 			"anchor": [
 				0.200000002980232,
 				0.579999983310699,
 				0.046000000089407
 			],
 			"axis": 2,
-			"b": "p1398039_97164",
+			"b": "p1442287_68545",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -179,7 +179,7 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 1,
-			"uid": "c1398129_526"
+			"uid": "c1442368_72187"
 		}
 	],
 	"version": 3,

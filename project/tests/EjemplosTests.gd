@@ -109,6 +109,7 @@ func _t_reductora() -> void:
 
 func _t_banco_pid() -> void:
 	await _generic(4.0)
+
 	var c: Connection = main._controlled_connections()[0]
 	var err := absf(rad_to_deg(main.simulator.control_measure(c.uid) - c.ctrl_setpoint))
 	check(err < 10.0, "  el PID sigue la onda (error %.1f°)" % err)

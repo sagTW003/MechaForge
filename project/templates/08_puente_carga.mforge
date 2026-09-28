@@ -5,14 +5,14 @@
 		"voltaje": 12.0
 	},
 	"cables": [],
-	"creado": "2026-09-27T21:40:19",
+	"creado": "2026-09-27T23:46:04",
 	"descripcion": "Viga de acero sobre dos pilares con dos placas de carga. Activa «Esfuerzos» para ver el mapa de color.",
 	"entorno": 2,
 	"formato": "mechaforge",
 	"grid_mm": 10.0,
 	"microcontrolador": {
-		"activo": true,
-		"script": "# Giro de la pluma: barrido de ±60° (PID de posición).\noutput = 60 * sin(0.3 * t)",
+		"activo": false,
+		"script": "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp",
 		"union": -1
 	},
 	"nombre": "Puente con carga",
@@ -36,7 +36,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1382499_6487"
+			"uid": "p1425842_50757"
 		},
 		{
 			"def_id": "perfil_2020_200",
@@ -57,7 +57,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1382627_56667"
+			"uid": "p1425985_31512"
 		},
 		{
 			"def_id": "viga_acero_500",
@@ -78,7 +78,7 @@
 				0.0,
 				1.57079637050629
 			],
-			"uid": "p1382709_27844"
+			"uid": "p1426057_74742"
 		},
 		{
 			"def_id": "placa_base_200x200",
@@ -99,7 +99,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1386764_13737"
+			"uid": "p1430173_93194"
 		},
 		{
 			"def_id": "placa_base_200x200",
@@ -120,19 +120,19 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1387000_36947"
+			"uid": "p1430422_64545"
 		}
 	],
 	"uniones": [
 		{
-			"a": "p1382499_6487",
+			"a": "p1425842_50757",
 			"anchor": [
 				-0.25,
 				0.200000002980232,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1382709_27844",
+			"b": "p1426057_74742",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -161,17 +161,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1382905_98613"
+			"uid": "c1426249_71859"
 		},
 		{
-			"a": "p1382627_56667",
+			"a": "p1425985_31512",
 			"anchor": [
 				0.25,
 				0.200000002980232,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1382709_27844",
+			"b": "p1426057_74742",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -200,17 +200,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1382914_19225"
+			"uid": "c1426257_4940"
 		},
 		{
-			"a": "p1382709_27844",
+			"a": "p1426057_74742",
 			"anchor": [
 				-0.119999997317791,
 				0.224000006914139,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1386764_13737",
+			"b": "p1430173_93194",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -239,17 +239,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1386985_31622"
+			"uid": "c1430405_98482"
 		},
 		{
-			"a": "p1382709_27844",
+			"a": "p1426057_74742",
 			"anchor": [
 				0.119999997317791,
 				0.224000006914139,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1387000_36947",
+			"b": "p1430422_64545",
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
 			"ctrl_ki": 0.5,
@@ -278,7 +278,7 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1387167_37967"
+			"uid": "c1430613_12792"
 		}
 	],
 	"version": 3,
