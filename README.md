@@ -214,9 +214,63 @@ datos (piezas A/B, eje, anclaje, motor, control). 🎯 la encuadra con la cámar
 ![Uniones](docs/demo_uniones.png)
 *Unión nº 4 seleccionada: piezas resaltadas y detalle en el panel.*
 
+### Multímetro digital, integrados DIP y cortocircuitos
+
+**Circuito vivo.** El circuito se resuelve continuamente (en edición y en simulación)
+con un solver de **Análisis Nodal Modificado no lineal** (C#, Newton-Raphson con
+limitación de la tensión de unión): los **LED son diodos reales** (≈1.85 V a 15 mA en
+rojo), las baterías tienen resistencia interna, cada cable es un elemento con su
+corriente y el **NE555** oscila en modo astable. Un LED sin resistencia se **quema**, una
+resistencia que disipa de más humea y se abre.
+
+**Multímetro (📟).** Pieza *Instrumentos de medida → Multímetro digital*: carcasa de
+goma, **LCD de 7 segmentos dibujada por shader** (dígitos, punto decimal, «OL», «Err»,
+«FUSE», iconos de batería, AC/DC y continuidad), **selector giratorio** (OFF, V⎓, V~,
+A⎓, Ω, continuidad) y bornes 10 A / COM / VΩmA. Sus **sondas roja y negra** cuelgan de
+cables de silicona con física de cuerda: arrástralas y su punta hace un **snap
+magnético** al terminal más cercano (agujero de la protoboard, pata de un componente,
+pin del Arduino) — **vertical (90°)** en agujeros y pines, **inclinada 45°** en patas y
+bornes, en «V» si las dos están juntas.
+
+| Modo | Qué mide | Regla |
+|---|---|---|
+| V⎓ / V~ | V(roja) − V(negra) (V~: valor eficaz de la componente alterna) | En paralelo, 10 MΩ: no altera el circuito |
+| A⎓ | Corriente por el derivador (VΩmA: 1 Ω · fusible 400 mA; 10 A: 0.01 Ω · fusible 10 A) | En **serie**. En paralelo con la fuente **funde el fusible**: chispas, «FUSE» y hay que reemplazarlo |
+| Ω | Resistencia equivalente entre puntas (inyecta 1 V por 10 kΩ) | Solo **desenergizado**; si hay una fuente conectada muestra «Err» |
+| 🔊 | Continuidad | Pita (tono de 2.7 kHz) y enciende el LED si R < 50 Ω |
+
+**Cortocircuito crítico.** Si una fuente queda con menos de 0.5 Ω de carga y más de
+1 A, se activa el estado de **CORTOCIRCUITO CRÍTICO**: chispas 3D (partículas GPU),
+humo del aislamiento, el cable se pone **al rojo** (shader de cuerpo negro según su
+temperatura, modelo térmico I²R) y la **protección térmica desconecta la fuente**. Un
+aviso rojo ofrece **⟲ Rearmar** tras corregir el cableado.
+
+**Protoboard multipín.** Resistencias, LED e **integrados DIP** (NE555 DIP-8, Arduino
+Nano DIP-30) se **insertan**: sus patas entran en los agujeros y quedan conectadas sin
+cables. Un DIP solo encaja si **cruza el canal central** (una fila en a–e y la otra en
+f–j) y todas sus patas caen en agujeros válidos; si no, se explica por qué. Al mover o
+girar la protoboard, **todo lo insertado (y las sondas enganchadas) la sigue**; en
+simulación forman un único cuerpo rígido. El Arduino Nano se alimenta por USB (5V y
+3V3) y el programa del microcontrolador escribe sus salidas `d2`…`d13`.
+
+![Multímetro](docs/demo_multimetro.png)
+*Ejemplo «Multímetro en protoboard»: 1.847 V en el LED; sondas en «V» en agujeros vecinos.*
+
+![LCD](docs/demo_multimetro_lcd.png)
+*LCD de 7 segmentos por shader, selector en DCV y clavijas en COM y VΩmA.*
+
+![DIP](docs/demo_dip.png)
+*Arduino Nano (DIP-30) y NE555 (DIP-8) cruzando el canal central.*
+
+![Cortocircuito](docs/demo_cortocircuito.png)
+*Puente de riel + a riel −: cortocircuito crítico, humo, chispas y aviso de protección.*
+
+![Fusible](docs/demo_fusible.png)
+*Amperímetro en paralelo con la pila: fusible de 400 mA fundido («FUSE»).*
+
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
-Nueve proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
+Once proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
 título; guárdalos con «Guardar como…»):
 
 | Ejemplo | Qué muestra |
@@ -226,10 +280,12 @@ título; guárdalos con «Guardar como…»):
 | Robot evita-obstáculos | Ultrasonido frontal en un recinto: gira al detectar una pared a < 25 cm |
 | Reductora de engranajes 16:60 | Motor con inversión de giro, relación −16/60 y huelgo visibles |
 | Banco de control PID | Brazo siguiendo una onda (programa por bloques) con encoder en el eje |
-| Circuito LED en protoboard | Batería, resistencia y LED cableados (y soldados) en protoboard |
+| Circuito LED en protoboard | Batería, resistencia de 470 Ω y LED **insertados** en la protoboard (LED = diodo real) |
 | Grúa giratoria con contrapeso | Giro de la pluma por PID; estabilidad con el mapa de esfuerzos |
 | Puente con carga | Viga con dos cargas sobre pilares anclados |
 | Péndulo doble | Dinámica caótica con conservación de la energía |
+| Multímetro en protoboard | Tensión en el LED y en la resistencia, continuidad, corriente en serie |
+| Arduino Nano y NE555 (DIP) | Integrados que cruzan el canal; 555 astable y salidas `d2`/`d13` del programa |
 
 Los ejemplos son archivos `.mforge` en `project/templates/`: **añadir un proyecto
 al menú = copiar ahí un `.mforge`** (con `"nombre"` y `"descripcion"`). Se regeneran
@@ -268,7 +324,9 @@ Además del chat, MechaForge expone una **API local JSON-RPC** en
 `http://127.0.0.1:18790` (token en `%APPDATA%\Godot\app_userdata\MechaForge\mechaforge_api.json`)
 con las herramientas `get_scene_state`, `add_part`, `connect_parts`, `set_property`,
 `remove_part`, `write_controller_script`, `run_simulation`, `stop_simulation`,
-`get_telemetry` y `analyze_design`. Todo cambio llega como **vista previa** y lo
+`get_telemetry`, `analyze_design`, `get_circuit_state` (fuentes, LED, cortocircuito,
+piezas insertadas y lectura del multímetro) y `measure_voltage` (medida de solo
+lectura entre dos terminales). Todo cambio llega como **vista previa** y lo
 confirmas tú. La *skill* **mechaforge** está instalada en OpenClaw (`~/.openclaw/skills/mechaforge`,
 copia de `openclaw_skill/mechaforge/`): pide a tu agente, con MechaForge abierto,
 cosas como *«usa mechaforge para analizar el diseño»*.
@@ -306,6 +364,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Detalles finales (API, sensores, bloques, plantillas…) | `mffinal` |
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
+| Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
 
 ## Arquitectura
 

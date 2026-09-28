@@ -62,6 +62,18 @@ var _hover_term: Dictionary = {}
 var circuito_panel: FloatingPanel
 var circuito_label: Label
 const WIRE_PICK_LAYER := 4
+var _wire_nodes: Dictionary = {}       # uid de cable -> nodo 3D (incandescencia)
+var _wire_pts: Dictionary = {}         # uid de cable -> puntos de la curva
+
+# --- Circuito vivo, multímetro y protoboard multipín ---
+var circuit_rt: CircuitRuntime
+var probes: ProbeInteractionSystem
+var dmm_panel: DMMPanel
+var probe_button: Button
+var short_banner: PanelContainer
+var short_banner_label: Label
+var _board_xf: Dictionary = {}         # uid de protoboard -> última transformación
+var _dmm_panel_accum: float = 0.0
 
 # --- Microcontrolador programable (Fase 3.1) ---
 var mcu_panel: FloatingPanel
@@ -195,6 +207,13 @@ func _ready() -> void:
 	simulator.setup(parts_root, sim_root)
 	simulator.simulation_started.connect(_on_sim_started)
 	simulator.simulation_stopped.connect(_on_sim_stopped)
+	circuit_rt = CircuitRuntime.new()
+	circuit_rt.name = "CircuitoVivo"
+	circuit_rt.main = self
+	add_child(circuit_rt)
+	probes = ProbeInteractionSystem.new()
+	probes.main = self
+	add_child(probes)
 
 	_build_ui()
 	GraphicsProfiles.apply_auto(world_env.environment, get_viewport())
@@ -265,6 +284,11 @@ func _ready() -> void:
 		ft.main = self
 		add_child(ft)
 		ft.call_deferred("run")
+	elif "mfmulti" in OS.get_cmdline_user_args():
+		var mt: Node = load("res://tests/MultimetroTests.gd").new()
+		mt.main = self
+		add_child(mt)
+		mt.call_deferred("run")
 	elif "mfrefactor" in OS.get_cmdline_user_args():
 		var rt: Node = load("res://tests/RefactorTests.gd").new()
 		rt.main = self
@@ -1077,6 +1101,8 @@ func _build_ui() -> void:
 	_build_file_dialog()
 	_build_elec_panel()
 	_build_circuito_panel()
+	_build_dmm_panel()
+	_build_short_banner()
 	_build_mcu_panel()
 	_build_music_panel()
 	_build_ai_panel()
@@ -1422,6 +1448,54 @@ func api_scene_state() -> Dictionary:
 		conns.append((cn as Connection).to_dict())
 	return {"piezas": parts, "uniones": conns, "cables": wires, "simulando": simulator.is_running(),
 		"unidades": "SI (m, kg, s, rad)"}
+
+## Estado del circuito vivo para la API (solo lectura).
+func api_circuit_state() -> Dictionary:
+	var rt := circuit_rt
+	rt.solve_once()
+	var fuentes := []
+	for s in rt.sources:
+		fuentes.append({"uid": s["uid"], "nombre": s["name"], "fem_v": s["v"],
+			"tension_bornes_v": rt.voltage(s["pos"]) - rt.voltage(s["neg"]), "corriente_a": rt.source_current(s)})
+	var desconectadas := []
+	for uid in rt.tripped:
+		desconectadas.append({"uid": uid, "motivo": rt.tripped[uid]})
+	var leds := []
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def.get("apariencia", "") == "led":
+			var p := c as PartInstance
+			var i := rt.led_current(p.uid)
+			leds.append({"uid": p.uid, "nombre": p.def.get("nombre", ""), "corriente_ma": i * 1000.0,
+				"encendido": float(rt.led_level.get(p.uid, 0.0)) > 0.05, "quemado": rt.burned.has(p.uid)})
+	var insertados := []
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).is_inserted():
+			var p2 := c as PartInstance
+			var pins := {}
+			for pin in p2.pin_map:
+				pins[pin] = BreadboardSnap.hole_name(str(p2.pin_map[pin]))
+			insertados.append({"uid": p2.uid, "nombre": p2.def.get("nombre", ""), "protoboard": p2.inserted_in, "patas": pins})
+	var d := rt.dmm
+	var dmm := {}
+	if d.part:
+		dmm = {"uid": d.part.uid, "modo": DMMController.MODE_IDS[d.mode], "pantalla": d.reading_text(), "valor_si": d.value if not (is_nan(d.value) or is_inf(d.value)) else null,
+			"sonda_roja": d.probe_key("roja"), "sonda_negra": d.probe_key("negra"),
+			"fusible_400ma_ok": d.fuse_ma_ok, "fusible_10a_ok": d.fuse_10a_ok, "borne_10a": d.jack_10a, "pitido": d.beeping}
+	var t := rt.totals()
+	return {"alimentacion": rt.power_on, "fuentes": fuentes, "desconectadas": desconectadas,
+		"corriente_total_a": t["current"], "potencia_w": t["power"],
+		"cortocircuito": {"activo": rt.short_active, "fuente": rt.short_info.get("name", ""), "corriente_a": rt.short_info.get("current", 0.0)} if rt.short_active else {"activo": false},
+		"leds": leds, "insertados": insertados, "multimetro": dmm, "unidades": "SI (V, A, W)"}
+
+func api_measure_voltage(a: String, b: String) -> Dictionary:
+	if _terminal_live_by_key(a) == null or _terminal_live_by_key(b) == null:
+		return {"error": "Terminal desconocido: usa 'uid:terminal' (ver get_scene_state / get_circuit_state)."}
+	circuit_rt.solve_once()
+	var va := circuit_rt.voltage(a)
+	var vb := circuit_rt.voltage(b)
+	if is_nan(va) or is_nan(vb):
+		return {"a": a, "b": b, "flotante": true, "nota": "Algún terminal no está conectado a ningún elemento del circuito."}
+	return {"a": a, "b": b, "tension_v": va - vb, "va_v": va, "vb_v": vb}
 
 func api_telemetry(uid: String) -> Dictionary:
 	if not simulator.is_running():
@@ -1829,6 +1903,10 @@ func _build_topbar() -> Control:
 	solder_button.toggle_mode = true
 	solder_button.tooltip_text = "Suelda los extremos de los cables a sus terminales (cautín virtual)."
 	hb.add_child(solder_button)
+	probe_button = _button("📟  Multímetro", func(): _set_probe_mode(not probes.active))
+	probe_button.toggle_mode = true
+	probe_button.tooltip_text = "Mide con el multímetro digital: arrastra sus sondas a los terminales (lo añade si no hay)."
+	hb.add_child(probe_button)
 	hb.add_child(_vsep())
 
 	snap_check = CheckButton.new()
@@ -1917,6 +1995,7 @@ func _populate_parts_tree() -> void:
 	var cat_names := {
 		"estructural": "Estructurales", "union": "Uniones", "transmision": "Transmisión",
 		"actuador": "Actuadores", "sensor": "Sensores", "electronica": "Electrónica", "otros": "Otros",
+		"instrumento": "Instrumentos de medida",
 	}
 	for cat in PartLibrary.categories():
 		var cat_item := parts_tree.create_item(root)
@@ -2210,7 +2289,7 @@ func _layout_panels() -> void:
 func _clamp_panels() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	for p in [biblioteca_panel, propiedades_panel, uniones_panel, elec_panel,
-			circuito_panel, mcu_panel, music_panel, ai_panel, graphics_panel]:
+			circuito_panel, dmm_panel, mcu_panel, music_panel, ai_panel, graphics_panel]:
 		if p == null or not p.visible:
 			continue
 		var pos: Vector2 = p.position
@@ -2584,6 +2663,12 @@ func _physics_process(delta: float) -> void:
 
 func _process(_delta: float) -> void:
 	_update_joint_indicator()
+	if not simulator.is_running():
+		_sync_inserted_parts()
+	_dmm_panel_accum += _delta
+	if _dmm_panel_accum >= 0.1:
+		_dmm_panel_accum = 0.0
+		_update_dmm_ui()
 	if fps_label:
 		fps_label.text = "FPS: %d  (x%.2f)" % [Engine.get_frames_per_second(), GraphicsProfiles.current_scale()]
 	GraphicsProfiles.update_dynamic(_delta)
@@ -2609,9 +2694,21 @@ func _process(_delta: float) -> void:
 				var pos: Vector3 = Config.snap_vector(p)
 				pos.y = dims.y * 0.5  # apoya sobre el suelo
 				ghost.position = pos
-		_set_ghost_valid(ghost, _apply_port_snap(ghost))
+		var snapped_port := _apply_port_snap(ghost)
+		if ghost.is_insertable():
+			var ins := _best_insertion(ghost)
+			if ins.get("ok", false):
+				ghost.global_transform = ins["xf"]
+				snapped_port = true
+				if status_label:
+					status_label.text = "Insertando en la protoboard: %s   ·   clic para colocar" % ins.get("rows", "")
+			elif ins.get("near", false) and str(ins.get("reason", "")) != "" and status_label:
+				status_label.text = "✖ " + str(ins["reason"])
+		_set_ghost_valid(ghost, snapped_port)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if probes and probes.handle_input(event):
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT:
@@ -2765,6 +2862,20 @@ func _update_drag(event: InputEventMouseMotion) -> void:
 			_show_drag_status()
 		if _apply_port_snap(dragging_part) and status_label:
 			status_label.text = "Encaje inteligente: %s   ·   suelta para fijar" % SnapPoints.describe(_last_port_snap)
+	if dragging_part.is_inserted():
+		dragging_part.inserted_in = ""        # se retira de la protoboard al moverla
+		dragging_part.pin_map = {}
+	if dragging_part.is_insertable():
+		var ins := _best_insertion(dragging_part)
+		if ins.get("ok", false):
+			dragging_part.global_transform = ins["xf"]
+			if status_label:
+				status_label.text = "Insertando en la protoboard: %s   ·   suelta para fijar%s" % [ins.get("rows", ""),
+					"   ⚠ patas en la misma tira (cortocircuitado)" if ins.get("short", false) else ""]
+		elif ins.get("near", false) and str(ins.get("reason", "")) != "" and status_label:
+			status_label.text = "✖ " + str(ins["reason"])
+	if dragging_part.is_breadboard():
+		_sync_inserted_parts()
 	drag_moved = true
 	if connections.size() > 0:
 		_redraw_connection_markers()
@@ -2784,14 +2895,16 @@ func _end_drag() -> void:
 	dragging_part = null
 	snap_indicator.visible = false
 	part.set_pick_enabled(true)  # reactiva la selección de la pieza
-	if drag_moved and part.position.distance_to(drag_start_pos) > 1.0e-6:
+	if drag_moved and (part.position.distance_to(drag_start_pos) > 1.0e-6 or part.rotation.distance_to(drag_start_rot) > 1.0e-6):
 		_do({
 			"type": "transform", "uid": part.uid,
 			"old": {"pos": _arr(drag_start_pos), "rot": _arr(drag_start_rot)},
 			"new": {"pos": _arr(part.position), "rot": _arr(part.rotation)},
 		})
 		_redraw_connection_markers()
+		_announce_insertion(part)
 	else:
+		_refresh_insertion(part)
 		_refresh_properties()
 
 ## Empuje por rejilla con el teclado (flechas: X/Z; Re/Av Pág: altura).
@@ -2904,6 +3017,8 @@ func _on_gizmo_dragged(pos: Vector3, b: Basis) -> void:
 	selected_part.global_transform = Transform3D(b, pos)
 	if gizmo.mode == TransformGizmo.Mode.MOVER:
 		_apply_port_snap(selected_part)
+	if selected_part.is_breadboard():
+		_sync_inserted_parts()
 	if status_label:
 		var r := selected_part.rotation_degrees
 		var enc := ("· Encaje: " + SnapPoints.describe(_last_port_snap)) if not _last_port_snap.is_empty() else ""
@@ -2923,6 +3038,11 @@ func _on_gizmo_finished(old_pos: Vector3, old_basis: Basis, _new_pos: Vector3, _
 	_do({"type": "transform", "uid": selected_part.uid,
 		"old": {"pos": _arr(old_pos), "rot": _arr(old_rot)},
 		"new": {"pos": _arr(selected_part.position), "rot": _arr(selected_part.rotation)}})
+	if selected_part.is_insertable():
+		var ins := _best_insertion(selected_part)
+		if ins.get("ok", false):
+			selected_part.global_transform = ins["xf"]
+		_announce_insertion(selected_part)
 
 ## Encaje inteligente a puertos: ajusta la pieza al punto compatible más cercano
 ## (orificio, eje, ranura...) y muestra el indicador. Devuelve true si encajó.
@@ -2953,6 +3073,7 @@ func _apply_port_snap(node: Node3D) -> bool:
 
 func _do(cmd: Dictionary) -> void:
 	_apply(cmd)
+	_refresh_all_insertions()
 	_undo.append(cmd)
 	if _undo.size() > MAX_HISTORY:
 		_undo.pop_front()
@@ -3004,6 +3125,7 @@ func undo() -> void:
 		return
 	var cmd: Dictionary = _undo.pop_back()
 	_revert(cmd)
+	_refresh_all_insertions()
 	_redo.append(cmd)
 	Config.project_dirty = true
 	_update_counts()
@@ -3015,6 +3137,7 @@ func redo() -> void:
 		return
 	var cmd: Dictionary = _redo.pop_back()
 	_apply(cmd)
+	_refresh_all_insertions()
 	_undo.append(cmd)
 	Config.project_dirty = true
 	_update_counts()
@@ -3085,6 +3208,7 @@ func _spawn_from_dict(d: Dictionary) -> PartInstance:
 	inst.rotation = _vec(d.get("rot", [0, 0, 0]))
 	if d.has("fijo"):
 		inst.anchored = bool(d["fijo"])
+	inst.apply_saved(d)
 	if typeof(d.get("dims_mm")) == TYPE_DICTIONARY and not d["dims_mm"].is_empty() and d["dims_mm"] != inst.def.get("dimensiones_mm", {}):
 		inst.def["dimensiones_mm"] = d["dims_mm"].duplicate()
 		inst.rebuild()
@@ -3154,6 +3278,15 @@ func _on_new() -> void:
 	connections.clear()
 	wires.clear()
 	project_meta = {}
+	if probes and probes.active:
+		_set_probe_mode(false)
+	if circuit_rt:
+		circuit_rt.rearm()
+		circuit_rt.power_on = true
+		circuit_rt.digital_out.clear()
+		circuit_rt.ic_state.clear()
+		circuit_rt.invalidate()
+	_board_xf.clear()
 	# El microcontrolador también empieza de cero.
 	_stop_mcu()
 	mcu_target_uid = ""
@@ -3211,6 +3344,10 @@ func _load_project(path: String, is_autosave: bool = false) -> bool:
 	if bat.has("voltaje"): Config.battery_voltage = bat["voltaje"]
 	if bat.has("capacidad_mah"): Config.battery_capacity_mah = bat["capacidad_mah"]
 	_apply_project_extra(doc)
+	_restore_insertions()
+	if circuit_rt:
+		circuit_rt.rearm()
+		circuit_rt.invalidate()
 	_populate_parts_tree()
 	_redraw_connection_markers()
 	_redraw_wires()
@@ -3348,6 +3485,8 @@ var _tele_labels: Dictionary = {}
 var _tele_accum: float = 0.0
 
 func _toggle_simulation() -> void:
+	if probes and probes.active:
+		_set_probe_mode(false)
 	if simulator.is_running():
 		simulator.stop()
 	else:
@@ -3737,6 +3876,8 @@ func _set_wiring_mode(on: bool) -> void:
 	if wire_button:
 		wire_button.button_pressed = on
 	wire_first = {}
+	if on and probes and probes.active:
+		_set_probe_mode(false)
 	if on:
 		_cancel_placing()
 		_set_connect_mode(false)
@@ -3865,6 +4006,8 @@ func _terminal_pos_by_key(key: String):
 func _redraw_wires(quick: bool = false) -> void:
 	for c in wires_root.get_children():
 		c.queue_free()
+	_wire_nodes.clear()
+	_wire_pts.clear()
 	if wires.is_empty():
 		return
 	var obstacles := []
@@ -3884,7 +4027,11 @@ func _redraw_wires(quick: bool = false) -> void:
 		var pts := CableSim.solve(pa, pb, obstacles, slack, 22, 25 if quick else 90, [] if quick else placed)
 		placed.append(pts)
 		var col := CableRenderer.color_for(w.get("tipo", "signal"), str(w.get("color", "auto")))
-		wires_root.add_child(CableRenderer.build(pts, col, bool(w.get("soldado_a", false)), bool(w.get("soldado_b", false))))
+		var holder := CableRenderer.build(pts, col, bool(w.get("soldado_a", false)), bool(w.get("soldado_b", false)))
+		holder.set_meta("wire_uid", str(w.get("uid", "")))
+		wires_root.add_child(holder)
+		_wire_nodes[str(w.get("uid", ""))] = holder
+		_wire_pts[str(w.get("uid", ""))] = pts
 
 ## Compatibilidad entre terminales: 0 = no (mismo terminal), 1 = precaución
 ## (alimentación ↔ tierra), 2 = compatible.
@@ -4126,6 +4273,11 @@ func _protoboard_virtual_wires() -> Array:
 			var keys: Array = groups[g]
 			for i in range(1, keys.size()):
 				vw.append({"a": keys[0], "b": keys[i]})
+	# Patas insertadas (enganche multipín): pata ↔ agujero.
+	for part in _electronic_parts():
+		if part.is_inserted() and _find_part(part.inserted_in) != null:
+			for pin in part.pin_map:
+				vw.append({"a": _key(part.uid, str(pin)), "b": _key(part.inserted_in, str(part.pin_map[pin]))})
 	return vw
 
 func _clear_wires() -> void:
@@ -4147,6 +4299,18 @@ func _build_circuito_panel() -> void:
 	hb.add_child(_button("Analizar circuito", _analyze_circuit))
 	hb.add_child(_button("Borrar cables", _clear_wires))
 	vb.add_child(hb)
+	var hb2 := HBoxContainer.new()
+	var rearm_btn := _button("⟲ Rearmar", _rearm_circuit)
+	rearm_btn.tooltip_text = "Reconecta fuentes desconectadas por protección y repone LED/resistencias quemados."
+	hb2.add_child(rearm_btn)
+	var pwr := CheckButton.new()
+	pwr.text = "Alimentación"
+	pwr.button_pressed = true
+	pwr.focus_mode = Control.FOCUS_NONE
+	pwr.toggled.connect(func(v): circuit_rt.power_on = v)
+	pwr.set_meta("power_toggle", true)
+	hb2.add_child(pwr)
+	vb.add_child(hb2)
 	var crow := HBoxContainer.new()
 	crow.add_child(_label("Color del cable:"))
 	var copt := OptionButton.new()
@@ -4182,6 +4346,7 @@ func _show_circuit_result(r: Dictionary) -> void:
 	var atxt := "∞" if (a == INF or a > 1.0e6) else ("%.2f h" % a)
 	circuito_label.text = "Baterías: %d · Cargas: %d · Nodos: %d\nCorriente: %.3f A · Potencia: %.2f W\nAutonomía: %s" % [
 		r.get("batteries", 0), r.get("loads", 0), r.get("nets", 0), r.get("current", 0.0), r.get("power", 0.0), atxt]
+	circuito_label.text += "\n" + _live_circuit_summary()
 	Config.notify("Circuito analizado: %.3f A." % r.get("current", 0.0), 4.0)
 
 #endregion
@@ -4339,6 +4504,17 @@ func _apply_mcu() -> void:
 	_populate_mcu_targets()
 	_refresh_mcu_sensors()
 	if mcu_target_selector.item_count == 0:
+		if _find_nano() != null:
+			mcu_target_uid = ""
+			mcu_lines = mcu_editor.text.split("\n")
+			if is_nan(_mcu_run(mcu_lines, 0.0, 0.0, 1.0 / 120.0)):
+				mcu_status.text = "Error en el programa. Usa funciones como sin, cos, abs y variables t, x."
+				mcu_enabled = false
+				return
+			mcu_enabled = true
+			mcu_time = 0.0
+			mcu_status.text = "Programa activo en el Arduino Nano: escribe d2…d13 = 0/1. Pulsa ▶ Simular."
+			return
 		mcu_status.text = "No hay uniones con control PID. Crea una bisagra con control de Posición o Velocidad."
 		mcu_enabled = false
 		return
@@ -4354,7 +4530,14 @@ func _apply_mcu() -> void:
 	mcu_status.text = "Programa activo. Pulsa ▶ Simular para verlo generar la consigna."
 
 func _mcu_tick(delta: float) -> void:
-	if not mcu_enabled or mcu_target_uid == "":
+	if not mcu_enabled:
+		return
+	if mcu_target_uid == "":
+		# Solo salidas digitales (Arduino Nano sin uniones controladas).
+		mcu_time += delta
+		var dv := {}
+		if not is_nan(_mcu_run(mcu_lines, mcu_time, 0.0, delta, dv)):
+			_apply_digital_outputs(dv)
 		return
 	mcu_time += delta
 	var conn := _find_conn(mcu_target_uid)
@@ -4368,6 +4551,7 @@ func _mcu_tick(delta: float) -> void:
 	if is_nan(out):
 		return
 	conn.ctrl_setpoint = deg_to_rad(out) if is_pos else out
+	_apply_digital_outputs(vars)
 	# Salidas mN: consigna de la N-ésima unión con control (varios actuadores).
 	var ctrl := _controlled_connections()
 	for i in range(ctrl.size()):
@@ -4541,5 +4725,276 @@ func _export_csv() -> void:
 		f.store_line("%f,%f,%f" % [h["t"][i], h["sp"][i], h["meas"][i]])
 	f.close()
 	Config.notify("CSV exportado: %s" % ProjectSettings.globalize_path(path), 6.0)
+
+#endregion
+
+#region PROTOBOARD MULTIPÍN, CIRCUITO VIVO Y MULTÍMETRO -------------------------
+
+## Transformación EN VIVO de una pieza: la del cuerpo rígido en simulación (una
+## pieza insertada comparte el cuerpo de su protoboard) o la de edición.
+func _part_live_xform(part: PartInstance) -> Transform3D:
+	if simulator and simulator.is_running():
+		var t = simulator.part_transform(part.uid)
+		if t != null:
+			return t
+	return part.global_transform
+
+## Posición en vivo de un terminal "uid:terminal" (null si no existe).
+func _terminal_live_by_key(key: String):
+	var parts := key.split(":")
+	if parts.size() < 2:
+		return null
+	var part := _find_part(parts[0])
+	if part == null or not part.def.has("terminales"):
+		return null
+	for term in part.def["terminales"]:
+		if str(term.get("id", "")) == parts[1]:
+			var p: Array = term.get("pos_mm", [0, 0, 0])
+			return _part_live_xform(part) * (Vector3(p[0], p[1], p[2]) / 1000.0)
+	return null
+
+func _breadboards() -> Array:
+	var out := []
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).is_breadboard() and not c.is_queued_for_deletion():
+			out.append(c)
+	return out
+
+## Mejor inserción posible de "part" (o fantasma) en alguna protoboard.
+func _best_insertion(part: PartInstance) -> Dictionary:
+	var fail := {}
+	for board in _breadboards():
+		if board == part:
+			continue
+		var r := BreadboardSnap.try_insert(part.def, part.global_transform, board)
+		if r.get("ok", false):
+			r["board"] = board
+			return r
+		if r.get("near", false) and fail.is_empty():
+			fail = r
+	return fail
+
+## Estado de inserción derivado de la geometría: insertada si sus patas ya están
+## exactamente en los agujeros de una protoboard (coherente con deshacer/rehacer).
+func _refresh_insertion(part: PartInstance) -> bool:
+	if not part.is_insertable():
+		return false
+	var r := _best_insertion(part)
+	if r.get("ok", false) and (r["xf"] as Transform3D).origin.distance_to(part.global_transform.origin) < 0.0003:
+		var board: PartInstance = r["board"]
+		part.inserted_in = board.uid
+		part.pin_map = r["map"]
+		part.insert_local = board.global_transform.affine_inverse() * part.global_transform
+		return true
+	part.inserted_in = ""
+	part.pin_map = {}
+	return false
+
+func _refresh_all_insertions() -> void:
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).is_insertable() and not c.is_queued_for_deletion():
+			_refresh_insertion(c)
+	_board_xf.clear()
+	for b in _breadboards():
+		_board_xf[b.uid] = b.global_transform
+
+## Tras cargar: valida la inserción guardada y calcula la transformación relativa.
+func _restore_insertions() -> void:
+	for c in parts_root.get_children():
+		if not (c is PartInstance):
+			continue
+		var part := c as PartInstance
+		if part.inserted_in == "":
+			if part.is_insertable():
+				_refresh_insertion(part)
+			continue
+		var board := _find_part(part.inserted_in)
+		if board == null:
+			part.inserted_in = ""
+			part.pin_map = {}
+		else:
+			part.insert_local = board.global_transform.affine_inverse() * part.global_transform
+	_board_xf.clear()
+	for b in _breadboards():
+		_board_xf[b.uid] = b.global_transform
+
+func _announce_insertion(part: PartInstance) -> void:
+	if not part.is_insertable():
+		return
+	if _refresh_insertion(part):
+		var shorted := false
+		var groups := {}
+		var board := _find_part(part.inserted_in)
+		for pin in part.pin_map:
+			for t in board.def["terminales"]:
+				if str(t["id"]) == str(part.pin_map[pin]):
+					var g := str(t.get("grupo", ""))
+					if groups.has(g): shorted = true
+					groups[g] = true
+		Config.notify("🔩 %s insertado en la protoboard: %s.%s" % [part.def.get("nombre", ""), BreadboardSnap.describe(part.pin_map),
+			"  ⚠ Dos patas en la misma tira: el componente queda en cortocircuito." if shorted else ""], 5.0)
+	else:
+		var r := _best_insertion(part)
+		if r.get("near", false) and str(r.get("reason", "")) != "":
+			Config.notify("✖ No se inserta: " + str(r["reason"]), 6.0)
+
+## Jerarquía padre-hijo: si una protoboard se movió o giró (arrastre, gizmo,
+## deshacer, API…), sus componentes insertados la siguen rígidamente.
+func _sync_inserted_parts() -> void:
+	var moved := false
+	for b in _breadboards():
+		var xf: Transform3D = b.global_transform
+		var last = _board_xf.get(b.uid)
+		if last != null and not (last as Transform3D).is_equal_approx(xf):
+			for c in parts_root.get_children():
+				if c is PartInstance and (c as PartInstance).inserted_in == b.uid:
+					(c as PartInstance).global_transform = xf * (c as PartInstance).insert_local
+			moved = true
+		_board_xf[b.uid] = xf
+	if moved:
+		if wires.size() > 0 and dragging_part == null and not gizmo.is_dragging():
+			_redraw_wires()
+		_redraw_connection_markers()
+
+## Añade un multímetro junto al circuito si no hay ninguno.
+func _ensure_multimeter() -> PartInstance:
+	var existing := _find_part_by_def("multimetro")
+	if existing:
+		return existing
+	var box := AABB()
+	var first := true
+	for part in _electronic_parts():
+		if first:
+			box = AABB(part.global_position, Vector3.ZERO); first = false
+		else:
+			box = box.expand(part.global_position)
+	var def := PartLibrary.get_def("multimetro")
+	var dm := PartLibrary.dims_m(def)
+	var pos := Vector3(box.end.x + 0.12 if not first else 0.25, dm.y * 0.5, box.get_center().z if not first else 0.0)
+	_do({"type": "add", "data": {"uid": "", "def_id": "multimetro", "material": "abs",
+		"pos": [pos.x, pos.y, pos.z], "rot": [0, 0, 0]}})
+	_select(null)
+	Config.notify("Multímetro añadido junto al circuito.", 3.0)
+	return _find_part_by_def("multimetro")
+
+func _find_part_by_def(def_id: String) -> PartInstance:
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id == def_id and not c.is_queued_for_deletion():
+			return c
+	return null
+
+func _find_nano() -> PartInstance:
+	for c in parts_root.get_children():
+		if c is PartInstance and str((c as PartInstance).def.get("electrico", {}).get("tipo", "")) == "nano":
+			return c
+	return null
+
+func _set_probe_mode(on: bool) -> void:
+	if on:
+		_cancel_placing()
+		_set_connect_mode(false)
+		if wiring_mode: _set_wiring_mode(false)
+		if solder_mode: _set_solder_mode(false)
+		_select(null)
+	probes.set_active(on)
+	if probe_button:
+		probe_button.set_pressed_no_signal(probes.active)
+	if probes.active and dmm_panel:
+		dmm_panel.visible = true
+		dmm_panel.set_collapsed(false)
+
+## Salidas digitales del Arduino Nano escritas por el programa: d2…d13 = 0/1.
+func _apply_digital_outputs(vars: Dictionary) -> void:
+	var nano := _find_nano()
+	if nano == null:
+		return
+	var outs := {}
+	for n in range(2, 14):
+		var k := "d%d" % n
+		if vars.has(k):
+			outs["D%d" % n] = 1 if float(vars[k]) >= 0.5 else 0
+	circuit_rt.digital_out[nano.uid] = outs
+
+func _rearm_circuit() -> void:
+	circuit_rt.rearm()
+	Config.notify("Circuito rearmado: fuentes reconectadas y componentes repuestos.", 3.0)
+
+## Resumen del circuito vivo (diodos reales, cortocircuitos, protecciones).
+func _live_circuit_summary() -> String:
+	if circuit_rt == null:
+		return ""
+	circuit_rt.solve_once()
+	var t := circuit_rt.totals()
+	var lines := ["Circuito vivo: %.1f mA · %.3f W" % [float(t["current"]) * 1000.0, float(t["power"])]]
+	var lit := 0
+	for uid in circuit_rt.led_level:
+		if float(circuit_rt.led_level[uid]) > 0.05:
+			lit += 1
+	if lit > 0:
+		lines.append("LED encendidos: %d" % lit)
+	if circuit_rt.short_active:
+		lines.append("⚠ CORTOCIRCUITO en %s" % circuit_rt.short_info.get("name", ""))
+	for uid in circuit_rt.tripped:
+		var p := _find_part(uid)
+		lines.append("🔌 %s desconectada (%s)" % [p.def.get("nombre", uid) if p else uid, circuit_rt.tripped[uid]])
+	for uid in circuit_rt.burned:
+		var p2 := _find_part(uid)
+		lines.append("💨 %s quemado" % (p2.def.get("nombre", uid) if p2 else uid))
+	return "\n".join(lines)
+
+func _build_dmm_panel() -> void:
+	dmm_panel = DMMPanel.new()
+	ui_layer.add_child(dmm_panel)
+	dmm_panel.build(self)
+	dmm_panel.position = Vector2(360, 120)
+	dmm_panel.visible = false
+
+## Aviso rojo de cortocircuito crítico / fuente desconectada por protección.
+func _build_short_banner() -> void:
+	short_banner = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.55, 0.05, 0.03, 0.94)
+	sb.border_color = Color(1.0, 0.45, 0.2)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(8)
+	short_banner.add_theme_stylebox_override("panel", sb)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 12)
+	short_banner.add_child(hb)
+	short_banner_label = Label.new()
+	short_banner_label.add_theme_font_size_override("font_size", 16)
+	short_banner_label.add_theme_color_override("font_color", Color(1, 0.95, 0.9))
+	hb.add_child(short_banner_label)
+	hb.add_child(_button("⟲ Rearmar", _rearm_circuit))
+	ui_layer.add_child(short_banner)
+	short_banner.visible = false
+
+func _update_dmm_ui() -> void:
+	if circuit_rt == null:
+		return
+	var has_dmm := circuit_rt.dmm.part != null
+	if dmm_panel:
+		if has_dmm and not dmm_panel.visible:
+			dmm_panel.visible = true
+		elif not has_dmm and dmm_panel.visible and not probes.active:
+			dmm_panel.visible = false
+		dmm_panel.refresh()
+	if short_banner:
+		var txt := ""
+		if circuit_rt.short_active:
+			txt = "⚠ CORTOCIRCUITO CRÍTICO · %s entrega %.1f A sin carga — la protección térmica la desconectará" % [
+				circuit_rt.short_info.get("name", ""), float(circuit_rt.short_info.get("current", 0.0))]
+		elif not circuit_rt.tripped.is_empty():
+			var names := []
+			for uid in circuit_rt.tripped:
+				var p := _find_part(uid)
+				names.append(p.def.get("nombre", uid) if p else uid)
+			txt = "🔌 %s desconectada por protección térmica · corrige el cableado y rearma" % ", ".join(names)
+		short_banner.visible = txt != ""
+		if txt != "":
+			short_banner_label.text = txt
+			var vp: Vector2 = get_viewport().get_visible_rect().size
+			short_banner.position = Vector2((vp.x - short_banner.size.x) * 0.5, 54)
 
 #endregion

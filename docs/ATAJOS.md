@@ -28,6 +28,16 @@
 | `Supr` | Eliminar la pieza seleccionada (o la **unión** seleccionada) |
 | Clic en la esfera numerada de una unión | Seleccionar esa unión (también desde el panel *Uniones*) |
 | `Ctrl+D` | Duplicar la pieza seleccionada |
+| Soltar una resistencia/LED/integrado sobre la protoboard | Sus patas se **insertan** en los agujeros (un DIP debe cruzar el canal central) |
+
+## Multímetro (📟)
+| Control | Acción |
+|---|---|
+| Arrastrar una sonda | Moverla; cerca de un terminal hace snap y al soltar queda enganchada |
+| Clic en un terminal | Coloca la sonda activa (alterna roja/negra) |
+| Clic o rueda sobre el selector | Cambia el modo (OFF, V⎓, V~, A⎓, Ω, continuidad) |
+| Clic derecho sobre una sonda | La devuelve junto al multímetro |
+| Clic derecho en vacío | Sale del modo multímetro |
 | `Ctrl+C` / `Ctrl+V` | Copiar / pegar pieza |
 | `M` | Copia **simétrica** respecto del plano YZ (x → −x) |
 | `G` | Activar/desactivar snapping a la rejilla |

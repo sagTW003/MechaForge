@@ -3,7 +3,8 @@ extends RefCounted
 ## SimulatorApi — Herramientas que OpenClaw puede usar sobre el simulador.
 ##
 ## Lectura (se ejecutan al momento):
-##   get_scene_state, get_telemetry, analyze_design, list_parts, get_proposal_status
+##   get_scene_state, get_telemetry, analyze_design, list_parts, get_proposal_status,
+##   get_circuit_state, measure_voltage (circuito vivo y multímetro)
 ## Control de la simulación (reversible, se ejecuta al momento):
 ##   run_simulation, stop_simulation
 ## Cambios en la escena (requieren confirmación del usuario — vista previa fantasma):
@@ -44,6 +45,10 @@ const TOOLS := [
 	{"name": "stop_simulation", "description": "Detiene la simulación y restaura el estado inicial.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "get_proposal_status", "description": "Estado de una propuesta: pending, applied o discarded.",
 		"input_schema": {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}}},
+	{"name": "get_circuit_state", "description": "Circuito vivo: fuentes (tensión, corriente, desconexión por protección), LED (corriente, encendido/quemado), cortocircuito crítico, componentes insertados en la protoboard (pata → agujero) y lectura del multímetro (modo, pantalla, sondas, fusibles).",
+		"input_schema": {"type": "object", "properties": {}}},
+	{"name": "measure_voltage", "description": "Mide (solo lectura, sin mover las sondas) la tensión entre dos terminales 'uid:terminal' del circuito vivo, p. ej. 'p123:anodo' y 'p456:a14_0' (agujero de la protoboard).",
+		"input_schema": {"type": "object", "required": ["a", "b"], "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}},
 ]
 
 static var TOOL_NAMES: Array = TOOLS.map(func(t): return t["name"])
@@ -62,6 +67,8 @@ func call_tool(name: String, p: Dictionary) -> Dictionary:
 		"run_simulation": return host.api_run(true)
 		"stop_simulation": return host.api_run(false)
 		"get_proposal_status": return host.api_proposal_status(int(p.get("id", -1)))
+		"get_circuit_state": return host.api_circuit_state()
+		"measure_voltage": return host.api_measure_voltage(str(p.get("a", "")), str(p.get("b", "")))
 		"add_part": return _add_part(p)
 		"connect_parts": return _connect(p)
 		"set_property": return _set_property(p)

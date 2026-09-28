@@ -6,52 +6,38 @@
 	},
 	"cables": [
 		{
-			"a_key": "p1303889_35052:V+",
-			"b_key": "p1299986_39376:P1_2",
+			"a_key": "p1462987_96159:V+",
+			"b_key": "p1458947_61515:P1_2",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "power",
 			"uid": "e1"
 		},
 		{
-			"a_key": "p1299986_39376:P1_5",
-			"b_key": "p1304174_12838:A",
+			"a_key": "p1458947_61515:P1_7",
+			"b_key": "p1458947_61515:a10_4",
 			"color": "rojo",
 			"tipo": "power",
 			"uid": "e2"
 		},
 		{
-			"a_key": "p1304174_12838:B",
-			"b_key": "p1299986_39376:a5_0",
-			"color": "amarillo",
-			"tipo": "signal",
-			"uid": "e3"
-		},
-		{
-			"a_key": "p1304750_62543:anodo",
-			"b_key": "p1299986_39376:a5_2",
-			"color": "naranja",
-			"tipo": "signal",
-			"uid": "e4"
-		},
-		{
-			"a_key": "p1304750_62543:catodo",
-			"b_key": "p1299986_39376:N1_4",
-			"color": "auto",
+			"a_key": "p1458947_61515:a15_4",
+			"b_key": "p1458947_61515:N1_11",
+			"color": "negro",
 			"tipo": "gnd",
 			"uid": "e5"
 		},
 		{
-			"a_key": "p1303889_35052:GND",
-			"b_key": "p1299986_39376:N1_1",
+			"a_key": "p1462987_96159:GND",
+			"b_key": "p1458947_61515:N1_1",
 			"color": "auto",
 			"soldado_a": true,
 			"tipo": "gnd",
 			"uid": "e6"
 		}
 	],
-	"creado": "2026-09-27T23:46:04",
-	"descripcion": "Batería LiPo, resistencia de 100 Ω y LED cableados en una protoboard. Pulsa «Analizar circuito».",
+	"creado": "2026-09-28T00:51:45",
+	"descripcion": "Batería LiPo, resistencia de 470 Ω y LED rojo con sus patas INSERTADAS en la protoboard: el LED (diodo real) se enciende con ≈20 mA. Pulsa «Analizar circuito».",
 	"entorno": 0,
 	"formato": "mechaforge",
 	"grid_mm": 10.0,
@@ -73,7 +59,7 @@
 			"material": "abs",
 			"pos": [
 				0.0,
-				0.00499999988824129,
+				0.0044999998062849,
 				0.0
 			],
 			"rot": [
@@ -81,7 +67,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1299986_39376"
+			"uid": "p1458947_61515"
 		},
 		{
 			"def_id": "bateria_lipo_3s",
@@ -94,68 +80,82 @@
 			"material": "abs",
 			"pos": [
 				0.0,
-				0.0130000002682209,
-				-0.0599999986588955
+				0.0125000001862645,
+				-0.0649999976158142
 			],
 			"rot": [
 				0.0,
 				0.0,
 				0.0
 			],
-			"uid": "p1303889_35052"
+			"uid": "p1462987_96159"
 		},
 		{
-			"def_id": "resistencia_100",
+			"def_id": "resistencia_470",
 			"dims_mm": {
-				"x": 24.0,
-				"y": 8.0,
-				"z": 8.0
+				"x": 12.0,
+				"y": 6.0,
+				"z": 3.0
 			},
 			"fijo": false,
+			"insertado": {
+				"pines": {
+					"A": "a14_2",
+					"B": "a10_2"
+				},
+				"placa": "p1458947_61515"
+			},
 			"material": "abs",
 			"pos": [
-				-0.0599999986588955,
+				-0.0482600033283234,
 				0.0120000001043081,
-				0.0199999995529652
+				0.0088900001719594
 			],
 			"rot": [
 				0.0,
 				0.0,
 				0.0
 			],
-			"uid": "p1304174_12838"
+			"uid": "p1463315_34247"
 		},
 		{
 			"def_id": "led",
 			"dims_mm": {
-				"altura": 9.0,
-				"radio": 2.5
+				"altura": 12.0,
+				"radio": 2.9
 			},
 			"fijo": false,
+			"insertado": {
+				"pines": {
+					"anodo": "a14_1",
+					"catodo": "a15_1"
+				},
+				"placa": "p1458947_61515"
+			},
 			"material": "abs",
 			"pos": [
-				0.0199999995529652,
-				0.0120000001043081,
-				0.0199999995529652
+				-0.0419100001454353,
+				0.0149999996647239,
+				0.00634999992325902
 			],
 			"rot": [
 				0.0,
-				0.0,
+				3.14159250259399,
 				0.0
 			],
-			"uid": "p1304750_62543"
+			"uid": "p1467021_5146"
 		}
 	],
 	"uniones": [],
 	"version": 3,
 	"vista": {
-		"distancia": 0.4,
+		"distancia": 0.28,
 		"objetivo": [
-			-0.00999999977648258,
-			0.0199999995529652,
+			-0.0450000017881393,
+			0.00999999977648258,
 			0.0
 		],
-		"pitch": -0.610865238198015,
-		"yaw": -0.349065850398866
+		"pitch": -0.663225115757845,
+		"yaw": -0.436332312998582
 	}
 }

@@ -30,7 +30,7 @@ Paso 0, para diseñar el puente `ai_bridge` **sin inventar la API**.
    Exponer MechaForge como **servidor MCP local** (o JSON-RPC sobre WebSocket en
    `127.0.0.1`) y registrarlo con `openclaw mcp`, ofreciendo las herramientas del
    proyecto con esquema JSON:
-   - `get_scene_state`, `get_telemetry`, `analyze_design`
+   - `get_scene_state`, `get_telemetry`, `analyze_design`, `get_circuit_state`, `measure_voltage`
    - `add_part`, `connect_parts`, `set_property`, `remove_part`
    - `write_controller_script`, `run_simulation`, `stop_simulation`
 

@@ -109,6 +109,7 @@ static func apply_document(doc: Dictionary, parts_root: Node3D) -> int:
 		if typeof(dm) == TYPE_DICTIONARY and not dm.is_empty():
 			inst.def["dimensiones_mm"] = dm
 		inst.anchored = bool(p.get("fijo", inst.anchored))
+		inst.apply_saved(p)
 		inst.rebuild()
 		var pos: Array = p.get("pos", [0, 0, 0])
 		var rot: Array = p.get("rot", [0, 0, 0])

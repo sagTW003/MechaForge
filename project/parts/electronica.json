@@ -66,7 +66,8 @@
       "electrico": {
         "tipo": "bateria",
         "voltaje": 11.1,
-        "capacidad_mah": 2200
+        "capacidad_mah": 2200,
+        "r_interna_ohm": 0.05
       },
       "terminales": [
         {
@@ -103,7 +104,8 @@
       "electrico": {
         "tipo": "bateria",
         "voltaje": 3.7,
-        "capacidad_mah": 3000
+        "capacidad_mah": 3000,
+        "r_interna_ohm": 0.04
       },
       "terminales": [
         {
@@ -127,28 +129,69 @@
       ]
     },
     {
+      "id": "bateria_9v",
+      "nombre": "Batería 9 V (6LR61)",
+      "categoria": "electronica",
+      "material": "acero",
+      "forma": "caja",
+      "apariencia": "bateria_9v",
+      "dimensiones_mm": {
+        "x": 26.5,
+        "y": 17.5,
+        "z": 48.5
+      },
+      "electrico": {
+        "tipo": "bateria",
+        "voltaje": 9.0,
+        "capacidad_mah": 550,
+        "r_interna_ohm": 1.7
+      },
+      "terminales": [
+        {
+          "id": "V+",
+          "tipo": "power",
+          "pos_mm": [
+            6.35,
+            0,
+            26.5
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            -6.35,
+            0,
+            26.5
+          ]
+        }
+      ]
+    },
+    {
       "id": "resistencia_100",
-      "nombre": "Resistencia 100 Ω",
+      "nombre": "Resistencia 100 Ω (¼ W)",
       "categoria": "electronica",
       "material": "abs",
       "forma": "caja",
       "apariencia": "resistencia",
+      "insercion": true,
       "dimensiones_mm": {
-        "x": 24,
-        "y": 8,
-        "z": 8
+        "x": 12,
+        "y": 6,
+        "z": 3
       },
       "electrico": {
         "tipo": "carga",
-        "resistencia_ohm": 100
+        "resistencia_ohm": 100,
+        "potencia_w": 0.25
       },
       "terminales": [
         {
           "id": "A",
           "tipo": "power",
           "pos_mm": [
-            12,
-            0,
+            5.08,
+            -3,
             0
           ]
         },
@@ -156,8 +199,125 @@
           "id": "B",
           "tipo": "gnd",
           "pos_mm": [
-            -12,
-            0,
+            -5.08,
+            -3,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resistencia_220",
+      "nombre": "Resistencia 220 Ω (¼ W)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "resistencia",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 12,
+        "y": 6,
+        "z": 3
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 220,
+        "potencia_w": 0.25
+      },
+      "terminales": [
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            5.08,
+            -3,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -5.08,
+            -3,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resistencia_330",
+      "nombre": "Resistencia 330 Ω (¼ W)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "resistencia",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 12,
+        "y": 6,
+        "z": 3
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 330,
+        "potencia_w": 0.25
+      },
+      "terminales": [
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            5.08,
+            -3,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -5.08,
+            -3,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resistencia_470",
+      "nombre": "Resistencia 470 Ω (¼ W)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "resistencia",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 12,
+        "y": 6,
+        "z": 3
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 470,
+        "potencia_w": 0.25
+      },
+      "terminales": [
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            5.08,
+            -3,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -5.08,
+            -3,
             0
           ]
         }
@@ -165,27 +325,29 @@
     },
     {
       "id": "resistencia_1k",
-      "nombre": "Resistencia 1 kΩ",
+      "nombre": "Resistencia 1 kΩ (¼ W)",
       "categoria": "electronica",
       "material": "abs",
       "forma": "caja",
       "apariencia": "resistencia",
+      "insercion": true,
       "dimensiones_mm": {
-        "x": 24,
-        "y": 8,
-        "z": 8
+        "x": 12,
+        "y": 6,
+        "z": 3
       },
       "electrico": {
         "tipo": "carga",
-        "resistencia_ohm": 1000
+        "resistencia_ohm": 1000,
+        "potencia_w": 0.25
       },
       "terminales": [
         {
           "id": "A",
           "tipo": "power",
           "pos_mm": [
-            12,
-            0,
+            5.08,
+            -3,
             0
           ]
         },
@@ -193,8 +355,47 @@
           "id": "B",
           "tipo": "gnd",
           "pos_mm": [
-            -12,
-            0,
+            -5.08,
+            -3,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "resistencia_10k",
+      "nombre": "Resistencia 10 kΩ (¼ W)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "resistencia",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 12,
+        "y": 6,
+        "z": 3
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 10000,
+        "potencia_w": 0.25
+      },
+      "terminales": [
+        {
+          "id": "A",
+          "tipo": "power",
+          "pos_mm": [
+            5.08,
+            -3,
+            0
+          ]
+        },
+        {
+          "id": "B",
+          "tipo": "gnd",
+          "pos_mm": [
+            -5.08,
+            -3,
             0
           ]
         }
@@ -422,26 +623,32 @@
     },
     {
       "id": "led",
-      "nombre": "LED 5 mm",
+      "nombre": "LED 5 mm rojo",
       "categoria": "electronica",
       "material": "abs",
       "forma": "cilindro",
       "apariencia": "led",
+      "insercion": true,
       "dimensiones_mm": {
-        "radio": 2.5,
-        "altura": 9
+        "radio": 2.9,
+        "altura": 12
       },
       "electrico": {
         "tipo": "carga",
-        "resistencia_ohm": 220
+        "resistencia_ohm": 220,
+        "diodo": {
+          "color": "rojo",
+          "vf_v": 1.9,
+          "imax_a": 0.03
+        }
       },
       "terminales": [
         {
           "id": "anodo",
           "tipo": "power",
           "pos_mm": [
-            1,
-            -4,
+            1.27,
+            -6,
             0
           ]
         },
@@ -449,8 +656,134 @@
           "id": "catodo",
           "tipo": "gnd",
           "pos_mm": [
-            -1,
-            -4,
+            -1.27,
+            -6,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "led_verde",
+      "nombre": "LED 5 mm verde",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "cilindro",
+      "apariencia": "led",
+      "insercion": true,
+      "dimensiones_mm": {
+        "radio": 2.9,
+        "altura": 12
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 220,
+        "diodo": {
+          "color": "verde",
+          "vf_v": 2.1,
+          "imax_a": 0.03
+        }
+      },
+      "terminales": [
+        {
+          "id": "anodo",
+          "tipo": "power",
+          "pos_mm": [
+            1.27,
+            -6,
+            0
+          ]
+        },
+        {
+          "id": "catodo",
+          "tipo": "gnd",
+          "pos_mm": [
+            -1.27,
+            -6,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "led_amarillo",
+      "nombre": "LED 5 mm amarillo",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "cilindro",
+      "apariencia": "led",
+      "insercion": true,
+      "dimensiones_mm": {
+        "radio": 2.9,
+        "altura": 12
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 220,
+        "diodo": {
+          "color": "amarillo",
+          "vf_v": 2.0,
+          "imax_a": 0.03
+        }
+      },
+      "terminales": [
+        {
+          "id": "anodo",
+          "tipo": "power",
+          "pos_mm": [
+            1.27,
+            -6,
+            0
+          ]
+        },
+        {
+          "id": "catodo",
+          "tipo": "gnd",
+          "pos_mm": [
+            -1.27,
+            -6,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "id": "led_azul",
+      "nombre": "LED 5 mm azul",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "cilindro",
+      "apariencia": "led",
+      "insercion": true,
+      "dimensiones_mm": {
+        "radio": 2.9,
+        "altura": 12
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 220,
+        "diodo": {
+          "color": "azul",
+          "vf_v": 3.0,
+          "imax_a": 0.03
+        }
+      },
+      "terminales": [
+        {
+          "id": "anodo",
+          "tipo": "power",
+          "pos_mm": [
+            1.27,
+            -6,
+            0
+          ]
+        },
+        {
+          "id": "catodo",
+          "tipo": "gnd",
+          "pos_mm": [
+            -1.27,
+            -6,
             0
           ]
         }
@@ -793,6 +1126,116 @@
           ]
         }
       ]
+    },
+    {
+      "id": "ne555",
+      "nombre": "Temporizador NE555 (DIP-8)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "dip",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 9.8,
+        "y": 6.5,
+        "z": 8.6
+      },
+      "dip": {
+        "pines": 8,
+        "fila_mm": 7.62,
+        "rotulo": "NE555P",
+        "nombres": [
+          "GND",
+          "TRIG",
+          "OUT",
+          "RESET",
+          "CTRL",
+          "THR",
+          "DIS",
+          "VCC"
+        ]
+      },
+      "electrico": {
+        "tipo": "ic555",
+        "frecuencia_hz": 1.0,
+        "ciclo": 0.5
+      },
+      "descripcion": "Temporizador en modo astable (frecuencia ajustable). Debe cruzar el canal central."
+    },
+    {
+      "id": "arduino_nano",
+      "nombre": "Arduino Nano (DIP-30)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "nano",
+      "insercion": true,
+      "dimensiones_mm": {
+        "x": 43.2,
+        "y": 9.0,
+        "z": 18.4
+      },
+      "dip": {
+        "pines": 30,
+        "fila_mm": 15.24,
+        "rotulo": "NANO",
+        "nombres": [
+          "D1",
+          "D0",
+          "RST",
+          "GND",
+          "D2",
+          "D3",
+          "D4",
+          "D5",
+          "D6",
+          "D7",
+          "D8",
+          "D9",
+          "D10",
+          "D11",
+          "D12",
+          "D13",
+          "3V3",
+          "AREF",
+          "A0",
+          "A1",
+          "A2",
+          "A3",
+          "A4",
+          "A5",
+          "A6",
+          "A7",
+          "5V",
+          "RST2",
+          "GND2",
+          "VIN"
+        ]
+      },
+      "electrico": {
+        "tipo": "nano",
+        "usb": true
+      },
+      "descripcion": "Alimentado por USB: 5V y 3V3 como fuentes; el programa del microcontrolador escribe d2…d13 (0/1)."
+    },
+    {
+      "id": "multimetro",
+      "nombre": "Multímetro digital (DMM)",
+      "categoria": "instrumento",
+      "material": "abs",
+      "forma": "caja",
+      "apariencia": "multimetro",
+      "dimensiones_mm": {
+        "x": 88,
+        "y": 36,
+        "z": 172
+      },
+      "dmm": {
+        "fusible_a": 10.0,
+        "r_shunt_ohm": 0.1,
+        "r_entrada_ohm": 10000000.0
+      },
+      "descripcion": "Voltímetro, amperímetro, óhmetro y continuidad con sondas roja y negra."
     }
   ]
 }

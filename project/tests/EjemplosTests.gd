@@ -125,6 +125,50 @@ func _t_circuito_led() -> void:
 	var r: Dictionary = WiringSolver.solve(main._build_components(), pairs)
 	check(float(r.get("current", 0.0)) > 0.01, "  el circuito cierra: %.3f A" % float(r.get("current", 0.0)))
 	check(main._solder_stats().x == 2, "  dos uniones soldadas en la batería")
+	var rt: CircuitRuntime = main.circuit_rt
+	rt.solve_once()
+	var led := _part("led")
+	var i := rt.led_current(led.uid)
+	check(led.is_inserted() and _part("resistencia_470").is_inserted(), "  resistencia y LED insertados en la protoboard (sin cables propios)")
+	check(i > 0.017 and i < 0.022, "  circuito vivo: el LED conduce %.1f mA" % (i * 1000.0))
+
+func _part(def_id: String) -> PartInstance:
+	for c in main.parts_root.get_children():
+		if c is PartInstance and c.def_id == def_id:
+			return c
+	return null
+
+func _t_multimetro() -> void:
+	var rt: CircuitRuntime = main.circuit_rt
+	await get_tree().process_frame
+	for i in range(3):
+		rt.step(1.0 / 60.0)
+	var d := rt.dmm
+	check(d.part != null and d.mode == DMMController.Mode.V_DC, "  multímetro en V⎓ con las sondas en el LED")
+	check(d.value > 1.75 and d.value < 2.0, "  lectura de la tensión del LED: %s" % d.reading_text())
+	await _generic(1.0)
+
+func _t_arduino_555() -> void:
+	var rt: CircuitRuntime = main.circuit_rt
+	check(_part("arduino_nano").pin_map.size() == 30 and _part("ne555").pin_map.size() == 8, "  Nano (30 patas) y NE555 (8 patas) insertados cruzando el canal")
+	main._toggle_simulation()
+	var red_on := 0
+	var red_off := 0
+	var green_on := 0
+	var green_off := 0
+	var readings := {}
+	var red := _part("led")
+	var green := _part("led_verde")
+	for i in range(28):
+		await wait_phys(10)
+		if float(rt.led_level.get(red.uid, 0.0)) > 0.1: red_on += 1
+		else: red_off += 1
+		if float(rt.led_level.get(green.uid, 0.0)) > 0.1: green_on += 1
+		else: green_off += 1
+		readings[snappedf(rt.dmm.value, 0.5)] = true
+	check(red_on > 3 and red_off > 3, "  el 555 hace parpadear el LED rojo (%d/%d)" % [red_on, red_off])
+	check(green_on > 3 and green_off > 3, "  el programa (d2) hace parpadear el LED verde (%d/%d)" % [green_on, green_off])
+	check(readings.size() >= 2, "  el multímetro sigue la salida del 555 (%s V)" % str(readings.keys()))
 
 func _t_grua() -> void:
 	await _generic(4.0)

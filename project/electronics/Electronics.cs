@@ -38,6 +38,15 @@ public partial class Electronics : Node
     /// <summary>Autonomía en horas dada la corriente (A) y la capacidad (mAh).</summary>
     public double Autonomy(double amps, double mah) => ElectricalSolver.AutonomyHours(amps, mah);
 
+    /// <summary>
+    /// Circuito vivo (no lineal): ramas [[p, n, R, E]] con corriente p→n =
+    /// (Vp − Vn − E)/R y diodos [[a, k, Is, n·Vt, Rs]]. Devuelve
+    /// { ok, iters, v (tensiones de nodo), ib (corriente de cada rama),
+    ///   id (corriente de cada diodo), vd (tensión ánodo-cátodo) }.
+    /// </summary>
+    public Dictionary SolveNetlist(int nodeCount, Array branches, Array diodes)
+        => CircuitSolver.SolveArrays(nodeCount, branches, diodes);
+
     // --- Controladores PID (pool por id) ---
     private readonly System.Collections.Generic.Dictionary<int, PidController> _pids = new();
     private int _nextPid = 1;

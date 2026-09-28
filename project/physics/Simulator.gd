@@ -17,6 +17,9 @@ var _sim_root: Node3D
 var _running: bool = false
 
 var _bodies: Dictionary = {}          # uid -> RigidBody3D
+## Piezas insertadas en una protoboard: comparten el cuerpo de la placa (cuerpo
+## compuesto rígido); aquí se guarda su transformación relativa a ese cuerpo.
+var _body_offset: Dictionary = {}     # uid -> Transform3D
 var _joints: Array = []               # de {conn, joint, ...}
 var _connections: Array = []          # Array[Connection] activas
 var _com_marker: MeshInstance3D
@@ -107,14 +110,36 @@ func start(connections: Array) -> void:
 		return
 	_connections = connections
 	_build_ground()
-	# 1) Crear un cuerpo rígido por pieza.
+	# 1) Crear un cuerpo rígido por pieza. Las insertadas en una protoboard se
+	# funden después en el cuerpo de la placa (jerarquía rígida padre-hijo).
+	var inserted := []
 	for child in _parts_root.get_children():
 		if child is PartInstance and not child.is_queued_for_deletion():
 			var part := child as PartInstance
 			part.initial_transform = part.transform
 			part.visible = false
 			part.set_pick_enabled(false)
+			if part.inserted_in != "":
+				inserted.append(part)
+			else:
+				_bodies[part.uid] = _make_body(part)
+	for part in inserted:
+		var host: RigidBody3D = _bodies.get(part.inserted_in)
+		if host == null:
 			_bodies[part.uid] = _make_body(part)
+			continue
+		var rel: Transform3D = host.global_transform.affine_inverse() * part.global_transform
+		var cs := CollisionShape3D.new()
+		cs.shape = part.make_collision_shape()
+		cs.transform = rel
+		host.add_child(cs)
+		var vis: Node3D = part.make_visual_clone()
+		vis.name = "Visual_%s" % part.uid
+		vis.transform = rel * vis.transform
+		host.add_child(vis)
+		host.mass += maxf(0.0002, part.mass_kg())
+		_bodies[part.uid] = host
+		_body_offset[part.uid] = rel
 	# 2) Crear las uniones. Las piezas unidas no "duermen": en mecanismos pequeños
 	# la velocidad lineal cae bajo el umbral de reposo de Jolt y se congelarían.
 	for conn in _connections:
@@ -175,6 +200,7 @@ func stop() -> void:
 		if is_instance_valid(_bodies[uid]):
 			_discard(_bodies[uid])
 	_bodies.clear()
+	_body_offset.clear()
 	if _com_marker: _discard(_com_marker)
 	if _ground: _discard(_ground)
 	for uid in _pid_ids:
@@ -229,7 +255,9 @@ func _make_body(part: PartInstance) -> RigidBody3D:
 	var cs := CollisionShape3D.new()
 	cs.shape = part.make_collision_shape()
 	body.add_child(cs)
-	body.add_child(part.make_visual_clone())
+	var vis := part.make_visual_clone()
+	vis.name = "Visual_%s" % part.uid
+	body.add_child(vis)
 	body.set_meta("part_uid", part.uid)
 	# Anclada al mundo: cuerpo congelado (estático) — bancos de prueba, pistas.
 	if part.anchored:
@@ -254,6 +282,8 @@ func _make_joint(conn: Connection) -> void:
 	if a == null or b == null:
 		push_warning("Unión con piezas inexistentes: %s" % conn.uid)
 		return
+	if a == b:
+		return    # ambas piezas forman ya un mismo cuerpo (insertada en su protoboard)
 
 	# El engranaje NO crea un joint físico: es un acoplamiento cinemático de
 	# velocidad. Cada engranaje se monta aparte con su propia bisagra.
@@ -679,9 +709,11 @@ func _update_com() -> void:
 func center_of_mass() -> Dictionary:
 	var total := 0.0
 	var acc := Vector3.ZERO
+	var seen := {}
 	for uid in _bodies:
 		var b: RigidBody3D = _bodies[uid]
-		if is_instance_valid(b):
+		if is_instance_valid(b) and not seen.has(b):
+			seen[b] = true
 			acc += b.global_position * b.mass
 			total += b.mass
 	return {"pos": (acc / total) if total > 0.0 else Vector3.ZERO, "mass": total}
@@ -706,6 +738,14 @@ func _make_com_marker() -> MeshInstance3D:
 
 func get_body(uid: String) -> RigidBody3D:
 	return _bodies.get(uid)
+
+## Transformación en vivo de una pieza (cuerpo × desplazamiento si está fundida
+## en el cuerpo de su protoboard). null si no se simula.
+func part_transform(uid: String):
+	var b: RigidBody3D = _bodies.get(uid)
+	if b == null or not is_instance_valid(b):
+		return null
+	return b.global_transform * (_body_offset.get(uid, Transform3D.IDENTITY) as Transform3D)
 
 func telemetry(uid: String) -> Dictionary:
 	var b: RigidBody3D = _bodies.get(uid)

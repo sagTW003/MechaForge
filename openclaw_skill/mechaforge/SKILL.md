@@ -50,6 +50,8 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `write_controller_script` | `{"script"}` programa del microcontrolador (ver abajo) |
 | `run_simulation` / `stop_simulation` | Iniciar / detener la física |
 | `get_proposal_status` | `{"id"}` → `pending`, `applied` o `discarded` |
+| `get_circuit_state` | Circuito vivo: fuentes, LED (mA, encendido/quemado), cortocircuito, piezas insertadas en la protoboard y lectura del multímetro |
+| `measure_voltage` | `{"a":"uid:terminal","b":"uid:terminal"}` → tensión entre dos puntos (solo lectura) |
 
 ## Reglas importantes
 

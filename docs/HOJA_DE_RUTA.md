@@ -163,6 +163,26 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       en engranajes, prealimentación en control de posición, ángulo de unión exacto
       (sin deriva) y eje de la unión solidario al cuerpo (vehículos que giran).
 
+## ✅ Multímetro digital, integrados DIP y cortocircuitos
+- [x] Solver de circuito **no lineal** (MNA + Newton-Raphson, `electronics/CircuitSolver.cs`):
+      LED como diodo de Shockley con resistencia serie, baterías con resistencia
+      interna, cables como elementos con corriente propia, gmin para nodos flotantes.
+- [x] `NodeNetlist` (geometría 3D → nodos: tiras de la protoboard, patas insertadas,
+      cables y sondas) y `CircuitRuntime` (circuito vivo en edición y simulación).
+- [x] **Multímetro 3D** (`DMMController`, `ProbeInteractionSystem`, `ElectronicsVisuals`):
+      LCD de 7 segmentos por shader, selector giratorio, bornes, sondas con cable de
+      cuerda, snap magnético 90°/45°, V⎓, V~ (RMS), A⎓ con fusibles de 400 mA y 10 A,
+      Ω (solo desenergizado, «Err»), continuidad con pitido sintético.
+- [x] **Cortocircuito crítico** (`ShortCircuitFX`): chispas y humo con partículas GPU,
+      cable incandescente (shader de cuerpo negro + modelo térmico I²R), desconexión
+      por protección térmica, aviso y «Rearmar». LED y resistencias que se queman.
+- [x] **Protoboard multipín** (`BreadboardSnap`): inserción con snap en los agujeros,
+      DIP obligado a cruzar el canal central, NE555 (DIP-8) y Arduino Nano (DIP-30),
+      jerarquía padre-hijo (en edición y como cuerpo compuesto en simulación).
+- [x] Corrección: los puentes largos ya no atraviesan la protoboard (el cable nunca
+      sale por la cara inferior de una pieza).
+- [x] API: `get_circuit_state` y `measure_voltage`. Ejemplos 10 y 11. Pruebas `mfmulti` (71).
+
 ## ✅ Cochera, texturas reales, protoboard real y selección de uniones
 - [x] Skill `mechaforge` probada con el agente **Cerebro**: leyó la escena, listó
       piezas, propuso un engranaje (pendiente de confirmación), consultó su estado y

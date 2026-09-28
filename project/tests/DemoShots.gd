@@ -43,6 +43,9 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template.begins_with("cochera"):
 		await _garage_shot(out_path, template)
 		return
+	if template in ["multimetro", "dmmcerca", "arduino", "corto", "dip", "fusible"]:
+		await _electronics_shot(out_path, template)
+		return
 	if template.begins_with("ej:"):
 		await _example_shot("res://templates/%s.mforge" % template.substr(3), out_path)
 		return
@@ -159,6 +162,68 @@ func _garage_shot(out_path: String, which: String) -> void:
 	await RenderingServer.frame_post_draw
 	for p in [main.elec_panel, main.mcu_panel]:
 		if p: p.visible = false
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Capturas de la electrónica nueva: multímetro, integrados DIP y cortocircuito.
+func _electronics_shot(out_path: String, which: String) -> void:
+	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.mcu_panel, main.elec_panel]:
+		if p: p.visible = false
+	var cam: CameraOrbit = main.camera
+	match which:
+		"multimetro", "dmmcerca":
+			main._open_example("res://templates/10_multimetro.mforge")
+			if which == "dmmcerca":
+				cam.target = Vector3(0.0, 0.02, 0.1); cam.distance = 0.24
+				cam._yaw = deg_to_rad(-5); cam._pitch = deg_to_rad(-62)
+				main.dmm_panel.visible = false
+				main.circuito_panel.visible = false
+			else:
+				main.circuito_panel.visible = false
+			cam._update_transform()
+		"arduino":
+			main._open_example("res://templates/11_arduino_555.mforge")
+			main.circuito_panel.visible = false
+			main._toggle_simulation()
+		"dip":
+			main._open_example("res://templates/11_arduino_555.mforge")
+			main.circuito_panel.visible = false
+			main.dmm_panel.visible = false
+			cam.target = Vector3(0.02, 0.008, 0.0); cam.distance = 0.16
+			cam._yaw = deg_to_rad(-30); cam._pitch = deg_to_rad(-35)
+			cam._update_transform()
+		"corto":
+			main._on_new()
+			main.circuito_panel.visible = false
+			var pb: PartInstance = main._spawn("protoboard", "abs", Vector3(0, 0.0045, 0))
+			var bat: PartInstance = main._spawn("bateria_9v", "acero", Vector3(-0.03, 0.00875, -0.07), Vector3(0, PI / 2.0, 0))
+			main.wires = [
+				{"uid": "s1", "a_key": main._key(bat.uid, "V+"), "b_key": main._key(pb.uid, "P1_4"), "tipo": "power", "color": "auto"},
+				{"uid": "s2", "a_key": main._key(bat.uid, "GND"), "b_key": main._key(pb.uid, "N1_3"), "tipo": "gnd", "color": "auto"},
+				{"uid": "s3", "a_key": main._key(pb.uid, "P1_12"), "b_key": main._key(pb.uid, "N1_34"), "tipo": "signal", "color": "amarillo"},
+			]
+			main._redraw_wires()
+			cam.target = Vector3(-0.02, 0.01, -0.01); cam.distance = 0.2
+			cam._yaw = deg_to_rad(-20); cam._pitch = deg_to_rad(-38)
+			cam._update_transform()
+		"fusible":
+			main._open_example("res://templates/10_multimetro.mforge")
+			main.circuito_panel.visible = false
+			var d: DMMController = main.circuit_rt.dmm
+			await get_tree().create_timer(0.3).timeout
+			d.set_mode(DMMController.Mode.A_DC)
+			var bat2: PartInstance = main._find_part_by_def("bateria_9v")
+			d.set_probe("roja", main._key(bat2.uid, "V+"))
+			d.set_probe("negra", main._key(bat2.uid, "GND"))
+			cam.target = Vector3(-0.03, 0.01, -0.02); cam.distance = 0.3
+			cam._yaw = deg_to_rad(-15); cam._pitch = deg_to_rad(-42)
+			cam._update_transform()
+	MaterialLibrary.wait_textures()
+	var wait := 2.45 if which == "corto" else (0.35 if which == "fusible" else 3.0)
+	await get_tree().create_timer(wait).timeout
+	main._update_dmm_ui()
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(out_path)
 	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))

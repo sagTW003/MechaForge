@@ -1,0 +1,358 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [
+		{
+			"a_key": "p1667656_10282:b47_4",
+			"b_key": "p1667656_10282:P2_40",
+			"color": "rojo",
+			"tipo": "power",
+			"uid": "n1"
+		},
+		{
+			"a_key": "p1667656_10282:b45_4",
+			"b_key": "p1667656_10282:N2_37",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "n2"
+		},
+		{
+			"a_key": "p1667656_10282:P2_1",
+			"b_key": "p1667656_10282:P1_1",
+			"color": "rojo",
+			"tipo": "power",
+			"uid": "n3"
+		},
+		{
+			"a_key": "p1667656_10282:N2_0",
+			"b_key": "p1667656_10282:N1_0",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "n4"
+		},
+		{
+			"a_key": "p1667656_10282:b20_4",
+			"b_key": "p1667656_10282:P2_16",
+			"color": "rojo",
+			"tipo": "power",
+			"uid": "n5"
+		},
+		{
+			"a_key": "p1667656_10282:a20_4",
+			"b_key": "p1667656_10282:N1_16",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "n6"
+		},
+		{
+			"a_key": "p1667656_10282:a23_4",
+			"b_key": "p1667656_10282:P1_19",
+			"color": "naranja",
+			"tipo": "power",
+			"uid": "n7"
+		},
+		{
+			"a_key": "p1667656_10282:a27_4",
+			"b_key": "p1667656_10282:N1_22",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "n8"
+		},
+		{
+			"a_key": "p1667656_10282:a48_4",
+			"b_key": "p1667656_10282:a33_4",
+			"color": "amarillo",
+			"tipo": "signal",
+			"uid": "n9"
+		},
+		{
+			"a_key": "p1667656_10282:a38_4",
+			"b_key": "p1667656_10282:N1_31",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "n10"
+		}
+	],
+	"creado": "2026-09-28T00:51:45",
+	"descripcion": "Integrados DIP que cruzan el canal central: el Nano (USB) alimenta los rieles, el 555 astable hace parpadear el LED rojo y el programa (d2, d13) el LED verde. Pulsa ▶ Simular.",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# Arduino Nano: el LED «L» (D13) y el LED verde (D2)\n# parpadean a 1 Hz; el LED rojo lo hace oscilar el NE555.\nd13 = floor(fmod(t * 2, 2))\nd2 = d13\nd13",
+		"union": -1
+	},
+	"nombre": "Arduino Nano y NE555 (DIP) en protoboard",
+	"piezas": [
+		{
+			"def_id": "protoboard",
+			"dims_mm": {
+				"x": 165.0,
+				"y": 9.0,
+				"z": 55.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.0044999998062849,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1667656_10282"
+		},
+		{
+			"def_id": "arduino_nano",
+			"dims_mm": {
+				"x": 43.2,
+				"y": 9.0,
+				"z": 18.4
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"3V3": "b57_2",
+					"5V": "b47_2",
+					"A0": "b55_2",
+					"A1": "b54_2",
+					"A2": "b53_2",
+					"A3": "b52_2",
+					"A4": "b51_2",
+					"A5": "b50_2",
+					"A6": "b49_2",
+					"A7": "b48_2",
+					"AREF": "b56_2",
+					"D0": "a45_1",
+					"D1": "a44_1",
+					"D10": "a56_1",
+					"D11": "a57_1",
+					"D12": "a58_1",
+					"D13": "b58_2",
+					"D2": "a48_1",
+					"D3": "a49_1",
+					"D4": "a50_1",
+					"D5": "a51_1",
+					"D6": "a52_1",
+					"D7": "a53_1",
+					"D8": "a54_1",
+					"D9": "a55_1",
+					"GND": "a47_1",
+					"GND2": "b45_2",
+					"RST": "a46_1",
+					"RST2": "b46_2",
+					"VIN": "b44_2"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				0.0508000031113625,
+				0.0134999994188547,
+				-0.00127000000793487
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1671755_20148"
+		},
+		{
+			"def_id": "ne555",
+			"dims_mm": {
+				"x": 9.8,
+				"y": 6.5,
+				"z": 8.6
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"CTRL": "b23_0",
+					"DIS": "b21_0",
+					"GND": "a20_0",
+					"OUT": "a22_0",
+					"RESET": "a23_0",
+					"THR": "b22_0",
+					"TRIG": "a21_0",
+					"VCC": "b20_0"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				-0.0241300016641617,
+				0.012249999679625,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1690955_89556"
+		},
+		{
+			"def_id": "resistencia_220",
+			"dims_mm": {
+				"x": 12.0,
+				"y": 6.0,
+				"z": 3.0
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"A": "a26_2",
+					"B": "a22_2"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				-0.0177799984812737,
+				0.0120000001043081,
+				0.0088900001719594
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1693004_77453"
+		},
+		{
+			"def_id": "led",
+			"dims_mm": {
+				"altura": 12.0,
+				"radio": 2.9
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"anodo": "a26_3",
+					"catodo": "a27_3"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				-0.0114299999549985,
+				0.0149999996647239,
+				0.0114299999549985
+			],
+			"rot": [
+				0.0,
+				3.14159250259399,
+				0.0
+			],
+			"uid": "p1694903_15825"
+		},
+		{
+			"def_id": "resistencia_330",
+			"dims_mm": {
+				"x": 12.0,
+				"y": 6.0,
+				"z": 3.0
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"A": "a37_2",
+					"B": "a33_2"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				0.0101600000634789,
+				0.0120000001043081,
+				0.0088900001719594
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1696404_48123"
+		},
+		{
+			"def_id": "led_verde",
+			"dims_mm": {
+				"altura": 12.0,
+				"radio": 2.9
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"anodo": "a37_3",
+					"catodo": "a38_3"
+				},
+				"placa": "p1667656_10282"
+			},
+			"material": "abs",
+			"pos": [
+				0.0165100004523993,
+				0.0149999996647239,
+				0.0114299999549985
+			],
+			"rot": [
+				0.0,
+				3.14159250259399,
+				0.0
+			],
+			"uid": "p1698417_90253"
+		},
+		{
+			"def_id": "multimetro",
+			"dims_mm": {
+				"x": 88.0,
+				"y": 36.0,
+				"z": 172.0
+			},
+			"estado": {
+				"fusible": true,
+				"modo": "V_DC",
+				"negra": {
+					"clave": "p1667656_10282:N1_24",
+					"pos": null
+				},
+				"roja": {
+					"clave": "p1667656_10282:a22_3",
+					"pos": null
+				}
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.0179999992251396,
+				0.129999995231628
+			],
+			"rot": [
+				0.0,
+				3.14159274101257,
+				0.0
+			],
+			"uid": "p1791429_91608"
+		}
+	],
+	"uniones": [],
+	"version": 3,
+	"vista": {
+		"distancia": 0.4,
+		"objetivo": [
+			0.0,
+			0.00999999977648258,
+			0.0399999991059303
+		],
+		"pitch": -0.872664625997165,
+		"yaw": -0.174532925199433
+	}
+}

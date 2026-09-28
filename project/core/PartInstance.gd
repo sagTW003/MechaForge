@@ -14,6 +14,14 @@ var uid: String = ""
 var initial_transform: Transform3D = Transform3D.IDENTITY
 ## Anclada al mundo: en simulación queda fija (banco de pruebas, pista, soporte).
 var anchored: bool = false
+## Inserción en protoboard (enganche multipín): uid de la placa, pin -> agujero y
+## transformación relativa a la placa (jerarquía padre-hijo: se mueve con ella).
+var inserted_in: String = ""
+var pin_map: Dictionary = {}
+var insert_local: Transform3D = Transform3D.IDENTITY
+## Estado propio de la pieza que se guarda con el proyecto (p. ej. el modo del
+## multímetro, su fusible y la posición de las sondas).
+var estado: Dictionary = {}
 
 var _mesh_instance: MeshInstance3D
 var _detail: Node3D
@@ -34,6 +42,9 @@ func setup(definition: Dictionary, instance_uid: String = "") -> void:
 	# La protoboard genera su matriz de terminales (columnas + rieles) con grupos.
 	if def.get("apariencia", "") == "protoboard":
 		def["terminales"] = gen_protoboard_terminals(def.get("dimensiones_mm", {}))
+	# Integrados DIP (555, Arduino Nano): patas en dos filas, paso 2.54 mm.
+	if def.has("dip"):
+		def["terminales"] = gen_dip_terminals(def)
 	_build_visual()
 
 ## Protoboard MB-102 de 830 puntos (medidas reales, paso 0.1" = 2.54 mm):
@@ -80,6 +91,50 @@ static func gen_protoboard_terminals(dm: Dictionary) -> Array:
 	for t in terms:
 		t["fino"] = true      # marcadores pequeños: los agujeros están a 2.54 mm
 	return terms
+
+## Terminales de un encapsulado DIP: N patas en dos filas separadas "fila_mm",
+## paso 2.54 mm, numeradas en sentido antihorario visto desde arriba (pata 1 en
+## la fila +Z, extremo −X, junto a la muesca). La punta de cada pata queda a la
+## altura de la cara inferior (superficie de la protoboard al insertar).
+static func dip_pin_positions(def: Dictionary) -> Array:
+	var dp: Dictionary = def.get("dip", {})
+	var n := int(dp.get("pines", 8))
+	var half := n / 2
+	var fila := float(dp.get("fila_mm", 7.62))
+	var y := -float(def.get("dimensiones_mm", {}).get("y", 6.0)) * 0.5
+	var out := []
+	for i in range(n):
+		var k := i if i < half else (n - 1 - i)
+		var x := (float(k) - (half - 1) * 0.5) * BB_PITCH
+		var z := fila * 0.5 if i < half else -fila * 0.5
+		out.append(Vector3(x, y, z))
+	return out
+
+static func gen_dip_terminals(def: Dictionary) -> Array:
+	var dp: Dictionary = def.get("dip", {})
+	var names: Array = dp.get("nombres", [])
+	var pos := dip_pin_positions(def)
+	var terms := []
+	for i in range(pos.size()):
+		var nm: String = str(names[i]) if i < names.size() else str(i + 1)
+		var tipo := "signal"
+		if nm in ["VCC", "5V", "3V3", "VIN"]:
+			tipo = "power"
+		elif nm.begins_with("GND"):
+			tipo = "gnd"
+		var p: Vector3 = pos[i]
+		terms.append({"id": nm, "tipo": tipo, "pos_mm": [p.x, p.y, p.z], "pata": i + 1, "fino": true})
+	return terms
+
+## ¿Se inserta en la protoboard (patas en los agujeros)?
+func is_insertable() -> bool:
+	return bool(def.get("insercion", false))
+
+func is_inserted() -> bool:
+	return inserted_in != ""
+
+func is_breadboard() -> bool:
+	return def.get("apariencia", "") == "protoboard"
 
 func _new_uid() -> String:
 	return "p%d_%d" % [Time.get_ticks_usec(), randi() % 100000]
@@ -301,4 +356,14 @@ func to_dict() -> Dictionary:
 		"rot": [rotation.x, rotation.y, rotation.z],
 		"dims_mm": def.get("dimensiones_mm", {}),
 		"fijo": anchored,
-	}.merged({"import_path": def["_source"]} if def.has("_source") else {})
+	}.merged({"import_path": def["_source"]} if def.has("_source") else {}) 		.merged({"insertado": {"placa": inserted_in, "pines": pin_map.duplicate()}} if inserted_in != "" else {}) 		.merged({"estado": estado.duplicate(true)} if not estado.is_empty() else {})
+
+## Restaura inserción y estado guardados (to_dict).
+func apply_saved(d: Dictionary) -> void:
+	var ins = d.get("insertado", null)
+	if typeof(ins) == TYPE_DICTIONARY:
+		inserted_in = str(ins.get("placa", ""))
+		pin_map = (ins.get("pines", {}) as Dictionary).duplicate()
+	var st = d.get("estado", null)
+	if typeof(st) == TYPE_DICTIONARY:
+		estado = (st as Dictionary).duplicate(true)

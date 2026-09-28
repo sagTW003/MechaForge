@@ -19,13 +19,17 @@ const EJEMPLOS := [
 	["05_banco_pid", "Banco de control PID",
 		"Brazo en voladizo con PID de posición siguiendo una onda (programa por bloques) y encoder en el eje. Mira la gráfica."],
 	["06_circuito_led", "Circuito LED en protoboard",
-		"Batería LiPo, resistencia de 100 Ω y LED cableados en una protoboard. Pulsa «Analizar circuito»."],
+		"Batería LiPo, resistencia de 470 Ω y LED rojo con sus patas INSERTADAS en la protoboard: el LED (diodo real) se enciende con ≈20 mA. Pulsa «Analizar circuito»."],
 	["07_grua", "Grúa giratoria con contrapeso",
 		"Torre anclada, pluma con giro controlado por PID y contrapeso. Activa «Esfuerzos» para ver la estabilidad."],
 	["08_puente_carga", "Puente con carga",
 		"Viga de acero sobre dos pilares con dos placas de carga. Activa «Esfuerzos» para ver el mapa de color."],
 	["09_pendulo_doble", "Péndulo doble (caótico)",
 		"Dos eslabones articulados que parten horizontales: movimiento caótico, sensible a las condiciones iniciales."],
+	["10_multimetro", "Multímetro en protoboard",
+		"Mide con el multímetro (📟): tensión del LED (≈1.85 V), caída en la resistencia (sonda roja a la columna 11), continuidad de un riel (apaga la alimentación) y corriente EN SERIE (quita el puente negro e intercala las sondas en A⎓)."],
+	["11_arduino_555", "Arduino Nano y NE555 (DIP) en protoboard",
+		"Integrados DIP que cruzan el canal central: el Nano (USB) alimenta los rieles, el 555 astable hace parpadear el LED rojo y el programa (d2, d13) el LED verde. Pulsa ▶ Simular."],
 ]
 
 func run() -> void:
@@ -155,22 +159,87 @@ func _ej_banco_pid() -> void:
 	_program(be.to_script())
 	_view(Vector3(0.05, 0.2, 0), 0.9, -20, -15, 0)
 
+## Inserta un componente en la protoboard con su centro en (x, z) mm locales.
+func _ins(def_id: String, pb: PartInstance, x_mm: float, z_mm: float, yaw := 0.0) -> PartInstance:
+	var def := PartLibrary.get_def(def_id)
+	var dm := PartLibrary.dims_m(def)
+	var p := _sp(def_id, str(def.get("material", "abs")), pb.global_transform * Vector3(x_mm / 1000.0, 0.0045 + dm.y * 0.5 + 0.001, z_mm / 1000.0), Vector3(0, yaw, 0))
+	var r := BreadboardSnap.try_insert(p.def, p.global_transform, pb)
+	if r.get("ok", false):
+		p.global_transform = r["xf"]
+	main._refresh_insertion(p)
+	return p
+
+func _col(c: int) -> float:
+	return PartInstance.bb_column_x(c)
+
+## Agujero de la misma tira (columna) en otra fila: "b42_1" -> "b42_4".
+func _same_col(hole: String, row: int) -> String:
+	return hole.substr(0, hole.rfind("_") + 1) + str(row)
+
 func _ej_circuito_led() -> void:
-	var pb := _sp("protoboard", "abs", Vector3(0, 0.005, 0))
-	var bat := _sp("bateria_lipo_3s", "abs", Vector3(0, 0.013, -0.06))
-	var res := _sp("resistencia_100", "abs", Vector3(-0.06, 0.012, 0.02))
-	var led := _sp("led", "abs", Vector3(0.02, 0.012, 0.02))
+	var pb := _sp("protoboard", "abs", Vector3(0, 0.0045, 0))
+	var bat := _sp("bateria_lipo_3s", "abs", Vector3(0, 0.0125, -0.065))
+	_ins("resistencia_470", pb, (_col(10) + _col(14)) * 0.5, PartInstance.bb_row_z(true, 2))
+	_ins("led", pb, (_col(14) + _col(15)) * 0.5, PartInstance.bb_row_z(true, 1), PI)
 	var k := func(p: PartInstance, t: String) -> String: return main._key(p.uid, t)
 	main.wires = [
 		{"uid": "e1", "a_key": k.call(bat, "V+"), "b_key": k.call(pb, "P1_2"), "tipo": "power", "color": "auto", "soldado_a": true},
-		{"uid": "e2", "a_key": k.call(pb, "P1_5"), "b_key": k.call(res, "A"), "tipo": "power", "color": "rojo"},
-		{"uid": "e3", "a_key": k.call(res, "B"), "b_key": k.call(pb, "a5_0"), "tipo": "signal", "color": "amarillo"},
-		{"uid": "e4", "a_key": k.call(led, "anodo"), "b_key": k.call(pb, "a5_2"), "tipo": "signal", "color": "naranja"},
-		{"uid": "e5", "a_key": k.call(led, "catodo"), "b_key": k.call(pb, "N1_4"), "tipo": "gnd", "color": "auto"},
+		{"uid": "e2", "a_key": k.call(pb, "P1_7"), "b_key": k.call(pb, "a10_4"), "tipo": "power", "color": "rojo"},
+		{"uid": "e5", "a_key": k.call(pb, "a15_4"), "b_key": k.call(pb, "N1_11"), "tipo": "gnd", "color": "negro"},
 		{"uid": "e6", "a_key": k.call(bat, "GND"), "b_key": k.call(pb, "N1_1"), "tipo": "gnd", "color": "auto", "soldado_a": true},
 	]
 	main._redraw_wires()
-	_view(Vector3(-0.01, 0.02, 0), 0.4, -20, -35, 0)
+	_view(Vector3(-0.045, 0.01, 0.0), 0.28, -25, -38, 0)
+
+func _ej_multimetro() -> void:
+	var pb := _sp("protoboard", "abs", Vector3(0, 0.0045, 0))
+	var bat := _sp("bateria_9v", "acero", Vector3(-0.05, 0.00875, -0.075), Vector3(0, PI / 2.0, 0))
+	_ins("resistencia_470", pb, (_col(10) + _col(14)) * 0.5, PartInstance.bb_row_z(true, 2))
+	_ins("led", pb, (_col(14) + _col(15)) * 0.5, PartInstance.bb_row_z(true, 1), PI)
+	var k := func(p: PartInstance, t: String) -> String: return main._key(p.uid, t)
+	main.wires = [
+		{"uid": "m1", "a_key": k.call(bat, "V+"), "b_key": k.call(pb, "P1_3"), "tipo": "power", "color": "auto"},
+		{"uid": "m2", "a_key": k.call(bat, "GND"), "b_key": k.call(pb, "N1_2"), "tipo": "gnd", "color": "auto"},
+		{"uid": "m3", "a_key": k.call(pb, "P1_8"), "b_key": k.call(pb, "a10_4"), "tipo": "power", "color": "rojo"},
+		{"uid": "m4", "a_key": k.call(pb, "a15_4"), "b_key": k.call(pb, "N1_12"), "tipo": "gnd", "color": "negro"},
+	]
+	main._redraw_wires()
+	var dmm := _sp("multimetro", "abs", Vector3(0.0, 0.018, 0.13), Vector3(0, PI, 0))
+	dmm.estado = {"modo": "V_DC", "fusible": true,
+		"roja": {"clave": k.call(pb, "a14_0"), "pos": null}, "negra": {"clave": k.call(pb, "a15_0"), "pos": null}}
+	_view(Vector3(-0.02, 0.01, 0.05), 0.42, -12, -48, 0)
+
+func _ej_arduino_555() -> void:
+	var pb := _sp("protoboard", "abs", Vector3(0, 0.0045, 0))
+	var nano := _ins("arduino_nano", pb, _col(51), -1.27)
+	var ic := _ins("ne555", pb, (_col(20) + _col(23)) * 0.5, 0.0)
+	_ins("resistencia_220", pb, (_col(22) + _col(26)) * 0.5, PartInstance.bb_row_z(true, 2))
+	_ins("led", pb, (_col(26) + _col(27)) * 0.5, PartInstance.bb_row_z(true, 3), PI)
+	_ins("resistencia_330", pb, (_col(33) + _col(37)) * 0.5, PartInstance.bb_row_z(true, 2))
+	_ins("led_verde", pb, (_col(37) + _col(38)) * 0.5, PartInstance.bb_row_z(true, 3), PI)
+	var k := func(h: String) -> String: return main._key(pb.uid, h)
+	var n5v := str(nano.pin_map["5V"])
+	var ngnd := str(nano.pin_map["GND2"])
+	var nd2 := str(nano.pin_map["D2"])
+	main.wires = [
+		{"uid": "n1", "a_key": k.call(_same_col(n5v, 4)), "b_key": k.call("P2_40"), "tipo": "power", "color": "rojo"},
+		{"uid": "n2", "a_key": k.call(_same_col(ngnd, 4)), "b_key": k.call("N2_37"), "tipo": "gnd", "color": "negro"},
+		{"uid": "n3", "a_key": k.call("P2_1"), "b_key": k.call("P1_1"), "tipo": "power", "color": "rojo"},
+		{"uid": "n4", "a_key": k.call("N2_0"), "b_key": k.call("N1_0"), "tipo": "gnd", "color": "negro"},
+		{"uid": "n5", "a_key": k.call(_same_col(str(ic.pin_map["VCC"]), 4)), "b_key": k.call("P2_16"), "tipo": "power", "color": "rojo"},
+		{"uid": "n6", "a_key": k.call(_same_col(str(ic.pin_map["GND"]), 4)), "b_key": k.call("N1_16"), "tipo": "gnd", "color": "negro"},
+		{"uid": "n7", "a_key": k.call(_same_col(str(ic.pin_map["RESET"]), 4)), "b_key": k.call("P1_19"), "tipo": "power", "color": "naranja"},
+		{"uid": "n8", "a_key": k.call("a27_4"), "b_key": k.call("N1_22"), "tipo": "gnd", "color": "negro"},
+		{"uid": "n9", "a_key": k.call(_same_col(nd2, 4)), "b_key": k.call("a33_4"), "tipo": "signal", "color": "amarillo"},
+		{"uid": "n10", "a_key": k.call("a38_4"), "b_key": k.call("N1_31"), "tipo": "gnd", "color": "negro"},
+	]
+	main._redraw_wires()
+	var dmm := _sp("multimetro", "abs", Vector3(0.0, 0.018, 0.13), Vector3(0, PI, 0))
+	dmm.estado = {"modo": "V_DC", "fusible": true,
+		"roja": {"clave": k.call(_same_col(str(ic.pin_map["OUT"]), 3)), "pos": null}, "negra": {"clave": k.call("N1_24"), "pos": null}}
+	_program("# Arduino Nano: el LED «L» (D13) y el LED verde (D2)\n# parpadean a 1 Hz; el LED rojo lo hace oscilar el NE555.\nd13 = floor(fmod(t * 2, 2))\nd2 = d13\nd13")
+	_view(Vector3(0.0, 0.01, 0.04), 0.4, -10, -50, 0)
 
 func _ej_grua() -> void:
 	var base := _anchor(_sp("placa_base_200x200", "acero", Vector3(0, 0.004, 0)))

@@ -1,0 +1,192 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [
+		{
+			"a_key": "p1603128_79071:V+",
+			"b_key": "p1599047_52173:P1_3",
+			"color": "auto",
+			"tipo": "power",
+			"uid": "m1"
+		},
+		{
+			"a_key": "p1603128_79071:GND",
+			"b_key": "p1599047_52173:N1_2",
+			"color": "auto",
+			"tipo": "gnd",
+			"uid": "m2"
+		},
+		{
+			"a_key": "p1599047_52173:P1_8",
+			"b_key": "p1599047_52173:a10_4",
+			"color": "rojo",
+			"tipo": "power",
+			"uid": "m3"
+		},
+		{
+			"a_key": "p1599047_52173:a15_4",
+			"b_key": "p1599047_52173:N1_12",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "m4"
+		}
+	],
+	"creado": "2026-09-28T00:51:45",
+	"descripcion": "Mide con el multímetro (📟): tensión del LED (≈1.85 V), caída en la resistencia (sonda roja a la columna 11), continuidad de un riel (apaga la alimentación) y corriente EN SERIE (quita el puente negro e intercala las sondas en A⎓).",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": false,
+		"script": "# Programa del microcontrolador.\n# Variables: t (s), x (medida), dt.\n# La última línea es la salida (consigna).\namp = 40\noutput = sin(t) * amp",
+		"union": -1
+	},
+	"nombre": "Multímetro en protoboard",
+	"piezas": [
+		{
+			"def_id": "protoboard",
+			"dims_mm": {
+				"x": 165.0,
+				"y": 9.0,
+				"z": 55.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.0044999998062849,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1599047_52173"
+		},
+		{
+			"def_id": "bateria_9v",
+			"dims_mm": {
+				"x": 26.5,
+				"y": 17.5,
+				"z": 48.5
+			},
+			"fijo": false,
+			"material": "acero",
+			"pos": [
+				-0.0500000007450581,
+				0.0087500000372529,
+				-0.0750000029802322
+			],
+			"rot": [
+				0.0,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p1603128_79071"
+		},
+		{
+			"def_id": "resistencia_470",
+			"dims_mm": {
+				"x": 12.0,
+				"y": 6.0,
+				"z": 3.0
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"A": "a14_2",
+					"B": "a10_2"
+				},
+				"placa": "p1599047_52173"
+			},
+			"material": "abs",
+			"pos": [
+				-0.0482600033283234,
+				0.0120000001043081,
+				0.0088900001719594
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1603638_12288"
+		},
+		{
+			"def_id": "led",
+			"dims_mm": {
+				"altura": 12.0,
+				"radio": 2.9
+			},
+			"fijo": false,
+			"insertado": {
+				"pines": {
+					"anodo": "a14_1",
+					"catodo": "a15_1"
+				},
+				"placa": "p1599047_52173"
+			},
+			"material": "abs",
+			"pos": [
+				-0.0419100001454353,
+				0.0149999996647239,
+				0.00634999992325902
+			],
+			"rot": [
+				0.0,
+				3.14159250259399,
+				0.0
+			],
+			"uid": "p1605590_56266"
+		},
+		{
+			"def_id": "multimetro",
+			"dims_mm": {
+				"x": 88.0,
+				"y": 36.0,
+				"z": 172.0
+			},
+			"estado": {
+				"fusible": true,
+				"modo": "V_DC",
+				"negra": {
+					"clave": "p1599047_52173:a15_0",
+					"pos": null
+				},
+				"roja": {
+					"clave": "p1599047_52173:a14_0",
+					"pos": null
+				}
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0,
+				0.0179999992251396,
+				0.129999995231628
+			],
+			"rot": [
+				0.0,
+				3.14159274101257,
+				0.0
+			],
+			"uid": "p1638323_20828"
+		}
+	],
+	"uniones": [],
+	"version": 3,
+	"vista": {
+		"distancia": 0.42,
+		"objetivo": [
+			-0.0199999995529652,
+			0.00999999977648258,
+			0.0500000007450581
+		],
+		"pitch": -0.837758040957278,
+		"yaw": -0.20943951023932
+	}
+}

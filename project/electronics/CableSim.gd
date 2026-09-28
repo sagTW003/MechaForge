@@ -158,18 +158,26 @@ static func _push_out(p: Vector3, o: Dictionary) -> Vector3:
 	var lp := inv * p
 	if absf(lp.x) >= h.x or absf(lp.y) >= h.y or absf(lp.z) >= h.z:
 		return p
-	var dx := h.x - absf(lp.x)
-	var dy := h.y - absf(lp.y)
-	var dz := h.z - absf(lp.z)
-	# Preferencia hacia arriba: los cables descansan sobre las piezas.
-	if lp.y >= 0.0 and dy <= minf(dx, dz) * 2.0:
-		lp.y = h.y
-	elif dy <= dx and dy <= dz:
-		lp.y = -h.y if lp.y < 0.0 else h.y
-	elif dx <= dz:
-		lp.x = h.x if lp.x >= 0.0 else -h.x
-	else:
-		lp.z = h.z if lp.z >= 0.0 else -h.z
+	# Sale por la cara más cercana, pero NUNCA por una cara que mire hacia abajo
+	# (la pieza apoya en el suelo: el cable quedaría atrapado dentro) y con
+	# preferencia por la de arriba: los cables descansan sobre las piezas.
+	var basis: Basis = (o["xf"] as Transform3D).basis
+	var best_d := INF
+	var best_axis := 1
+	var best_sign := 1.0
+	for axis in range(3):
+		for sgn: float in [1.0, -1.0]:
+			var n_world: Vector3 = (basis[axis] * sgn).normalized()
+			if n_world.y < -0.5:
+				continue
+			var d: float = h[axis] - lp[axis] * sgn
+			if n_world.y > 0.5:
+				d *= 0.5
+			if d < best_d:
+				best_d = d
+				best_axis = axis
+				best_sign = sgn
+	lp[best_axis] = h[best_axis] * best_sign
 	return (o["xf"] as Transform3D) * lp
 
 ## Subdivisión Catmull-Rom (curva suave que pasa por todos los puntos).
