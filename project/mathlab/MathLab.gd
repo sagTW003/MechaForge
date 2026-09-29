@@ -24,13 +24,17 @@ const MODULES := [
 	{"id": "schrodinger", "pilar": 0, "nombre": "Schrödinger (efecto túnel)", "ruta": "res://mathlab/modules/SchrodingerModule.gd",
 		"desc": "Paquete de ondas cuántico: |ψ|² como altura y la fase como color; barreras y pozos."},
 	{"id": "raices", "pilar": 1, "nombre": "Ecuaciones no lineales", "ruta": "res://mathlab/modules/RaicesModule.gd",
-		"desc": "Bisección, Newton-Raphson, secante y punto fijo paso a paso."},
+		"desc": "15 métodos: bisección, regula falsi, Illinois, Ridders, Brent, Newton, Halley, secante, Steffensen, Müller, punto fijo… y su comparación."},
 	{"id": "sistemas", "pilar": 1, "nombre": "Sistemas de ecuaciones", "ruta": "res://mathlab/modules/SistemasModule.gd",
-		"desc": "Tres planos en 3D: Jacobi y Gauss-Seidel hacia su intersección y el vector residuo."},
+		"desc": "Tres planos: Jacobi, Gauss-Seidel, SOR, gradiente conjugado…; eliminación geométrica, LU, Cholesky, QR."},
+	{"id": "nolineal", "pilar": 1, "nombre": "Sistemas no lineales", "ruta": "res://mathlab/modules/NoLinealesModule.gd",
+		"desc": "F(x, y) = 0: Newton, Broyden, punto fijo, Levenberg–Marquardt… y cuencas de atracción."},
 	{"id": "optimizacion", "pilar": 1, "nombre": "Optimización multivariable", "ruta": "res://mathlab/modules/OptimizacionModule.gd",
 		"desc": "Gradiente descendente y Newton sobre z = f(x, y)."},
 	{"id": "interpolacion", "pilar": 1, "nombre": "Interpolación y ajuste", "ruta": "res://mathlab/modules/InterpolacionModule.gd",
-		"desc": "Splines cúbicos 3D por puntos de control y ajuste por mínimos cuadrados."},
+		"desc": "Splines 3D, B-spline y Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay."},
+	{"id": "interp1d", "pilar": 1, "nombre": "Métodos de interpolación (1D)", "ruta": "res://mathlab/modules/InterpolacionMetodosModule.gd",
+		"desc": "Lagrange, Newton, splines, Hermite, PCHIP, Akima, Floater–Hormann…; Runge y Chebyshev."},
 	{"id": "integracion", "pilar": 1, "nombre": "Integración numérica", "ruta": "res://mathlab/modules/IntegracionModule.gd",
 		"desc": "Volumen bajo z = f(x, y): prismas, trapecio y Simpson con su error."},
 	{"id": "edp1d", "pilar": 1, "nombre": "EDP numérica (calor 1D)", "ruta": "res://mathlab/modules/EdpNumericaModule.gd",
@@ -139,6 +143,9 @@ func open_pillar(p: int) -> void:
 		d.custom_minimum_size = Vector2(230, 0)
 		d.add_theme_font_size_override("font_size", 11)
 		d.add_theme_color_override("font_color", Color(0.58, 0.62, 0.68))
+		# Solo se muestra la descripción del módulo abierto (lista compacta).
+		d.set_meta("desc_for", m["id"])
+		d.visible = m["id"] == module_id
 		modules_box.add_child(d)
 	modules_panel.set_title("Módulos · " + PILLARS[p])
 
@@ -167,6 +174,9 @@ func open_module(id: String) -> void:
 	for b in modules_box.get_children():
 		if b is Button:
 			(b as Button).set_pressed_no_signal(str(b.get_meta("id", "")) == id)
+		elif b.has_meta("desc_for"):
+			b.visible = str(b.get_meta("desc_for")) == id
+	modules_panel.reset_size()
 	var v: Dictionary = module.view()
 	cam.target = v["target"]
 	cam.distance = float(v["dist"])

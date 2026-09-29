@@ -4,7 +4,7 @@ extends RefCounted
 ##
 ## Lee el estado del módulo abierto y maneja sus controles por nombre: cada
 ## control creado con LabUI queda marcado con la meta "lab_param" (su etiqueta) y
-## se recorre el panel de parámetros en orden, así que funciona con los 14
+## se recorre el panel de parámetros en orden, así que funciona con todos los
 ## módulos sin código específico. Nada de esto toca el proyecto de MechaForge.
 
 const _BBCODE := "\\[/?(color|font_size|b|i|u|s|code|center|right|left|url|img|table|cell|bgcolor|outline_size|outline_color)(=[^\\]]*)?\\]"

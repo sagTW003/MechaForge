@@ -105,6 +105,33 @@ static func glow_mat(c: Color, energy: float = 2.0) -> StandardMaterial3D:
 	m.roughness = 0.3
 	return m
 
+## Material para mallas con color por vértice: iluminado y con un brillo propio
+## proporcional a su color (en el holodeck oscuro una superficie sin emisión casi
+## no se ve). alpha < 1: semitransparente.
+static var _vc_shaders := {}
+static func vcolor_mat(alpha: float = 1.0, glow: float = 0.35) -> ShaderMaterial:
+	var transparent := alpha < 0.999
+	if not _vc_shaders.has(transparent):
+		var sh := Shader.new()
+		sh.code = "shader_type spatial;
+render_mode cull_disabled%s;
+uniform float alpha_mul = 1.0;
+uniform float glow = 0.35;
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	EMISSION = COLOR.rgb * glow;
+	ROUGHNESS = 0.3;
+	SPECULAR = 0.55;
+%s}
+" % [", depth_draw_always" if transparent else "", "	ALPHA = alpha_mul;
+" if transparent else ""]
+		_vc_shaders[transparent] = sh
+	var m := ShaderMaterial.new()
+	m.shader = _vc_shaders[transparent]
+	m.set_shader_parameter("alpha_mul", alpha)
+	m.set_shader_parameter("glow", glow)
+	return m
+
 static func glass_mat(c: Color, alpha: float = 0.3) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(c.r, c.g, c.b, alpha)

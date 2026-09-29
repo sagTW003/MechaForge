@@ -171,9 +171,17 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       y compleja, compilación a Expression nativa y **traducción a GLSL**.
 - [x] EDP en C# (`FieldSim.cs`: onda FDTD con Mur, calor con α por celda, Schrödinger
       con Visscher y absorción en bordes) → textura RGBA float → malla deformada en GPU.
-- [x] 14 módulos: onda, calor, Schrödinger · raíces, sistemas, optimización,
-      interpolación y ajuste, integración, EDP numérica · coloreado de dominio,
-      mapeos conformes, fractales · campos vectoriales y teoremas de Gauss/Stokes.
+- [x] 16 módulos: onda, calor, Schrödinger · raíces, sistemas, sistemas no lineales,
+      optimización, interpolación y ajuste, interpolación 1D, integración, EDP numérica ·
+      coloreado de dominio, mapeos conformes, fractales · campos vectoriales y teoremas
+      de Gauss/Stokes.
+- [x] Métodos numéricos ampliados:
+  - raíces: 15 métodos con comparación;
+  - sistemas lineales: SOR, Richardson, descenso, gradiente conjugado, eliminación
+    geométrica, LU, Cholesky, QR y Cramer;
+  - sistemas no lineales: 7 métodos y cuencas de Newton en GPU;
+  - interpolación 1D: 13 métodos, nodos de Chebyshev y constante de Lebesgue;
+  - interpolación 3D: B-spline, Bézier, IDW, RBF y Delaunay.
 - [x] Herramienta Perturbar, tooltip 3D, planos de corte X/Y/Z.
 - [x] Pruebas `mflabtest` que comprueban la matemática de cada módulo.
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con

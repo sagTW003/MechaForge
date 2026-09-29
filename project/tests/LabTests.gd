@@ -73,7 +73,7 @@ func _t_api() -> void:
 	var main_node: Node = lab.main_scene
 	var api := SimulatorApi.new(main_node)
 	var mods: Dictionary = api.call_tool("lab_list_modules", {})
-	check(mods["modulos"].size() == 14, "API: lab_list_modules devuelve los 14 módulos")
+	check(mods["modulos"].size() == MathLab.MODULES.size() and MathLab.MODULES.size() >= 16, "API: lab_list_modules devuelve los %d módulos" % MathLab.MODULES.size())
 	var r: Dictionary = api.call_tool("lab_open", {"modulo": "coloreado"})
 	check(not r.has("error") and lab.module_id == "coloreado", "API: lab_open cambia de módulo con el laboratorio abierto")
 	var st: Dictionary = api.call_tool("lab_get_state", {})
@@ -88,8 +88,12 @@ func _t_api() -> void:
 	check(r.has("error") and str(r["error"]).contains("disponibles"), "API: un control inexistente lista los disponibles")
 	var smp: Dictionary = api.call_tool("lab_sample", {"x": 0.5, "y": 0.5})
 	check(str(smp.get("lectura", "")).contains("f(z)"), "API: lab_sample lee f(z) en un punto")
+	api.call_tool("lab_open", {"modulo": "raices"})
+	r = api.call_tool("lab_set_param", {"nombre": "Comparar todos", "valor": true})
+	var sti: Dictionary = api.call_tool("lab_get_state", {})
+	check(r.get("ok", false) and str(sti["info"]).contains("Halley") and str(sti["info"]).contains("Brent"), "API: «Comparar todos los métodos» de raíces por nombre")
 	var coords_ok := true
-	for id in ["calor", "schrodinger", "optimizacion", "integracion", "fractales", "edp1d"]:
+	for id in ["calor", "schrodinger", "optimizacion", "integracion", "fractales", "edp1d", "nolineal", "interp1d"]:
 		api.call_tool("lab_open", {"modulo": id})
 		var q: Dictionary = api.call_tool("lab_sample", {"x": 0.5, "y": 0.25})
 		var lect := str(q.get("lectura", ""))
@@ -268,18 +272,113 @@ func _t_raices() -> void:
 	m.reset()
 	for k in range(5): m.do_step()
 	check(absf(m._order() - 2.0) < 0.3, "Raíces: orden observado de Newton ≈ 2 (%.2f)" % m._order())
+	# Los quince métodos desde los mismos datos (ejemplo de Wallis).
+	m.load_preset(0)
+	m._compare_all()
+	var bad := []
+	for row in m.cmp_rows:
+		if str(row["estado"]) != "ok" or absf(float(row["x"]) - 2.0945514815423265) > 1e-8:
+			bad.append("%s (%s)" % [m.SHORT[int(row["m"])], row["estado"]])
+	check(bad.is_empty() and m.cmp_rows.size() == 15, "Raíces: los 15 métodos convergen a la raíz de Wallis %s" % (", ".join(bad) if not bad.is_empty() else ""))
+	var P := {}
+	var IT := {}
+	for row in m.cmp_rows:
+		P[int(row["m"])] = float(row.get("p", NAN))
+		IT[int(row["m"])] = int(row.get("iter", 999))
+	check(P[9] > 2.4 and P[10] > 2.4 and absf(P[1] - 2.0) < 0.4 and P[2] > 1.35 and P[2] < 1.95 and P[11] > 1.6,
+		"Raíces: órdenes observados Halley %.2f · Chebyshev %.2f · Newton %.2f · secante %.2f · Steffensen %.2f" % [P[9], P[10], P[1], P[2], P[11]])
+	check(IT[7] < IT[0] and IT[5] < IT[4] and IT[6] < IT[0] and IT[14] < IT[3],
+		"Raíces: Brent (%d) y Ridders (%d) < bisección (%d); Illinois (%d) < regula falsi (%d); Aitken (%d) < punto fijo (%d)" % [IT[7], IT[6], IT[0], IT[5], IT[4], IT[14], IT[3]])
+	# Raíz triple: Newton se vuelve lineal y la versión para raíces múltiples no.
+	m.load_preset(3)
+	var hn: Array = m.run_full(1)
+	var hm: Array = m.run_full(8)
+	var pn: float = m.order_of(m._errors_of(hn, 1.0))
+	check(hm.size() < hn.size() / 3 and absf(float(hm[hm.size() - 1]["x"]) - 1.0) < 1e-5 and absf(pn - 1.0) < 0.15,
+		"Raíces: en (x − 1)³ Newton es lineal (p = %.2f, %d it.) y Newton para raíces múltiples converge en %d" % [pn, hn.size() - 1, hm.size() - 1])
+	# Sin cambio de signo, los métodos de intervalo no se aplican.
+	m.load_preset(2)
+	m.a0 = 0.7
+	m.b0 = 1.2
+	m._compare_all()
+	var na := 0
+	for row in m.cmp_rows:
+		if str(row["estado"]).begins_with("sin cambio"):
+			na += 1
+	check(not m.bracket_ok() and na == 5, "Raíces: sin cambio de signo en [a, b] los 5 métodos de intervalo no se aplican")
+	check(m.roots.size() == 2, "Raíces: eˣ − 3x tiene dos raíces en el dominio (%d)" % m.roots.size())
 
 func _t_sistemas() -> void:
 	var m = lab.module
 	var s: Vector3 = m.sol
 	check(m.residual(s).length() < 1e-5, "Sistemas: la solución por eliminación anula el residuo")
-	var j: Vector3 = m.jac[m.jac.size() - 1]
+	var jv: Vector3 = m.jac[m.jac.size() - 1]
 	var g: Vector3 = m.gs[m.gs.size() - 1]
-	check(m.residual(g).length() < m.residual(j).length(), "Sistemas: Gauss-Seidel converge más rápido que Jacobi")
+	check(m.residual(g).length() < m.residual(jv).length(), "Sistemas: Gauss-Seidel converge más rápido que Jacobi")
 	check(m.spectral_radius(false) < 1.0 and m.spectral_radius(true) < m.spectral_radius(false), "Sistemas: ρ_GS (%.3f) < ρ_J (%.3f) < 1" % [m.spectral_radius(true), m.spectral_radius(false)])
+	# SPD alargada: gradiente conjugado, SOR óptimo, Richardson y factorizaciones.
+	m.A = [[10.0, 2.0, 0.0], [2.0, 3.0, 1.0], [0.0, 1.0, 1.0]]
+	m.b = [12.0, 4.0, -1.0]
+	m.n_iter = 30
+	m._rebuild()
+	var kcg: int = m.iterations_to(5, 1e-9)
+	var ksd: int = m.iterations_to(4, 1e-9)
+	check(kcg >= 1 and kcg <= 3 and (ksd < 0 or ksd > kcg), "Sistemas: gradiente conjugado resuelve el 3×3 SPD en %d pasos (descenso: %s)" % [kcg, str(ksd) if ksd >= 0 else "> 30"])
+	m.omega = m.omega_opt()
+	m._rebuild()
+	check(m.spectral_radius_of(2) < m.spectral_radius_of(1) and absf(m.spectral_radius_of(2) - (m.omega - 1.0)) < 0.03,
+		"Sistemas: SOR con ω óptimo = %.3f: ρ_SOR = %.3f ≈ ω − 1 < ρ_GS = %.3f" % [m.omega, m.spectral_radius_of(2), m.spectral_radius_of(1)])
+	var ev: Array = m.sym_eigenvalues(m.A)
+	var kap: float = float(ev[2]) / float(ev[0])
+	check(absf(m.spectral_radius_of(3) - (kap - 1.0) / (kap + 1.0)) < 0.02, "Sistemas: Richardson con α óptimo tiene ρ = (κ − 1)/(κ + 1) = %.3f" % ((kap - 1.0) / (kap + 1.0)))
+	var f = m.lu()
+	var lu_ok := f != null
+	if lu_ok:
+		for i in range(3):
+			for j in range(3):
+				var sm := 0.0
+				for k in range(3):
+					sm += float(f[1][i][k]) * float(f[2][k][j])
+				if absf(sm - float(m.A[int(f[0][i])][j])) > 1e-9:
+					lu_ok = false
+	check(lu_ok, "Sistemas: factorización PA = LU")
+	var L = m.cholesky()
+	var ch_ok := L != null
+	if ch_ok:
+		for i in range(3):
+			for j in range(3):
+				var sm2 := 0.0
+				for k in range(3):
+					sm2 += float(L[i][k]) * float(L[j][k])
+				if absf(sm2 - float(m.A[i][j])) > 1e-9:
+					ch_ok = false
+	check(ch_ok, "Sistemas: Cholesky A = LLᵀ en la matriz SPD")
+	var q = m.qr()
+	var qr_ok := q != null
+	if qr_ok:
+		for i in range(3):
+			for j in range(3):
+				var sm3 := 0.0
+				var dot := 0.0
+				for k in range(3):
+					sm3 += float(q[0][i][k]) * float(q[1][k][j])
+					dot += float(q[0][k][i]) * float(q[0][k][j])
+				if absf(sm3 - float(m.A[i][j])) > 1e-9 or absf(dot - (1.0 if i == j else 0.0)) > 1e-9:
+					qr_ok = false
+	check(qr_ok, "Sistemas: QR con Q ortogonal y QR = A")
+	var fin: Array = m.elim_states[m.elim_states.size() - 1]
+	var id_ok: bool = m.elim_states.size() == 6
+	for i in range(3):
+		for j in range(3):
+			if absf(float(fin[0][i][j]) - (1.0 if i == j else 0.0)) > 1e-9:
+				id_ok = false
+		if absf(float(fin[1][i]) - float(m.sol[i])) > 1e-9:
+			id_ok = false
+	check(id_ok, "Sistemas: la eliminación de Gauss-Jordan acaba en I·x = x* (planos x, y, z = constante)")
 	m.A = [[1.0, 2.0, -1.0], [2.0, 1.0, 1.0], [1.0, 1.0, 1.0]]
 	m.b = [2.0, 3.0, 1.0]
 	m._rebuild()
+	check(m.cholesky() == null and m.iterations_to(5) >= 0, "Sistemas: sin simetría no hay Cholesky; el gradiente conjugado sobre AᵀA sí converge")
 	check(m.spectral_radius(false) > 1.0, "Sistemas: sin dominancia, ρ_J = %.2f > 1 → Jacobi diverge" % m.spectral_radius(false))
 
 func _t_optimizacion() -> void:
@@ -308,6 +407,116 @@ func _t_interpolacion() -> void:
 	m.noise = 0.3
 	m._gen_data()
 	check(m.r2 < 0.99 and m.r2 > 0.3, "Ajuste: con ruido R² = %.3f" % m.r2)
+	var bs: PackedVector3Array = m.bspline_points()
+	var bz: PackedVector3Array = m.bezier_points()
+	var c0: Vector3 = m.ctrl[0]
+	var cn: Vector3 = m.ctrl[m.ctrl.size() - 1]
+	check(bs[0].distance_to(c0) < 1e-5 and bs[bs.size() - 1].distance_to(cn) < 1e-5 and bz[0].distance_to(c0) < 1e-5 and bz[bz.size() - 1].distance_to(cn) < 1e-5,
+		"Interpolación: B-spline y Bézier empiezan y acaban en los puntos extremos")
+	m.mode = 2
+	var rms := []
+	var interp_ok := true
+	for k in range(6):
+		m.sc_method = k
+		m._fit_scattered()
+		rms.append(m.sc_rms)
+		if k != 4:
+			for dq in m.sc_data:
+				if absf(m.sc_eval(dq.x, dq.y) - dq.z) > 1e-6:
+					interp_ok = false
+	check(interp_ok, "Datos dispersos: IDW, las tres RBF y Delaunay pasan por todos los datos")
+	check(float(rms[3]) < float(rms[0]) and float(rms[3]) < float(rms[4]), "Datos dispersos: thin-plate (RMS %s) mejora a IDW (%s) y al vecino más cercano (%s)" % [LabUI.sci(rms[3], 2), LabUI.sci(rms[0], 2), LabUI.sci(rms[4], 2)])
+
+func _t_nolineal() -> void:
+	var m = lab.module
+	m.load_preset(0)
+	check(m.roots.size() == 2, "No lineales: círculo y parábola se cortan en %d puntos (2)" % m.roots.size())
+	var pn: Array = m.paths[0]
+	var ln: Array = pn[pn.size() - 1]
+	var xs := sqrt((1.0 + sqrt(13.0)) * 0.5)
+	check(m.norm_F(ln[0], ln[1]) < 1e-10 and absf(float(ln[0]) - xs) < 1e-8 and pn.size() - 1 <= 8 and absf(m.order_of(pn) - 2.0) < 0.4,
+		"No lineales: Newton llega a (%.6f, %.6f) en %d iteraciones con p ≈ %.2f" % [ln[0], ln[1], pn.size() - 1, m.order_of(pn)])
+	var ok_all := true
+	var names := []
+	for k in [1, 2, 6]:
+		var pk: Array = m.paths[k]
+		var lk: Array = pk[pk.size() - 1]
+		if m.norm_F(lk[0], lk[1]) > 1e-9:
+			ok_all = false
+			names.append(m.SHORT[k])
+	var pb: float = m.order_of(m.paths[2])
+	check(ok_all and pb > 1.1 and pb < 2.1, "No lineales: Newton amortiguado, Broyden (p ≈ %.2f, superlineal) y Levenberg–Marquardt convergen %s" % [pb, str(names) if not ok_all else ""])
+	m.n_iter = 150
+	m._compute_paths()
+	var pf: Array = m.paths[3]
+	var lf: Array = pf[pf.size() - 1]
+	check(m.norm_F(lf[0], lf[1]) < 1e-9 and pf.size() > 20, "No lineales: punto fijo converge linealmente (%d iteraciones)" % (pf.size() - 1))
+	m.load_preset(1)
+	m._compute_paths()
+	var pf2: Array = m.paths[3]
+	var lf2: Array = pf2[pf2.size() - 1]
+	check(absf(float(lf2[0]) - 1.0) < 1e-8 and absf(float(lf2[1]) - 1.0) < 1e-8, "No lineales: punto fijo de Burden–Faires converge a (1, 1)")
+	m.load_preset(2)
+	check(m.roots.size() == 3 and m.hover_text(m.api_points(0.9, 0.1)[0]).contains("Newton → x*"), "No lineales: z³ = 1 tiene 3 soluciones y el tooltip dice a cuál lleva Newton")
+	check(m.basin_mat != null and m.basin_mat.shader.code.contains("F(vec2 p)"), "No lineales: shader de cuencas generado a partir de f₁ y f₂")
+
+func _t_interp1d() -> void:
+	var m = lab.module
+	m.load_function(0)
+	m.n = 11
+	m.node_kind = 0
+	m.rebuild()
+	var e_eq: float = m.errs[0]["max"]
+	var l_eq: float = m.lebesgue
+	var e_fh: float = m.errs[10]["max"]
+	m.node_kind = 1
+	m.rebuild()
+	var e_ch: float = m.errs[0]["max"]
+	var l_ch: float = m.lebesgue
+	check(e_eq > 1.0 and e_ch < 0.15, "Interpolación 1D: Runge con 11 nodos: equiespaciados ‖f − p‖∞ = %.2f; Chebyshev %.3f" % [e_eq, e_ch])
+	check(l_eq > 10.0 * l_ch and l_ch < 3.0, "Interpolación 1D: constante de Lebesgue %.1f (equiespaciados) frente a %.2f (Chebyshev)" % [l_eq, l_ch])
+	check(e_fh < e_eq / 5.0, "Interpolación 1D: Floater–Hormann evita Runge con nodos equiespaciados (%.3f)" % e_fh)
+	var pass_ok := true
+	var fails := []
+	for k in range(12):
+		for i in range(m.n):
+			if absf(m.eval_method(k, m.xs[i]) - float(m.ys[i])) > 1e-8:
+				pass_ok = false
+				if not fails.has(m.SHORT[k]):
+					fails.append(m.SHORT[k])
+	check(pass_ok, "Interpolación 1D: los 12 métodos de interpolación pasan por los nodos %s" % (str(fails) if not pass_ok else ""))
+	var same := true
+	for i in range(50):
+		var x := lerpf(-1.0, 1.0, i / 49.0)
+		if absf(m.eval_method(0, x) - m.eval_method(1, x)) > 1e-8:
+			same = false
+	check(same, "Interpolación 1D: Newton (diferencias divididas) y Lagrange son el mismo polinomio")
+	m.load_function(4)
+	m.node_kind = 0
+	m.n = 10
+	m.rebuild()
+	var e_nat: float = m.errs[4]["max"]
+	var e_cl: float = m.errs[5]["max"]
+	var e_lin10: float = m.errs[2]["max"]
+	var e_cl10: float = e_cl
+	m.n = 19
+	m.rebuild()
+	var r_lin: float = e_lin10 / float(m.errs[2]["max"])
+	var r_cl: float = e_cl10 / float(m.errs[5]["max"])
+	check(e_cl < e_nat / 5.0, "Interpolación 1D: con eˣ el spline sujeto (%s) mejora al natural (%s) en los bordes" % [LabUI.sci(e_cl, 2), LabUI.sci(e_nat, 2)])
+	check(r_lin > 3.0 and r_lin < 5.5 and r_cl > 10.0 and r_cl < 24.0, "Interpolación 1D: al dividir h entre 2 el error lineal baja ×%.1f (h²) y el del spline ×%.1f (h⁴)" % [r_lin, r_cl])
+	m.load_function(m.FUNCS.size() - 1)
+	var lo := INF
+	var hi := -INF
+	var slo := INF
+	var shi := -INF
+	for i in range(401):
+		var x := lerpf(m.a, m.b, i / 400.0)
+		lo = minf(lo, m.eval_method(8, x))
+		hi = maxf(hi, m.eval_method(8, x))
+		slo = minf(slo, m.eval_method(4, x))
+		shi = maxf(shi, m.eval_method(4, x))
+	check(lo >= -1e-9 and hi <= 1.0 + 1e-9 and (shi > 1.02 or slo < -0.02), "Interpolación 1D: con datos en escalón PCHIP no se sale de [0, 1] y el spline natural sí (%.3f … %.3f)" % [slo, shi])
 
 func _t_integracion() -> void:
 	var m = lab.module

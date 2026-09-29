@@ -53,7 +53,7 @@ const TOOLS := [
 		"input_schema": {"type": "object", "properties": {}}},
 	{"name": "measure_voltage", "description": "Mide (solo lectura, sin mover las sondas) la tensión entre dos terminales 'uid:terminal' del circuito vivo, p. ej. 'p123:anodo' y 'p456:a14_0' (agujero de la protoboard).",
 		"input_schema": {"type": "object", "required": ["a", "b"], "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}},
-	{"name": "lab_list_modules", "description": "Laboratorio matemático: los 14 módulos (id, pilar, nombre, descripción).",
+	{"name": "lab_list_modules", "description": "Laboratorio matemático: sus módulos (id, pilar, nombre, descripción).",
 		"input_schema": {"type": "object", "properties": {}}},
 	{"name": "lab_open", "description": "Abre el Laboratorio matemático (la escena de MechaForge se conserva) en un módulo, o cambia de módulo si ya está abierto.",
 		"input_schema": {"type": "object", "properties": {"modulo": {"type": "string", "description": "id de lab_list_modules, p. ej. 'schrodinger'"}}}},

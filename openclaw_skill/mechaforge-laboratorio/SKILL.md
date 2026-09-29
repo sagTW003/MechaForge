@@ -1,6 +1,6 @@
 ---
 name: mechaforge-laboratorio
-description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — abrir módulos (ondas, calor, Schrödinger, raíces, sistemas, optimización, interpolación, integración, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, leer resultados y explicar la matemática con datos.
+description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
 ---
 
 # MechaForge — Laboratorio matemático 3D
@@ -45,7 +45,7 @@ mf lab_open @{modulo="schrodinger"}
 
 | Método | Parámetros | Para qué |
 |---|---|---|
-| `lab_list_modules` | — | Los 14 módulos: `id`, pilar, nombre y descripción |
+| `lab_list_modules` | — | Los 16 módulos: `id`, pilar, nombre y descripción |
 | `lab_open` | `{"modulo":"id"}` | Abre el laboratorio en ese módulo, o cambia de módulo si ya está abierto. Si estaba cerrado responde `"status":"abriendo"`: espera 1 s y llama a `lab_get_state` |
 | `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`) y `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) |
 | `lab_set_param` | `{"nombre":"…","valor":…}` | Mueve un control igual que el humano (ver abajo) |
@@ -116,10 +116,12 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `onda` | Membrana ∂²u/∂t² = c²∇²u (FDTD), energía, modos normales | Membrana, Frontera (fija/libre/absorbente), Velocidad de onda c, Amortiguamiento, Interferencia (2 fuentes), m, n, Excitar el modo | [−1, 1]² · pulso gaussiano |
 | `calor` | Placa de 20 cm con materiales reales, isotermas | Placa de (madera…cobre), Aceleración temporal, Bordes, Clic (inyectar, enfriar, fuente, pintar material) | cm desde el centro, ±10 · inyecta calor |
 | `schrodinger` | Paquete gaussiano: \|ψ\|² como altura y fase como color; túnel | Potencial (libre, barrera, doble rendija, pozo, oscilador), Altura V₀, Anchura de la barrera, Momento k₀, Anchura σ, Posición inicial x₀, Lanzar paquete | ±10 · pinta barrera |
-| `raices` | Bisección, Newton, secante y punto fijo sobre f(x) | Método, f(x) =, g(x) =, a, b, x₀, x₁, Paso, Resolver | x (eje de la gráfica) |
-| `sistemas` | 3 planos: Jacobi y Gauss-Seidel, residuo, radio espectral | Ejemplo, A11…A33, b1…b3, Iteraciones, Animar iteraciones | (x, y) del plano z = 0 · punto de partida |
+| `raices` | 15 métodos para f(x) = 0 (intervalo, con derivadas, sin derivadas, punto fijo) con tabla, orden observado y comparación | Ejemplo (9 funciones), Método, f(x) =, g(x) =, a, b, x₀, x₁, Tolerancia 10ᵏ, Paso, Resolver, Comparar todos los métodos | x (eje de la gráfica) |
+| `sistemas` | 3 planos: Jacobi, Gauss-Seidel, SOR, Richardson, descenso, gradiente conjugado; eliminación geométrica, LU, Cholesky, QR, Cramer | Ejemplo, A11…A33, b1…b3, Iteraciones, casillas de cada método, ω de SOR, ω óptimo, Método directo, Paso de eliminación (0–5) | (x, y) del plano z = 0 · punto de partida |
+| `nolineal` | F(x, y) = 0: curvas f₁ = 0 y f₂ = 0, 7 métodos y cuencas de atracción de Newton | Ejemplo, f₁, f₂, g₁, g₂ (x, y) =, Región R, x₀, y₀, Iteraciones máx., casillas de cada método, Cuencas | (x, y) del plano · punto de partida |
 | `optimizacion` | Gradiente con momento y Newton sobre z = f(x, y) | Función (Rosenbrock, Himmelblau…), f(x, y) =, Paso α, Momento β, Iteraciones máx. | región del dominio · punto inicial |
-| `interpolacion` | Spline cúbico 3D; mínimos cuadrados con R² | Modo, Punto (añadir/quitar), Modelo, Ruido σ, Número de datos | espacio 3D |
+| `interpolacion` | Spline 3D, Catmull-Rom, B-spline, Bézier; mínimos cuadrados con R²; superficies por datos dispersos (IDW, RBF, Delaunay) | Modo, casillas de curvas, Punto (añadir/quitar), Modelo, Ruido σ, Método, Número de puntos, Potencia p, Forma ε | espacio 3D · añade un dato |
+| `interp1d` | 13 métodos de interpolación sobre la misma función y nodos; error ‖f − p‖∞, constante de Lebesgue | Función (Runge, |x|, eˣ… o Datos libres), f(x) =, intervalo a/b, Nodos (equiespaciados, Chebyshev…), Número de nodos n, x*, casillas de cada método, Grado m | (x, y) de la gráfica · x* o arrastra un nodo |
 | `integracion` | ∬ f dA con punto medio, trapecio y Simpson; orden observado | Función, f(x, y) =, Prismas de la regla, Celdas por lado n | [−2, 2]² |
 | `edp1d` | Calor 1D en espacio-tiempo: FTCS, implícito, Crank-Nicolson | r = αΔt/Δx², Condición inicial | (x, t); `lab_sample` lee los 3 métodos a la vez |
 | `coloreado` | \|f(z)\| como altura, arg f como color; ceros y polos con su orden | Función, f(z) =, Altura, Región R, curvas de módulo y fase | z = x + iy |
@@ -158,10 +160,26 @@ acaba absorbido en el borde del dominio.
 3. `info` muestra el error de cada método y el factor |1 − 4r|: por encima de 1, el
    esquema explícito diverge.
 
-**Newton frente a bisección:**
+**Comparar métodos para f(x) = 0:**
 1. `lab_open` raices.
-2. Cambia `Método`, pulsa `Resolver` y compara las iteraciones de la tabla de `info`
-   (orden ≈ 2 frente a 1).
+2. Elige un `Ejemplo`, por ejemplo `raíz triple` o `arctan`.
+3. `lab_set_param {"nombre":"Comparar todos","valor":true}`.
+4. `info` lista los 15 métodos con iteraciones, evaluaciones, orden teórico y
+   observado, y la raíz a la que llega cada uno. Con la raíz triple, Newton se vuelve
+   lineal y «Newton para raíces múltiples» no.
+
+**Fenómeno de Runge:**
+1. `lab_open` interp1d.
+2. `Número de nodos n` = 15.
+3. Compara `Nodos` = `equiespaciados` con `Chebyshev`: `info` da ‖f − p‖∞ de cada
+   método y la constante de Lebesgue (≈ 30 frente a ≈ 2.5 con 11 nodos).
+
+**Sistemas no lineales:**
+1. `lab_open` nolineal.
+2. `Ejemplo` = `z³ = 1`.
+3. `lab_perturb {"x":…, "y":…}` cambia el punto de partida.
+4. `info` dice a qué solución llega cada método y en cuántas iteraciones. `lab_sample`
+   en un punto dice a qué solución lleva Newton desde ahí (cuencas fractales).
 
 **Gauss:**
 1. `lab_open` teoremas.

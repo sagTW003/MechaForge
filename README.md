@@ -293,7 +293,7 @@ intacta y se vuelve con **← MechaForge** (Esc).
 | Pilar | Módulos |
 |---|---|
 | **EDPs y física** | Onda 2D (FDTD: pulsos, interferencia, fronteras fija/libre/absorbente, modos normales de tambor con Bessel) · Calor (materiales reales, fuentes, disipación, isotermas) · Schrödinger (paquete gaussiano, |ψ|² como altura y fase como color, barreras, doble rendija, pozo, oscilador, efecto túnel medido) |
-| **Métodos numéricos** | Raíces (bisección, Newton, secante, punto fijo con telaraña; orden observado) · Sistemas 3×3 (planos, Jacobi y Gauss-Seidel, residuo, radio espectral) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · Interpolación (spline cúbico 3D) y mínimos cuadrados (R²) · Integración doble (punto medio, trapecio, Simpson y su orden) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
+| **Métodos numéricos** | **Ecuaciones no lineales** con 15 métodos (bisección, regula falsi, Illinois, Ridders, Brent · Newton, Newton para raíces múltiples, Halley, Chebyshev · secante, Steffensen, Müller, cuadrática inversa · punto fijo y Aitken Δ²), 9 funciones de ejemplo y comparación de todos (iteraciones, evaluaciones, orden observado) · **Sistemas lineales** 3×3 (Jacobi, Gauss-Seidel, SOR con ω óptimo, Richardson, descenso más pronunciado, gradiente conjugado; eliminación gaussiana geométrica paso a paso, LU, Cholesky, QR, Cramer, κ(A)) · **Sistemas no lineales** (Newton, Newton amortiguado, Broyden, punto fijo, Gauss-Seidel no lineal, descenso, Levenberg–Marquardt y cuencas de atracción en GPU) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · **Interpolación 1D** con 13 métodos (Lagrange, Newton, lineal, vecino, splines natural/sujeto/not-a-knot, Hermite, PCHIP, Akima, Floater–Hormann, trigonométrica, mínimos cuadrados; nodos de Chebyshev, fenómeno de Runge, constante de Lebesgue) · Interpolación 3D (spline, Catmull-Rom, B-spline, Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay) · Integración doble (punto medio, trapecio, Simpson y su orden) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
 | **Análisis complejo** | Coloreado de dominio 3D con detección de ceros y polos por su índice · Mapeos conformes animados (eᶻ, z², 1/z, Joukowsky, Möbius…) · Mandelbrot y Julia en relieve |
 | **Campos vectoriales** | Flechas instanciadas, gradiente, líneas de corriente RK4, partículas GPU con estela, divergencia y rotacional (ruedas de paletas), equilibrios clasificados · Teoremas de Gauss y Stokes verificados numéricamente |
 
@@ -317,6 +317,18 @@ intacta y se vuelve con **← MechaForge** (Esc).
 
 ![EDP numérica](docs/demo_lab_edp1d.png)
 *Calor 1D en espacio-tiempo: FTCS, Euler implícito y Crank-Nicolson con su error.*
+
+![Ecuaciones no lineales](docs/demo_lab_raices.png)
+*Los 15 métodos desde los mismos datos: Halley (orden 3) frente a bisección (35 iteraciones), Brent, Müller…*
+
+![Sistemas no lineales](docs/demo_lab_nolineal.png)
+*z³ = 1 en forma real: cuencas de atracción de Newton (fractales) y trayectorias de Newton, Broyden, punto fijo y Levenberg–Marquardt.*
+
+![Interpolación 1D](docs/demo_lab_interp1d.png)
+*Fenómeno de Runge: Lagrange con 13 nodos equiespaciados oscila; spline, PCHIP y Floater–Hormann no.*
+
+![Sistemas lineales](docs/demo_lab_sistemas.png)
+*Eliminación gaussiana geométrica: tras dos pasos el tercer plano es horizontal y el segundo paralelo al eje x.*
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
@@ -425,7 +437,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
-| Laboratorio matemático (14 módulos y motor de expresiones) | `mflabtest` |
+| Laboratorio matemático (16 módulos, motor de expresiones y API) | `mflabtest` |
 
 ## Arquitectura
 
