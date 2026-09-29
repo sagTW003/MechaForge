@@ -94,11 +94,18 @@ if ($Exe) {
 MechaForge - ejecutable para Windows
 ====================================
 Doble clic en MechaForge.exe (MechaForge.console.exe muestra el registro).
-Requisitos: Windows 10/11, GPU con Vulkan y el runtime de .NET 8 (Microsoft.NETCore.App 8.x).
+No hay que instalar nada: el runtime de .NET 8 va incluido en la carpeta data_*.
+Requisitos: Windows 10/11 de 64 bits y una tarjeta grafica con Vulkan (casi todas
+las de los ultimos 10 anos; actualiza el controlador si no arranca).
 Conserva juntos MechaForge.exe, MechaForge.pck y la carpeta data_MechaForge_windows_x86_64.
-Seguimiento de manos (opcional, boton Manos del Laboratorio): carpeta handtracking;
-requiere Python 3 con: python -m pip install -r handtracking\requirements.txt
-Los datos del usuario (proyectos, autoguardado, API de OpenClaw, HDRI) estan en:
+
+Opcional:
+- Asistente de IA (OpenClaw): si OpenClaw esta instalado en este equipo, MechaForge lo
+  detecta solo. Sin OpenClaw todo lo demas funciona igual.
+- Seguimiento de manos (boton Manos del Laboratorio): carpeta handtracking; requiere
+  Python 3 con: python -m pip install -r handtracking\requirements.txt y una webcam.
+
+Los datos del usuario (proyectos, autoguardado, ajustes, API local) estan en:
   %APPDATA%\Godot\app_userdata\MechaForge
 "@
     $t2 = & (Join-Path $exeDir "MechaForge.console.exe") --headless -- mftest 2>&1
@@ -106,7 +113,13 @@ Los datos del usuario (proyectos, autoguardado, API de OpenClaw, HDRI) estan en:
     if ($Zip) {
         $zipExe = Join-Path $dist "MechaForge_windows.zip"
         if (Test-Path $zipExe) { Remove-Item -Force $zipExe }
-        Compress-Archive -Path (Join-Path $exeDir "*") -DestinationPath $zipExe -CompressionLevel Optimal
+        # Con una carpeta raíz «MechaForge»: al descomprimir no se desparraman los archivos.
+        $stage = Join-Path $env:TEMP "mechaforge_zip"
+        if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+        New-Item -ItemType Directory -Force $stage | Out-Null
+        robocopy $exeDir (Join-Path $stage "MechaForge") /E /NFL /NDL /NJH /NJS /NP | Out-Null
+        Compress-Archive -Path (Join-Path $stage "MechaForge") -DestinationPath $zipExe -CompressionLevel Optimal
+        Remove-Item -Recurse -Force $stage
         Write-Host "ZIP: $zipExe"
     }
 }

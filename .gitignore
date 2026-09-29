@@ -13,6 +13,9 @@ project/obj/
 # --- Motor Godot (binario grande, no versionar) ---
 tools/godot/
 
+# --- GitHub CLI portátil (para publicar releases) ---
+tools/gh/
+
 # --- Sistema operativo ---
 Thumbs.db
 Desktop.ini
