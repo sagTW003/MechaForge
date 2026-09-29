@@ -123,6 +123,23 @@ func _load_settings() -> void:
 	recognizer.box_size = Vector2(bs, bs * 0.8333)
 	recognizer.box_center = Vector2(0.5, float(s.get("box_y", 0.55)))
 
+const SETTING_PROPS := ["primary", "orbit_gain", "fine", "show_skeleton", "move_mouse", "zoom_sens", "adaptive", "slow_gain",
+	"grab_gain", "grab_depth", "grab_rot_gain", "grab_turn", "grab_tilt"]
+const RECOGNIZER_PROPS := ["pinch_on_cm", "pinch_off_cm", "far_px", "hfov_deg", "box_center", "box_size"]
+
+## Ajustes por defecto solo en memoria, sin guardarlos (pruebas y capturas: no
+## dependen de lo que el usuario haya ajustado en su panel).
+func use_defaults() -> void:
+	# Los valores iniciales de una instancia nueva (get_property_default_value solo
+	# funciona dentro del editor).
+	var fresh := VirtualLabController.new()
+	for p in SETTING_PROPS:
+		set(p, fresh.get(p))
+	fresh.free()
+	var rfresh := GestureRecognizer.new()
+	for p in RECOGNIZER_PROPS:
+		recognizer.set(p, rfresh.get(p))
+
 func save_settings() -> void:
 	tracker.settings = {"v": SETTINGS_VERSION, "primary": primary, "orbit_gain": orbit_gain, "fine": fine, "skeleton": show_skeleton,
 		"move_mouse": move_mouse, "pinch_on": recognizer.pinch_on_cm, "pinch_off": recognizer.pinch_off_cm,

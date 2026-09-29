@@ -143,6 +143,7 @@ func _hands_demo(fists: bool = false) -> void:
 	var ht = load("res://tests/HandTests.gd").new()
 	lab.toggle_hands(false)
 	var ctrl: VirtualLabController = lab.hands
+	ctrl.use_defaults()
 	ctrl.enabled = true
 	ctrl.move_mouse = false
 	ctrl.hud.visible = true
@@ -192,6 +193,12 @@ func _shot(ua: PackedStringArray) -> void:
 			lab.hands.panel.visible = true
 			lab.hands.panel.set_collapsed(false)
 			lab.hands.panel.position = Vector2(lab.get_viewport().get_visible_rect().size.x - 620, 56)
+	if "teclado" in extra:
+		await get_tree().process_frame
+		for bt in lab.params_box.find_children("*", "Button", true, false):
+			if (bt as Button).text == "⌨":
+				(bt as Button).button_pressed = true
+				break
 	if "superior" in extra:
 		lab.set_view(LabCamera.ViewMode.SUPERIOR)
 	if "iso" in extra:
@@ -212,7 +219,9 @@ func _t_expr() -> void:
 	var e := MathExpr.parse("2x^2 - 3(x+1) + sin(pi/2)", ["x"])
 	check(e.ok() and absf(e.eval_real({"x": 2.0}) - (8.0 - 9.0 + 1.0)) < 1e-9, "Expresión: multiplicación implícita, potencia y constantes")
 	check(absf(MathExpr.parse("-x^2", ["x"]).eval_real({"x": 3.0}) + 9.0) < 1e-9, "Expresión: −x² = −(x²)")
-	check(not MathExpr.parse("sin(x", ["x"]).ok(), "Expresión: paréntesis sin cerrar se detecta («%s»)" % MathExpr.parse("sin(x", ["x"]).error)
+	var oc := MathExpr.parse("sin(x", ["x"])
+	check(oc.ok() and absf(oc.eval_real({"x": 0.5}) - sin(0.5)) < 1e-12 and not oc.notes.is_empty(), "Expresión: el paréntesis sin cerrar se cierra solo y se avisa («%s»)" % " ".join(PackedStringArray(oc.notes)))
+	check(not MathExpr.parse("sin(x))", ["x"]).ok(), "Expresión: un «)» de más se detecta")
 	check(not MathExpr.parse("foo(x)", ["x"]).ok(), "Expresión: nombre desconocido se detecta")
 	var c := MathExpr.parse("(z^2 + 1)/(z - i)", ["z"], true)
 	var zc := Vector2(1.0, 2.0)
@@ -224,6 +233,54 @@ func _t_expr() -> void:
 	var g := f.to_glsl({"x": "p.x", "y": "p.y"})
 	check(g.contains("p.x") and g.contains("cos("), "Traducción a GLSL real: %s" % g)
 	check(c.to_glsl_complex({"z": "z"}).contains("cx_div("), "Traducción a GLSL complejo")
+	_t_notation()
+
+## Notación cómoda: se escribe como en papel.
+func _t_notation() -> void:
+	var X := 0.7
+	var cases := [["sen x", sin(X)], ["sin 2x", sin(2 * X)], ["sin x cos x", sin(X) * cos(X)], ["sin^2 x + cos^2 x", 1.0],
+		["cos²x", cos(X) * cos(X)], ["x² + e⁻ˣ", X * X + exp(-X)], ["√(x+1)", sqrt(X + 1)], ["2√x", 2 * sqrt(X)], ["∛8", 2.0],
+		["sinx", sin(X)], ["xsinx", X * sin(X)], ["sen2x", sin(2 * X)], ["0,5x", 0.5 * X], ["ln|x - 2|", log(absf(X - 2))],
+		["exp^(-x)", exp(-X)], ["e^-x^2", exp(-X * X)], ["log_2 8", 3.0], ["arcsen x", asin(X)], ["sin^-1 x", asin(X)],
+		["2πx", TAU * X], ["x|x|", X * absf(X)], ["½x", 0.5 * X], ["raíz(x)", sqrt(X)], ["tg x", tan(X)], ["2 sin x", 2 * sin(X)],
+		["max(1,2)", 2.0], ["x·(x−1)", X * (X - 1)]]
+	var bad := []
+	for c in cases:
+		var m := MathExpr.parse(c[0], ["x"])
+		if not m.ok() or absf(m.eval_real({"x": X}) - float(c[1])) > 1e-9:
+			bad.append("%s (%s)" % [c[0], m.error if not m.ok() else str(m.eval_real({"x": X}))])
+	check(bad.is_empty(), "Notación cómoda: %d expresiones como en papel (sen x, sin 2x, x², e⁻ˣ, √x, sinx, 0,5x, log_2 8, arcsen x, 2πx…) %s" % [cases.size(), str(bad) if not bad.is_empty() else ""])
+	var sug := MathExpr.parse("sn(x)", ["x"])
+	check(not sug.ok() and sug.error.contains("«sin»"), "Notación: un nombre mal escrito sugiere el correcto («%s»)" % sug.error)
+	var pretty := [["exp(-(x^2+y^2))", "e^(−(x² + y²))"], ["2*x^2", "2x²"], ["sqrt(x+1)", "√(x + 1)"], ["abs(x)", "|x|"], ["e^(2x)", "e²ˣ"], ["1/(1+25x^2)", "1/(1 + 25x²)"]]
+	var badp := []
+	for q in pretty:
+		var pp := MathExpr.parse(q[0], ["x", "y"]).to_pretty()
+		if pp != q[1]:
+			badp.append("%s → %s" % [q[0], pp])
+	check(badp.is_empty(), "Notación: vista previa legible (e^(−(x² + y²)), 2x², √(x + 1), |x|, e²ˣ) %s" % str(badp))
+	var rt := true
+	for q in ["e^(-x²) sin 3x", "x^x", "1/(1+25x²)", "|x - 1| + √x", "log_2 x"]:
+		var m1 := MathExpr.parse(q, ["x"])
+		var m2 := MathExpr.parse(m1.to_text(), ["x"])
+		rt = rt and m2.ok() and absf(m1.eval_real({"x": X}) - m2.eval_real({"x": X})) < 1e-12
+	check(rt, "Notación: to_text() se vuelve a leer igual")
+	# Derivada simbólica, diferenciación automática y paso complejo coinciden.
+	var dbad := []
+	for q in ["sin(x²)", "x³ - 2x", "e^(-x²) sin 3x", "ln x", "1/(1 + 25x²)", "x^x", "√(x² + 1)", "tan x", "atan x", "asin x", "cosh x", "cbrt(x)", "|x|"]:
+		var m := MathExpr.parse(q, ["x"])
+		var d := m.derivative("x")
+		var dd := d.derivative("x")
+		var j := m.eval_jet({"x": X}, "x")
+		var cs: float = float(m.eval_cd({"x": [X, 1e-20]})[1]) / 1e-20
+		var sym := d.eval_real({"x": X})
+		if absf(sym - float(j[1])) > 1e-10 or absf(cs - float(j[1])) > 1e-10 or absf(dd.eval_real({"x": X}) - float(j[2])) > 1e-9:
+			dbad.append("%s: simb %.10f, AD %.10f, paso complejo %.10f" % [q, sym, float(j[1]), cs])
+	check(dbad.is_empty(), "Derivadas: simbólica, automática (f′ y f″) y paso complejo coinciden en 13 funciones %s" % str(dbad))
+	check(MathExpr.parse("sin(x^2)", ["x"]).derivative("x").to_pretty() == "2x·cos(x²)" and MathExpr.parse("sqrt(x^2+1)", ["x"]).derivative("x").to_pretty() == "x/√(x² + 1)",
+		"Derivada simbólica simplificada: d/dx sin(x²) = %s; d/dx √(x² + 1) = %s" % [MathExpr.parse("sin(x^2)", ["x"]).derivative("x").to_pretty(), MathExpr.parse("sqrt(x^2+1)", ["x"]).derivative("x").to_pretty()])
+	var fz := MathExpr.parse("asinh(x) + log_2(x) + atanh(x/2)", ["x"])
+	check(fz.compile_fast() and absf(fz.eval_fast([X]) - fz.eval_real({"x": X})) < 1e-12, "Funciones nuevas (asinh, atanh, log_2) también en la evaluación rápida")
 
 # --- Pruebas por módulo ---------------------------------------------------------------
 
@@ -572,6 +629,103 @@ func _t_integracion() -> void:
 	m._compute()
 	check(absf(float(m.results[0]["orden"]) - 2.0) < 0.3 and absf(float(m.results[1]["orden"]) - 2.0) < 0.3, "Integración: punto medio y trapecio de orden 2")
 	check(float(m.results[2]["orden"]) > 3.3, "Integración: Simpson de orden 4 (%.2f)" % float(m.results[2]["orden"]))
+	check(float(m.results[3]["orden"]) > 5.3, "Integración doble: Gauss–Legendre 3 × 3 de orden 6 (%.2f)" % float(m.results[3]["orden"]))
+	check(float(m.results[4]["error"]) < 4.0 * float(m.results[4]["sigma"]) and float(m.results[5]["error"]) < 0.05, "Integración doble: Monte Carlo dentro de 4σ (%s < 4·%s) y Halton cerca (%s)" % [LabUI.sci(float(m.results[4]["error"]), 2), LabUI.sci(float(m.results[4]["sigma"]), 2), LabUI.sci(float(m.results[5]["error"]), 2)])
+
+func _t_calculo() -> void:
+	var m = lab.module
+	# --- Integración: los 18 métodos con ∫₀^π sin x dx = 2.
+	m.set_mode(0)
+	m._load_int(0)
+	m.n = 16
+	m._changed()
+	var bad := []
+	for k in range(m.INT_METHODS.size()):
+		var r: Dictionary = m.rows[k]
+		if k in [16, 17]:
+			if str(r["estado"]) == "ok":
+				bad.append("%s debería rechazar [0, π]" % m.INT_SHORT[k])
+			continue
+		var lim := 0.12 if k == 14 else (0.02 if k in [0, 1, 2, 3, 15] else 1e-3)
+		if str(r["estado"]) != "ok" or float(r["error"]) > lim:
+			bad.append("%s: %s" % [m.INT_SHORT[k], str(r.get("error", r["estado"]))])
+	check(bad.is_empty(), "Integración 1D: los 16 métodos para [a, b] finito dan ∫₀^π sin x = 2 (y Laguerre/Hermite se niegan) %s" % str(bad))
+	m._load_int(1)
+	var orders := {}
+	for k in [0, 3, 4, 6]:
+		var e1: float = m.run_int(k, 8)["error"]
+		var e2: float = m.run_int(k, 16)["error"]
+		orders[k] = log(e1 / e2) / log(2.0)
+	check(absf(float(orders[0]) - 1.0) < 0.15 and absf(float(orders[3]) - 2.0) < 0.1 and absf(float(orders[4]) - 4.0) < 0.2 and absf(float(orders[6]) - 6.0) < 0.3,
+		"Integración 1D con eˣ: órdenes observados rectángulo %.2f, trapecio %.2f, Simpson %.2f, Boole %.2f (1, 2, 4, 6)" % [orders[0], orders[3], orders[4], orders[6]])
+	check(float(m.run_int(7, 32)["error"]) < 1e-12 and float(m.run_int(8, 6)["error"]) < 1e-12, "Integración 1D: Romberg (6 niveles) y Gauss–Legendre de 6 nodos llegan a 10⁻¹² con eˣ")
+	var gl := Quadrature.gauss_legendre(func(x: float) -> float: return pow(x, 9) + pow(x, 4), -1.0, 2.0, 5)
+	check(absf(float(gl["valor"]) - (102.3 + 6.6)) < 1e-10, "Gauss–Legendre de 5 nodos es exacta para grado 9: ∫₋₁² (x⁹ + x⁴) = %.12f" % float(gl["valor"]))
+	m._load_int(4)
+	check(str(m.run_int(0, 16)["estado"]) != "ok" and float(m.run_int(13, 16)["error"]) < 1e-10 and float(m.run_int(10, 16)["error"]) < 1e-8,
+		"ln x en [0, 1]: los rectángulos izquierdos fallan en x = 0; tanh-sinh (%s) y Gauss–Kronrod (%s) dan −1" % [LabUI.sci(float(m.run_int(13, 16)["error"]), 1), LabUI.sci(float(m.run_int(10, 16)["error"]), 1)])
+	m._load_int(6)
+	var ep: float = m.run_int(3, 16)["error"]
+	var es: float = m.run_int(4, 16)["error"]
+	check(ep < 1e-12 and es > 100.0 * ep, "Periódica e^(cos x) en un periodo: el trapecio con 16 puntos es exacto (%s) y mejor que Simpson (%s)" % [LabUI.sci(maxf(ep, 1e-17), 1), LabUI.sci(es, 1)])
+	m._load_int(9)
+	var inf_ok := true
+	for k in [10, 13, 16]:
+		inf_ok = inf_ok and str(m.rows[k]["estado"]) == "ok" and float(m.rows[k]["error"]) < 1e-8
+	check(inf_ok and str(m.rows[3]["estado"]) != "ok", "∫₀^∞ e^(−x) = 1 con Gauss–Kronrod, tanh-sinh (exp-sinh) y Gauss–Laguerre; el trapecio pide un intervalo finito")
+	m._load_int(10)
+	m.n = 16
+	m._changed()
+	check(float(m.rows[17]["error"]) < 1e-10 and float(m.rows[13]["error"]) < 1e-10, "∫ e^(−x²) en ℝ = √π con Gauss–Hermite y sinh-sinh")
+	m._load_int(0)
+	m.mc_exp = 3.0
+	m._changed()
+	var mc: Dictionary = m.rows[14]
+	check(float(mc["error"]) < 4.0 * float(mc["sigma"]) and float(m.rows[15]["error"]) < float(mc["sigma"]), "Monte Carlo con N = 1000: error %s dentro de 4σ (σ = %s); cuasi-Monte Carlo %s" % [LabUI.sci(float(mc["error"]), 2), LabUI.sci(float(mc["sigma"]), 2), LabUI.sci(float(m.rows[15]["error"]), 2)])
+	m.compare = true
+	m._changed()
+	check(m.conv.size() == m.INT_METHODS.size() and m.info().contains("Gauss–Kronrod"), "Integración 1D: comparar todos da las 18 curvas de convergencia y la tabla")
+	m.compare = false
+	# --- Derivación.
+	m.set_mode(1)
+	m._load_diff(0)
+	m.order = 1
+	var ob := {}
+	for k in [0, 2, 5]:
+		var e1: float = m.run_diff(k, 1.0, 0.02)["error"]
+		var e2: float = m.run_diff(k, 1.0, 0.01)["error"]
+		ob[k] = log(e1 / e2) / log(2.0)
+	var e7a: float = m.run_diff(6, 1.0, 0.2)["error"]
+	var e7b: float = m.run_diff(6, 1.0, 0.1)["error"]
+	ob[6] = log(e7a / e7b) / log(2.0)
+	check(absf(float(ob[0]) - 1.0) < 0.05 and absf(float(ob[2]) - 2.0) < 0.05 and absf(float(ob[5]) - 4.0) < 0.1 and absf(float(ob[6]) - 6.0) < 0.2,
+		"Derivación: órdenes observados adelante %.2f, centrada %.2f, 5 puntos %.2f, 7 puntos %.2f (1, 2, 4, 6)" % [ob[0], ob[2], ob[5], ob[6]])
+	var e_small: float = m.run_diff(2, 1.0, 1e-13)["error"]
+	var e_best: float = m.run_diff(2, 1.0, 1e-5)["error"]
+	check(e_small > 100.0 * e_best, "Derivación: la «V» del error: con h = 10⁻¹³ domina el redondeo (%s) frente a h = 10⁻⁵ (%s)" % [LabUI.sci(e_small, 1), LabUI.sci(e_best, 1)])
+	check(float(m.run_diff(8, 1.0, 1e-20)["error"]) < 1e-15 and float(m.run_diff(9, 1.0, 0.1)["error"]) < 1e-15 and float(m.run_diff(10, 1.0, 0.1)["error"]) < 1e-15,
+		"Derivación: paso complejo con h = 10⁻²⁰, automática y simbólica exactas hasta el redondeo")
+	check(float(m.run_diff(7, 1.0, 0.1)["error"]) < 1e-12 and float(m.run_diff(12, 1.0, 0.1)["error"]) < 1e-10, "Derivación: Richardson (4 niveles desde h = 0.1) y Chebyshev con N = 24 por debajo de 10⁻¹⁰")
+	var s1: float = m.run_diff(13, 1.0, 0.1)["error"]
+	var s2: float = m.run_diff(13, 1.0, 0.05)["error"]
+	check(log(s1 / s2) / log(2.0) > 3.5, "Derivación: spline cúbico not-a-knot de orden 4 en el centro (%.2f)" % (log(s1 / s2) / log(2.0)))
+	m.order = 2
+	var f2a: float = m.run_diff(5, 1.0, 0.02)["error"]
+	var f2b: float = m.run_diff(5, 1.0, 0.01)["error"]
+	check(absf(log(f2a / f2b) / log(2.0) - 4.0) < 0.15 and float(m.run_diff(9, 1.0, 0.1)["error"]) < 1e-14, "Segunda derivada: centrada de 5 puntos de orden 4 (%.2f); la automática es exacta" % (log(f2a / f2b) / log(2.0)))
+	m.order = 1
+	m.noise_exp = -6.0
+	var e_fwd: float = m.run_diff(0, 1.0, 1e-6)["error"]
+	var e_sg: float = m.run_diff(11, 1.0, 0.05)["error"]
+	check(e_fwd > 0.1 and e_sg < 1e-3, "Con ruido 10⁻⁶ en f, la diferencia hacia delante con h = 10⁻⁶ se dispara (%s) y Savitzky–Golay no (%s)" % [LabUI.sci(e_fwd, 1), LabUI.sci(e_sg, 1)])
+	m.noise_exp = -17.0
+	m._load_diff(4)
+	check(m.d1_expr.ok() and absf(m.d1_expr.eval_real({"x": 0.4}) - m.exact_d(0.4, 1)) < 1e-12, "Derivación: la derivada simbólica del ejemplo es %s" % m.d1_expr.to_pretty())
+	m.compare = true
+	m._changed()
+	check(m.conv.size() == m.DIFF_METHODS.size() and is_finite(m.h_opt), "Derivación: comparar todos da las 14 curvas error–h y el h óptimo (%s)" % LabUI.sci(m.h_opt, 1))
+	m.compare = false
+	m.set_mode(0)
 
 func _t_edp1d() -> void:
 	var m = lab.module

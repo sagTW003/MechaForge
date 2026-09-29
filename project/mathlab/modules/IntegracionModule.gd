@@ -1,8 +1,9 @@
 extends LabModule
 ## Integración numérica doble ∬_R f(x, y) dA: la superficie (GPU) y los prismas
-## de la regla elegida (punto medio, trapecio o Simpson) con n × n celdas. Tabla
+## de la regla elegida con n × n celdas: punto medio, trapecio, Simpson,
+## Gauss–Legendre 3 × 3 por celda, Monte Carlo y cuasi-Monte Carlo (Halton). Tabla
 ## con el valor de cada regla, su error frente a una referencia de alta precisión
-## y el orden de convergencia observado al duplicar n.
+## y el orden de convergencia observado al duplicar n (Monte Carlo: su σ/√N).
 
 const SIZE := 4.0
 const HEIGHT := 1.6
@@ -13,7 +14,8 @@ const PRESETS := [
 	["Oscilante", "1 + 0.5 sin(3x) sin(3y)", -2.0, 2.0, -2.0, 2.0],
 	["Pirámide |x| + |y|", "2 - abs(x) - abs(y)", -1.0, 1.0, -1.0, 1.0],
 ]
-const RULES := ["Punto medio (prismas)", "Trapecio", "Simpson"]
+const RULES := ["Punto medio (prismas)", "Trapecio", "Simpson", "Gauss–Legendre 3 × 3", "Monte Carlo", "Cuasi-Monte Carlo (Halton)"]
+const MC_PER_CELL := 9   # muestras por celda en Monte Carlo (las mismas evaluaciones que Gauss 3 × 3)
 
 var expr: MathExpr
 var preset: int = 0
@@ -27,6 +29,7 @@ var mat: ShaderMaterial
 var prisms: MultiMeshInstance3D
 var reference: float = 0.0
 var results: Dictionary = {}
+var mc_sigma: float = 0.0
 
 func title() -> String: return "Integración numérica"
 func formula() -> String: return "∬_R f(x,y) dA ≈ Σᵢⱼ wᵢⱼ f(xᵢ, yⱼ) ΔxΔy"
@@ -104,17 +107,64 @@ func simpson(k: int) -> float:
 			s += wx * wy * F(dmin.x + i * hx, dmin.y + j * hy)
 	return s * hx * hy / 9.0
 
+## Gauss–Legendre 3 × 3 en cada celda: exacta para polinomios de grado 5 en cada variable; orden 6.
+func gauss3(k: int) -> float:
+	var g := Quadrature.gauss_legendre_nodes(3)
+	var hx := (dmax.x - dmin.x) / k
+	var hy := (dmax.y - dmin.y) / k
+	var s := 0.0
+	for j in range(k):
+		for i in range(k):
+			s += _gauss_cell(dmin.x + (i + 0.5) * hx, dmin.y + (j + 0.5) * hy, hx, hy, g)
+	return s * hx * hy
+
+## Media de f en una celda con Gauss 3 × 3.
+func _gauss_cell(cx: float, cy: float, hx: float, hy: float, g: Array) -> float:
+	var s := 0.0
+	for p in range(3):
+		for q in range(3):
+			s += float(g[1][p]) * float(g[1][q]) * F(cx + 0.5 * hx * float(g[0][p]), cy + 0.5 * hy * float(g[0][q]))
+	return s * 0.25
+
+## Muestras de Monte Carlo (aleatorias) o de Halton (bases 2 y 3) en la región.
+func _samples(N: int, quasi: bool) -> Array:
+	var out := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2024
+	for i in range(N):
+		var u := Quadrature.van_der_corput(i + 1, 2) if quasi else rng.randf()
+		var v := Quadrature.van_der_corput(i + 1, 3) if quasi else rng.randf()
+		out.append(Vector2(lerpf(dmin.x, dmax.x, u), lerpf(dmin.y, dmax.y, v)))
+	return out
+
+func monte_carlo(k: int, quasi: bool = false) -> float:
+	var N := MC_PER_CELL * k * k
+	var s := 0.0
+	var s2 := 0.0
+	for p in _samples(N, quasi):
+		var f := F(p.x, p.y)
+		s += f
+		s2 += f * f
+	var area := (dmax.x - dmin.x) * (dmax.y - dmin.y)
+	var mean := s / N
+	if not quasi:
+		mc_sigma = area * sqrt(maxf(0.0, s2 / N - mean * mean) / N)
+	return mean * area
+
 func _compute() -> void:
 	results.clear()
-	var fns := [midpoint, trapezoid, simpson]
-	for r in range(3):
-		var k := n if r < 2 or n % 2 == 0 else n + 1
+	var fns := [midpoint, trapezoid, simpson, gauss3, func(k): return monte_carlo(k), func(k): return monte_carlo(k, true)]
+	for r in range(RULES.size()):
+		var k := n if r != 2 or n % 2 == 0 else n + 1
 		var v: float = fns[r].call(k)
+		var sig := mc_sigma
 		var v2: float = fns[r].call(k * 2)
 		var e1 := absf(v - reference)
 		var e2 := absf(v2 - reference)
-		var order := log(e1 / e2) / log(2.0) if e1 > 1e-14 and e2 > 1e-14 else NAN
+		var order := log(e1 / e2) / log(2.0) if e1 > 1e-13 and e2 > 1e-13 and r < 4 else NAN
 		results[r] = {"valor": v, "error": e1, "orden": order, "n": k}
+		if r == 4:
+			results[r]["sigma"] = sig
 	_draw_prisms()
 
 func _hnorm(f: float) -> float:
@@ -132,12 +182,27 @@ func _draw_prisms() -> void:
 	var hy := (dmax.y - dmin.y) / n
 	var cw := SIZE / n
 	var y0 := _hnorm(0.0) * HEIGHT
+	# Monte Carlo: altura de cada prisma = media de las muestras que caen en su celda.
+	var cell_mean := {}
+	if rule >= 4:
+		var sums := {}
+		for p in _samples(MC_PER_CELL * n * n, rule == 5):
+			var ci := clampi(int((p.x - dmin.x) / hx), 0, n - 1)
+			var cj := clampi(int((p.y - dmin.y) / hy), 0, n - 1)
+			var key := cj * n + ci
+			var acc: Array = sums.get(key, [0.0, 0])
+			sums[key] = [float(acc[0]) + F(p.x, p.y), int(acc[1]) + 1]
+		for key in sums:
+			cell_mean[key] = float(sums[key][0]) / int(sums[key][1])
+	var g3 := Quadrature.gauss_legendre_nodes(3)
 	for j in range(n):
 		for i in range(n):
 			var x := dmin.x + (i + 0.5) * hx
 			var y := dmin.y + (j + 0.5) * hy
 			var f: float
 			match rule:
+				3: f = _gauss_cell(x, y, hx, hy, g3)
+				4, 5: f = cell_mean.get(j * n + i, 0.0)
 				0: f = F(x, y)
 				1: f = 0.25 * (F(x - hx * 0.5, y - hy * 0.5) + F(x + hx * 0.5, y - hy * 0.5) + F(x - hx * 0.5, y + hy * 0.5) + F(x + hx * 0.5, y + hy * 0.5))
 				_: f = (F(x - hx * 0.5, y - hy * 0.5) + F(x + hx * 0.5, y - hy * 0.5) + F(x - hx * 0.5, y + hy * 0.5) + F(x + hx * 0.5, y + hy * 0.5) + 16.0 * F(x, y) + 4.0 * (F(x - hx * 0.5, y) + F(x + hx * 0.5, y) + F(x, y - hy * 0.5) + F(x, y + hy * 0.5))) / 36.0
@@ -173,7 +238,7 @@ func build_ui(p: VBoxContainer) -> void:
 	LabUI.slider(p, "Celdas por lado n", 1, 64, 1, n, func(v):
 		n = int(v)
 		_compute(), "%.0f")
-	LabUI.note(p, "Punto medio y trapecio son de orden 2 (el error ÷4 al duplicar n); Simpson es de orden 4 (÷16). El prisma de Simpson usa la media ponderada 1-4-1 × 1-4-1 de su celda.")
+	LabUI.note(p, "Punto medio y trapecio son de orden 2 (el error ÷4 al duplicar n); Simpson es de orden 4 (÷16) y Gauss–Legendre 3 × 3 de orden 6 (÷64). Monte Carlo usa 9 muestras al azar por celda: su error baja solo como 1/√N, y el de Halton (cuasi-Monte Carlo) casi como 1/N. Cada prisma tiene la altura media que la regla da a su celda.")
 
 func pick(origin: Vector3, dir: Vector3):
 	var hf := func(X: float, Z: float) -> float:
@@ -200,10 +265,12 @@ func perturb(_hit: Vector3, first: bool) -> void:
 
 func info() -> String:
 	var t := "Referencia (Simpson n = 400): [color=#ffcc55]%.10f[/color]\n" % reference
-	for r in range(3):
+	for r in range(RULES.size()):
 		if not results.has(r):
 			continue
 		var d: Dictionary = results[r]
-		t += "%s  n=%d: %.8f · error %s%s\n" % [RULES[r].split(" (")[0], d["n"], d["valor"], LabUI.sci(d["error"], 2),
-			" · orden ≈ %.2f" % d["orden"] if not is_nan(float(d["orden"])) else ""]
+		var extra := " · orden ≈ %.2f" % d["orden"] if not is_nan(float(d["orden"])) else ""
+		if d.has("sigma"):
+			extra = " · σ/√N = %s" % LabUI.sci(float(d["sigma"]), 2)
+		t += "%s  n=%d: %.8f · error %s%s\n" % [RULES[r].split(" (")[0], d["n"], d["valor"], LabUI.sci(d["error"], 2), extra]
 	return t.strip_edges()

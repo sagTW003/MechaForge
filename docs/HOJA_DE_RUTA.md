@@ -189,8 +189,9 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       y compleja, compilación a Expression nativa y **traducción a GLSL**.
 - [x] EDP en C# (`FieldSim.cs`: onda FDTD con Mur, calor con α por celda, Schrödinger
       con Visscher y absorción en bordes) → textura RGBA float → malla deformada en GPU.
-- [x] 16 módulos: onda, calor, Schrödinger · raíces, sistemas, sistemas no lineales,
-      optimización, interpolación y ajuste, interpolación 1D, integración, EDP numérica ·
+- [x] 17 módulos: onda, calor, Schrödinger · raíces, sistemas, sistemas no lineales,
+      optimización, interpolación y ajuste, interpolación 1D, integración doble,
+      integración y derivación 1D, EDP numérica ·
       coloreado de dominio, mapeos conformes, fractales · campos vectoriales y teoremas
       de Gauss/Stokes.
 - [x] Métodos numéricos ampliados:
@@ -200,6 +201,15 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
   - sistemas no lineales: 7 métodos y cuencas de Newton en GPU;
   - interpolación 1D: 13 métodos, nodos de Chebyshev y constante de Lebesgue;
   - interpolación 3D: B-spline, Bézier, IDW, RBF y Delaunay.
+- [x] Integración y derivación 1D (módulo `calculo`): 18 cuadraturas, entre ellas
+      Gauss–Kronrod adaptativa, tanh-sinh, Monte Carlo y Gauss–Laguerre/Hermite para
+      intervalos infinitos, y 14 derivadas de 1.º y 2.º orden, entre ellas Richardson,
+      paso complejo, diferenciación automática y derivada simbólica. Integración doble
+      con Gauss–Legendre, Monte Carlo y Halton. Solvers en `mathlab/solvers/Quadrature.gd`
+      y `NumDiff.gd`.
+- [x] Fórmulas como en papel: funciones sin paréntesis, nombres en español,
+      superíndices, √, palabras pegadas, coma decimal y cierre de paréntesis. Vista
+      previa en notación matemática, sugerencias y teclado de símbolos.
 - [x] Herramienta Perturbar, tooltip 3D, planos de corte X/Y/Z.
 - [x] Pruebas `mflabtest` que comprueban la matemática de cada módulo.
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con

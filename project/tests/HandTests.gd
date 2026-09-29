@@ -503,6 +503,7 @@ func _t_controller() -> void:
 		lab.hands.setup(lab)
 		lab.hands.build_panel(lab.ui)
 	var ctrl: VirtualLabController = lab.hands
+	ctrl.use_defaults()       # sin los ajustes guardados del usuario (campo de visión, sensibilidades…)
 	ctrl.enabled = true
 	ctrl.primary = "Right"
 	ctrl.move_mouse = false   # las pruebas no mueven el puntero real del usuario
@@ -574,10 +575,15 @@ func _t_controller() -> void:
 	check(absf(cam.distance - dist0) < dist0 * 0.06, "Controlador: tirar de los puños hacia uno la vuelve a acercar (%.2f → %.2f)" % [dist1, cam.distance])
 	var yaw1: float = cam.yaw
 	var base := Vector3(0.10, -0.08, 0)
+	var restarts := [0]
+	var on_start := func(): restarts[0] += 1
+	ctrl.recognizer.grab_started.connect(on_start)
+	var rot0: Vector3 = ctrl._grab_rot
 	for k in range(12):
 		_feed(ctrl, fists3d(base, 0.65, -0.08 * (k + 1) / 12.0))
+	ctrl.recognizer.grab_started.disconnect(on_start)
 	var want_turn := atan2(0.16, 0.32) - VirtualLabController.TURN_DEAD
-	check(absf((yaw1 - cam.yaw) - want_turn) < 0.08, "Controlador: una mano adelante y otra atrás giran la escena %.0f° (esperado %.0f° con 5° de zona muerta)" % [rad_to_deg(yaw1 - cam.yaw), rad_to_deg(want_turn)])
+	check(absf((yaw1 - cam.yaw) - want_turn) < 0.08, "Controlador: una mano adelante y otra atrás giran la escena %.0f° (esperado %.0f° con 5° de zona muerta) [giro acumulado %.1f° → %.1f°, reinicios %d, gestos %s]" % [rad_to_deg(yaw1 - cam.yaw), rad_to_deg(want_turn), rad_to_deg(rot0.y), rad_to_deg(ctrl._grab_rot.y), restarts[0], str([ctrl.recognizer.gesture_of("Right"), ctrl.recognizer.gesture_of("Left")])])
 	for k in range(12):
 		_feed(ctrl, fists3d(base, 0.65, -0.08 + 0.08 * (k + 1) / 12.0))
 	var pitch1: float = cam.pitch

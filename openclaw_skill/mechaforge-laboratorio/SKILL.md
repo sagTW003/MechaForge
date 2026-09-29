@@ -1,6 +1,6 @@
 ---
 name: mechaforge-laboratorio
-description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
+description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración y derivación numéricas (18 cuadraturas y 14 derivadas), integral doble, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
 ---
 
 # MechaForge — Laboratorio matemático 3D
@@ -45,7 +45,7 @@ mf lab_open @{modulo="schrodinger"}
 
 | Método | Parámetros | Para qué |
 |---|---|---|
-| `lab_list_modules` | — | Los 16 módulos: `id`, pilar, nombre y descripción |
+| `lab_list_modules` | — | Los 17 módulos: `id`, pilar, nombre y descripción |
 | `lab_open` | `{"modulo":"id"}` | Abre el laboratorio en ese módulo, o cambia de módulo si ya está abierto. Si estaba cerrado responde `"status":"abriendo"`: espera 1 s y llama a `lab_get_state` |
 | `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`) y `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) |
 | `lab_set_param` | `{"nombre":"…","valor":…}` | Mueve un control igual que el humano (ver abajo) |
@@ -125,14 +125,23 @@ Todo se ajusta en el panel «✋ Seguimiento de manos». Guía completa:
 
 ## Expresiones
 
-Admiten:
-- multiplicación implícita (`2x`, `3(x+1)`);
-- potencias con `^` o `**`, y valor absoluto `|x|`;
-- constantes `pi`, `e`, `tau` e `i` (unidad imaginaria en modo complejo).
+Se escriben como en papel:
+- multiplicación implícita (`2x`, `3(x+1)`, `2πx`, `x|x|`);
+- potencias con `^`, `**` o superíndices (`x²`, `e⁻ˣ`); `e^x` equivale a `exp(x)`;
+- funciones sin paréntesis: `sin x`, `sin 2x` (= sin(2x)), `sin x cos x`, `sin^2 x`,
+  `sin^-1 x` (= asin x);
+- nombres en español: `sen`, `tg`, `arcsen`, `arctg`, `senh`, `raíz`, `sgn`;
+- `√x`, `∛x`, `|x|`, `log_2 x`, `½`, coma decimal (`0,5x`);
+- palabras pegadas (`sinx` → sin x) y paréntesis que faltan al final se corrigen solos;
+- constantes `pi`/`π`, `e`, `tau`, `inf`/`∞` (en los límites de integración) e `i`
+  (unidad imaginaria en modo complejo).
+
+Si una expresión no es válida, el error sugiere el nombre correcto («¿Quisiste decir
+«sin»?»). Si la envías con `lab_set_param`, puedes usar cualquiera de estas formas.
 
 Funciones:
-- reales: `sin cos tan asin acos atan atan2 sinh cosh tanh exp log ln log10 sqrt cbrt
-  abs floor ceil sign min max pow mod sec csc cot`;
+- reales: `sin cos tan asin acos atan atan2 sinh cosh tanh asinh acosh atanh exp log ln
+  log10 sqrt cbrt abs floor ceil sign min max pow mod sec csc cot` (log = ln);
 - complejas: `sin cos tan sinh cosh tanh exp log sqrt abs conj re im arg pow`.
 
 Las fórmulas se compilan a GLSL y se evalúan en la GPU.
@@ -150,7 +159,8 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `optimizacion` | Gradiente con momento y Newton sobre z = f(x, y) | Función (Rosenbrock, Himmelblau…), f(x, y) =, Paso α, Momento β, Iteraciones máx. | región del dominio · punto inicial |
 | `interpolacion` | Spline 3D, Catmull-Rom, B-spline, Bézier; mínimos cuadrados con R²; superficies por datos dispersos (IDW, RBF, Delaunay) | Modo, casillas de curvas, Punto (añadir/quitar), Modelo, Ruido σ, Método, Número de puntos, Potencia p, Forma ε | espacio 3D · añade un dato |
 | `interp1d` | 13 métodos de interpolación sobre la misma función y nodos; error ‖f − p‖∞, constante de Lebesgue | Función (Runge, |x|, eˣ… o Datos libres), f(x) =, intervalo a/b, Nodos (equiespaciados, Chebyshev…), Número de nodos n, x*, casillas de cada método, Grado m | (x, y) de la gráfica · x* o arrastra un nodo |
-| `integracion` | ∬ f dA con punto medio, trapecio y Simpson; orden observado | Función, f(x, y) =, Prismas de la regla, Celdas por lado n | [−2, 2]² |
+| `integracion` | ∬ f dA con punto medio, trapecio, Simpson, Gauss–Legendre 3 × 3, Monte Carlo y Halton; orden observado y σ | Función, f(x, y) =, Prismas de la regla, Celdas por lado n | [−2, 2]² |
+| `calculo` | Integración 1D con 18 cuadraturas o derivación con 14 métodos (1.ª y 2.ª derivada) sobre la misma f(x); tabla con valor, error, evaluaciones y orden observado; gráfica del error (frente a evaluaciones o frente a h) | Modo (Integración / Derivación), Ejemplo, f(x) =, a =, b = (admiten `pi`, `inf`, `-inf`), Método, n, Tolerancia 10ᵏ, Muestras N = 10ᵏ · Derivada, x₀ =, Paso h = 10ᵏ, Ruido en f, N de Chebyshev · Comparar todos los métodos | x de la gráfica · mueve a o b (integración) o x₀ (derivación) |
 | `edp1d` | Calor 1D en espacio-tiempo: FTCS, implícito, Crank-Nicolson | r = αΔt/Δx², Condición inicial | (x, t); `lab_sample` lee los 3 métodos a la vez |
 | `coloreado` | \|f(z)\| como altura, arg f como color; ceros y polos con su orden | Función, f(z) =, Altura, Región R, curvas de módulo y fase | z = x + iy |
 | `conforme` | Rejilla z deformada por w = f(z); puntos críticos f′ = 0 | Mapeo, w = f(z) =, Rejilla de partida, Deformación z → w, Animar | z = x + iy |

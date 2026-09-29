@@ -287,13 +287,24 @@ intacta y se vuelve con **← MechaForge** (Esc).
 - **Motor de expresiones propio** (`mathlab/MathExpr.gd`): la fórmula que escribes se
   evalúa en CPU (real y compleja) y se **compila a GLSL**, así que las superficies
   z = f(x, y), el coloreado de dominio y las partículas del campo se calculan en la GPU.
+  También deriva simbólicamente, con diferenciación automática (f′ y f″) y en
+  aritmética compleja de doble precisión (paso complejo).
+- **Las fórmulas se escriben como en papel**:
+  - `sin x`, `sen 2x`, `2x`, `3(x+1)`, `x²`, `e^-x` o `e⁻ˣ`, `√x`, `∛x`, `ln|x|`,
+    `sin^2 x`, `arcsen x`, `log_2 x`, `2πx`, `½x` y `0,5x`;
+  - las palabras pegadas (`sinx`, `xsinx`) se separan solas y los paréntesis que
+    faltan al final se cierran solos;
+  - debajo de cada campo se ve cómo se ha entendido la fórmula en notación
+    matemática (`= e^(−(x² + y²))`); un nombre mal escrito trae una sugerencia
+    («¿Quisiste decir «sin»?»);
+  - el botón **⌨** abre un teclado de símbolos.
   Las EDP 2D se integran en C# (`mathlab/solvers/FieldSim.cs`) y deforman la malla en la
   GPU.
 
 | Pilar | Módulos |
 |---|---|
 | **EDPs y física** | Onda 2D (FDTD: pulsos, interferencia, fronteras fija/libre/absorbente, modos normales de tambor con Bessel) · Calor (materiales reales, fuentes, disipación, isotermas) · Schrödinger (paquete gaussiano, |ψ|² como altura y fase como color, barreras, doble rendija, pozo, oscilador, efecto túnel medido) |
-| **Métodos numéricos** | **Ecuaciones no lineales** con 15 métodos (bisección, regula falsi, Illinois, Ridders, Brent · Newton, Newton para raíces múltiples, Halley, Chebyshev · secante, Steffensen, Müller, cuadrática inversa · punto fijo y Aitken Δ²), 9 funciones de ejemplo y comparación de todos (iteraciones, evaluaciones, orden observado) · **Sistemas lineales** 3×3 (Jacobi, Gauss-Seidel, SOR con ω óptimo, Richardson, descenso más pronunciado, gradiente conjugado; eliminación gaussiana geométrica paso a paso, LU, Cholesky, QR, Cramer, κ(A)) · **Sistemas no lineales** (Newton, Newton amortiguado, Broyden, punto fijo, Gauss-Seidel no lineal, descenso, Levenberg–Marquardt y cuencas de atracción en GPU) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · **Interpolación 1D** con 13 métodos (Lagrange, Newton, lineal, vecino, splines natural/sujeto/not-a-knot, Hermite, PCHIP, Akima, Floater–Hormann, trigonométrica, mínimos cuadrados; nodos de Chebyshev, fenómeno de Runge, constante de Lebesgue) · Interpolación 3D (spline, Catmull-Rom, B-spline, Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay) · Integración doble (punto medio, trapecio, Simpson y su orden) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
+| **Métodos numéricos** | **Ecuaciones no lineales** con 15 métodos (bisección, regula falsi, Illinois, Ridders, Brent · Newton, Newton para raíces múltiples, Halley, Chebyshev · secante, Steffensen, Müller, cuadrática inversa · punto fijo y Aitken Δ²), 9 funciones de ejemplo y comparación de todos (iteraciones, evaluaciones, orden observado) · **Sistemas lineales** 3×3 (Jacobi, Gauss-Seidel, SOR con ω óptimo, Richardson, descenso más pronunciado, gradiente conjugado; eliminación gaussiana geométrica paso a paso, LU, Cholesky, QR, Cramer, κ(A)) · **Sistemas no lineales** (Newton, Newton amortiguado, Broyden, punto fijo, Gauss-Seidel no lineal, descenso, Levenberg–Marquardt y cuencas de atracción en GPU) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · **Interpolación 1D** con 13 métodos (Lagrange, Newton, lineal, vecino, splines natural/sujeto/not-a-knot, Hermite, PCHIP, Akima, Floater–Hormann, trigonométrica, mínimos cuadrados; nodos de Chebyshev, fenómeno de Runge, constante de Lebesgue) · Interpolación 3D (spline, Catmull-Rom, B-spline, Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay) · **Integración y derivación 1D**: 18 cuadraturas (rectángulos, punto medio, trapecio, Simpson 1/3 y 3/8, Boole, Romberg, Gauss–Legendre, Gauss–Lobatto, Gauss–Kronrod adaptativa, Simpson adaptativa, Clenshaw–Curtis, tanh-sinh, Monte Carlo, cuasi-Monte Carlo, Gauss–Laguerre y Gauss–Hermite para intervalos infinitos) y 14 derivadas numéricas de 1.º y 2.º orden (diferencias hacia delante, atrás y centradas de 2 a 7 puntos, Richardson, paso complejo, diferenciación automática, derivada simbólica, Savitzky–Golay, Chebyshev, spline), con orden observado, curvas de error y ruido · Integración doble (punto medio, trapecio, Simpson, Gauss–Legendre 3 × 3, Monte Carlo y Halton) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
 | **Análisis complejo** | Coloreado de dominio 3D con detección de ceros y polos por su índice · Mapeos conformes animados (eᶻ, z², 1/z, Joukowsky, Möbius…) · Mandelbrot y Julia en relieve |
 | **Campos vectoriales** | Flechas instanciadas, gradiente, líneas de corriente RK4, partículas GPU con estela, divergencia y rotacional (ruedas de paletas), equilibrios clasificados · Teoremas de Gauss y Stokes verificados numéricamente |
 
@@ -323,6 +334,12 @@ intacta y se vuelve con **← MechaForge** (Esc).
 
 ![Sistemas no lineales](docs/demo_lab_nolineal.png)
 *z³ = 1 en forma real: cuencas de atracción de Newton (fractales) y trayectorias de Newton, Broyden, punto fijo y Levenberg–Marquardt.*
+
+![Integración 1D](docs/demo_lab_calculo.png)
+*Gauss–Legendre con 5 nodos: cada rectángulo mide lo que el peso wᵢ por f(xᵢ); error 10⁻⁷ con 5 evaluaciones. A la derecha, el teclado de símbolos y la fórmula interpretada.*
+
+![Derivación](docs/demo_lab_derivacion.png)
+*Los 14 métodos de derivación en x₀ = 1: órdenes observados 1, 2, 4, 6…; paso complejo, automática y simbólica exactas; abajo, f′ exacta y aproximada.*
 
 ![Interpolación 1D](docs/demo_lab_interp1d.png)
 *Fenómeno de Runge: Lagrange con 13 nodos equiespaciados oscila; spline, PCHIP y Floater–Hormann no.*
@@ -471,7 +488,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
-| Laboratorio matemático (16 módulos, motor de expresiones y API) | `mflabtest` |
+| Laboratorio matemático (17 módulos, notación de las fórmulas, derivadas, cuadraturas y API) | `mflabtest` |
 | Seguimiento de manos (filtro, gestos, controlador, UDP y proceso de MediaPipe) | `mfmanos` |
 
 ## Arquitectura
