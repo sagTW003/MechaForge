@@ -341,13 +341,15 @@ inferencia de unos 11 ms en CPU, y un filtro One Euro contra el temblor.
 | ☝ Apuntar | Cursor y tooltip. |
 | 🤏 Pellizco | Gira la gráfica 3D, desplaza la 2D, ajusta deslizadores (ajuste fino ×3) o pulsa botones. |
 | 🤏🤏 Pellizco con las dos manos | Zoom (más sensible, ratio^1.8). |
-| ✊✊ Dos puños | Mueven la escena en 3D: arrastrar, acercar o alejar las manos (profundidad) y girar como un volante. |
+| ✊✊ Dos puños | Agarran la escena en 3D como un objeto: se desplaza con las manos, empujar hacia la pantalla la aleja, adelantar una mano la gira y doblar las muñecas la inclina. Con un puño, esa mano no pellizca. |
 | 🖐 Palma abierta | Pausa; mantenida 1 s, reinicia la vista. |
 
 - Tiene histéresis (el pellizco se activa a 3 cm y se suelta a 4,5 cm), antirrebote
   y corrección de la deriva al pellizcar y al soltar.
 - Un medidor junto al cursor muestra la distancia pulgar–índice y la fase del
   pellizco.
+- Con la mano lejos, los umbrales del pellizco se compensan y cada mano conserva su
+  etiqueta aunque MediaPipe confunda derecha e izquierda.
 - Con precisión adaptativa, los movimientos lentos dan un ajuste fino.
 - La zona de interacción, a la altura del pecho, evita el «brazo de gorila».
 
@@ -360,7 +362,7 @@ arquitectura y cómo enlazar los eventos, en
 *Pellizco con la mano derecha girando la onda: cursor naranja, precisión adaptativa y medidor del pellizco. En el minimapa, el esqueleto de las dos manos y la zona de interacción.*
 
 ![Dos puños](docs/demo_lab_manos_punos.png)
-*Dos puños agarrando el campo vectorial: arrastrar lo traslada, acercar las manos lo trae hacia uno y girarlas lo rota.*
+*Dos puños agarrando el campo vectorial en 3D. Junto al minimapa, la vista 3D de los puños con los ejes y lo desplazado y girado.*
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 

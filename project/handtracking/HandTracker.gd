@@ -12,7 +12,13 @@ extends Node
 ##   score  confianza de la lateralidad
 ##   lm     PackedVector3Array(21): x, y en [0, 1] sobre la imagen; z relativa a la muñeca
 ##   wlm    PackedVector3Array(21): coordenadas métricas (m) centradas en la mano
+##   img    Vector2: tamaño de la imagen en px (reconstrucción 3D)
 ##   t      instante de captura (s, reloj del sistema)
+##
+## Continuidad de las manos: con la mano lejos o de canto MediaPipe confunde a veces
+## la derecha con la izquierda. Cada mano conserva su etiqueta mientras se la siga
+## (por posición entre paquetes); solo cambia si MediaPipe insiste LABEL_VOTES
+## paquetes seguidos.
 ##
 ## La configuración (Python, cámara, puerto, token y ajustes) está en
 ## user://mechaforge_hands.json. El token se genera la primera vez y nunca va en el
@@ -24,6 +30,8 @@ signal status_changed(text: String, level: String)
 const CONFIG_PATH := "user://mechaforge_hands.json"
 const DEFAULT_PORT := 18791
 const STALE_AFTER := 0.5        # s sin paquetes → se da la mano por perdida
+const MATCH_RADIUS := 0.25      # distancia máxima en la imagen para seguir a una mano entre paquetes
+const LABEL_VOTES := 8          # paquetes seguidos en que MediaPipe discrepa para cambiar la etiqueta
 
 var python: String = "python"
 var camera: int = -1
@@ -51,6 +59,7 @@ var selftest_ok: bool = false
 
 var _udp := PacketPeerUDP.new()
 var _filters := {}              # label → {"lm": [OneEuroFilter], "wlm": [OneEuroFilter]}
+var _tracks := {}               # label → {"c": centro en la imagen, "votes": discrepancias seguidas, "t": último paquete}
 var _arrivals: Array = []
 var _error_reported: bool = false
 
@@ -183,6 +192,52 @@ func _set_status(text: String, level: String) -> void:
 
 func _reset_filters() -> void:
 	_filters.clear()
+	_tracks.clear()
+
+## Etiqueta de cada mano del paquete: la de su pista si se la venía siguiendo (la
+## más cercana dentro de MATCH_RADIUS); si no, la de MediaPipe.
+func _assign_labels(raw: Array, t: float) -> Array:
+	for k in _tracks.keys():
+		if t - float(_tracks[k]["t"]) > STALE_AFTER:
+			_tracks.erase(k)
+	var n := raw.size()
+	var labels := []
+	labels.resize(n)
+	var pairs := []
+	for i in range(n):
+		for k in _tracks:
+			var dist: float = (raw[i]["c"] as Vector2).distance_to(_tracks[k]["c"])
+			if dist < MATCH_RADIUS:
+				pairs.append([dist, i, k])
+	pairs.sort_custom(func(a, b): return a[0] < b[0])
+	var taken := {}
+	var votes := {}
+	for pr in pairs:
+		var i: int = pr[1]
+		var k: String = pr[2]
+		if labels[i] != null or taken.has(k):
+			continue
+		labels[i] = k
+		taken[k] = true
+		var mp: String = raw[i]["mp"]
+		votes[i] = int(_tracks[k]["votes"]) + 1 if mp != k else 0
+	# MediaPipe insiste en la otra etiqueta: se le hace caso (p. ej. se cambió de mano).
+	for i in votes:
+		var mp: String = raw[i]["mp"]
+		if int(votes[i]) >= LABEL_VOTES and not labels.has(mp):
+			labels[i] = mp
+			votes[i] = 0
+	for i in range(n):
+		if labels[i] == null:
+			var mp: String = raw[i]["mp"]
+			labels[i] = mp if not labels.has(mp) else ("Left" if mp == "Right" else "Right")
+			votes[i] = 0
+	# Dos manos con la misma etiqueta (MediaPipe las dio iguales): la segunda es la otra.
+	if n >= 2 and labels[0] == labels[1]:
+		labels[1] = "Left" if labels[0] == "Right" else "Right"
+	for i in range(n):
+		_tracks[labels[i]] = {"c": raw[i]["c"], "votes": int(votes.get(i, 0)), "t": t}
+	return labels
 
 func set_filter_params(p_min_cutoff: float, p_beta: float) -> void:
 	min_cutoff = p_min_cutoff
@@ -233,14 +288,23 @@ func _on_hands(d: Dictionary) -> void:
 		_set_status("Seguimiento activo.", "ok")
 	var out := []
 	var used := {}
+	var img := Vector2(float(d.get("w", 640)), float(d.get("h", 480)))
+	var valid := []
+	var raw := []
 	for h in d.get("hands", []):
 		var raw_lm: Array = h.get("lm", [])
 		if raw_lm.size() < 21:
 			continue
-		var label := str(h.get("label", "Right"))
-		# Dos manos con la misma etiqueta: la segunda pasa a ser la otra.
-		if used.has(label):
-			label = "Left" if label == "Right" else "Right"
+		var c := Vector2.ZERO
+		for i in [0, 5, 17]:
+			c += Vector2(float(raw_lm[i][0]), float(raw_lm[i][1])) / 3.0
+		valid.append(h)
+		raw.append({"mp": "Left" if str(h.get("label", "Right")) == "Left" else "Right", "c": c})
+	var labels := _assign_labels(raw, t)
+	for j in range(valid.size()):
+		var h: Dictionary = valid[j]
+		var raw_lm: Array = h.get("lm", [])
+		var label: String = labels[j]
 		used[label] = true
 		var raw_w: Array = h.get("wlm", [])
 		var flt := _filters_for(label)
@@ -252,10 +316,11 @@ func _on_hands(d: Dictionary) -> void:
 			if raw_w.size() >= 21:
 				var q: Array = raw_w[i]
 				wlm.append((flt["wlm"][i] as OneEuroFilter).filter(Vector3(q[0], q[1], q[2]), t))
-		out.append({"label": label, "score": float(h.get("score", 0.0)), "lm": lm, "wlm": wlm, "t": t})
-	# Filtros de manos que ya no están: se reinician para no arrastrar su historia.
+		out.append({"label": label, "score": float(h.get("score", 0.0)), "lm": lm, "wlm": wlm, "img": img, "t": t})
+	# Filtros de manos que ya no se siguen: se reinician para no arrastrar su historia
+	# (los de una mano que falta un par de paquetes se conservan).
 	for k in _filters.keys():
-		if not used.has(k):
+		if not used.has(k) and not _tracks.has(k):
 			_filters.erase(k)
 	hands = out
 	hands_updated.emit(hands)

@@ -47,7 +47,7 @@
 | ☝ Índice extendido | Mover el cursor |
 | 🤏 Pellizco pulgar–índice | Girar la gráfica 3D · desplazar la 2D · ajustar un deslizador · pulsar un botón |
 | 🤏🤏 Pellizco con las dos manos | Zoom (separar = acercar) |
-| ✊✊ Las dos manos en puño | Mover la escena en 3D: arrastrar · acercar/alejar las manos = profundidad · girar = rotar |
+| ✊✊ Las dos manos en puño | Agarrar la escena en 3D: mover = desplazar · empujar hacia la pantalla = alejar · una mano adelante = girar · doblar las muñecas = inclinar |
 | 🖐 Palma abierta | Pausa; mantenida 1 s reinicia la vista |
 
 ## Multímetro (📟)

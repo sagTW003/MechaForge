@@ -149,25 +149,31 @@ func _hands_demo(fists: bool = false) -> void:
 	ctrl.tracker.status_text = "Demostración con manos sintéticas (sin cámara)"
 	var frames := []
 	if fists:
-		for k in range(50):
-			var dx := 0.0012 * k
-			frames.append(["fist", Vector2(0.52 + dx, 0.5 - dx * 0.5), "fist", Vector2(0.3 + dx, 0.56 + dx * 0.5)])
+		# Puños en 3D: se desplazan, se empujan hacia la pantalla y la derecha se adelanta (giro).
+		for k in range(60):
+			var u := minf(1.0, k / 45.0)
+			frames.append(ht.fists3d(Vector3(0.06 * u, -0.03 * u, -0.12 * u), 0.72, -0.06 * u, Vector3(0.12 * u, 0, 0)))
 	else:
+		var hs := []
 		for k in range(20):
-			frames.append(["point", Vector2(0.46, 0.5), "fist", Vector2(0.3, 0.62)])
+			frames.append([["point", Vector2(0.46, 0.5)], ["fist", Vector2(0.3, 0.62)]])
 		for k in range(10):
-			frames.append(["pinch", Vector2(0.46, 0.5), "fist", Vector2(0.3, 0.62)])
+			frames.append([["pinch", Vector2(0.46, 0.5)], ["fist", Vector2(0.3, 0.62)]])
 		for k in range(40):
-			frames.append(["pinch", Vector2(0.46 + 0.0015 * k, 0.5 - 0.0005 * k), "fist", Vector2(0.3, 0.62)])
+			frames.append([["pinch", Vector2(0.46 + 0.0015 * k, 0.5 - 0.0005 * k)], ["fist", Vector2(0.3, 0.62)]])
+		for f in frames:
+			hs.append([ht.hand(f[0][0], f[0][1], "Right", 1.0, ctrl.recognizer), ht.hand(f[1][0], f[1][1], "Left", 1.0, ctrl.recognizer)])
+		frames = hs
 	for f in frames:
 		ht.t += 1.0 / 60.0
-		var right: Dictionary = ht.hand(f[0], f[1], "Right", 1.0, ctrl.recognizer)
-		var left: Dictionary = ht.hand(f[2], f[3], "Left", 1.0, ctrl.recognizer)
-		right["t"] = ht.t
-		left["t"] = ht.t
-		ctrl.tracker.hands = [right, left]
+		var pair := []
+		for h in f:
+			var c: Dictionary = (h as Dictionary).duplicate()
+			c["t"] = ht.t
+			pair.append(c)
+		ctrl.tracker.hands = pair
 		ctrl.tracker.last_packet = HandTracker.now()
-		ctrl._on_hands([right, left])
+		ctrl._on_hands(pair)
 		await get_tree().process_frame
 	ht.free()
 
@@ -182,6 +188,10 @@ func _shot(ua: PackedStringArray) -> void:
 		await lab.module.demo(extra)
 	if "manos" in extra:
 		await _hands_demo("punos" in extra)
+		if "panel" in extra:
+			lab.hands.panel.visible = true
+			lab.hands.panel.set_collapsed(false)
+			lab.hands.panel.position = Vector2(lab.get_viewport().get_visible_rect().size.x - 620, 56)
 	if "superior" in extra:
 		lab.set_view(LabCamera.ViewMode.SUPERIOR)
 	if "iso" in extra:

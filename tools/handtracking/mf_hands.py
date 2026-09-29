@@ -98,7 +98,7 @@ def make_landmarker(model_path, max_hands):
         base_options=mpp.BaseOptions(model_asset_path=model_path),
         running_mode=vision.RunningMode.VIDEO,
         num_hands=max_hands,
-        min_hand_detection_confidence=0.6,
+        min_hand_detection_confidence=0.5,   # 0.5 (el valor de MediaPipe) detecta mejor la mano lejos
         min_hand_presence_confidence=0.5,
         min_tracking_confidence=0.5,
     )

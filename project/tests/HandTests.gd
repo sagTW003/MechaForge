@@ -28,6 +28,10 @@ func run() -> void:
 	_t_debounce_and_cursor()
 	_t_zoom_events()
 	_t_pinch_phases()
+	_t_measure3d()
+	_t_far_pinch()
+	_t_label_continuity()
+	_t_fist_lock()
 	_t_grab_events()
 	await _t_controller()
 	await _t_udp()
@@ -94,6 +98,40 @@ func hand(pose: String, q: Vector2, label: String = "Right", pinch_cm: float = 1
 		lm.append(Vector3(target.x + d.x * SCALE * smul, target.y + d.y * SCALE * smul, p.z))
 		wlm.append(p)
 	return {"label": label, "score": 0.98, "lm": lm, "wlm": wlm, "t": t}
+
+const HFOV := 62.0
+const IMG := Vector2(640, 480)
+
+## Mano sintética en 3D, como la vería la webcam: la pose (m) girada rot (x: inclinar
+## la muñeca, arriba hacia la cámara > 0; y: girar; z: alabeo) alrededor del centro de
+## la palma y colocada en P (m, desde la webcam: x derecha, y abajo, z profundidad).
+## Los puntos de imagen salen de una cámara estenopeica de campo hfov; noise_px añade
+## ruido en píxeles (imprecisión de MediaPipe con la mano lejos).
+func hand3d(pose: String, P: Vector3, label: String = "Right", rot: Vector3 = Vector3.ZERO, pinch_cm: float = 1.0,
+		noise_px: float = 0.0, rng: RandomNumberGenerator = null, hfov: float = HFOV) -> Dictionary:
+	var w := world(pose, pinch_cm)
+	var c: Vector3 = (w[0] + w[5] + w[17]) / 3.0
+	var bs := Basis.from_euler(rot)
+	var f := IMG.x * 0.5 / tan(deg_to_rad(hfov) * 0.5)
+	var lm := PackedVector3Array()
+	var wlm := PackedVector3Array()
+	for q in w:
+		var r: Vector3 = bs * ((q as Vector3) - c)
+		var pc := P + r
+		var u := IMG.x * 0.5 + f * pc.x / pc.z
+		var v := IMG.y * 0.5 + f * pc.y / pc.z
+		if noise_px > 0.0 and rng != null:
+			u += rng.randfn(0.0, noise_px)
+			v += rng.randfn(0.0, noise_px)
+			r += Vector3(rng.randfn(0.0, 0.002), rng.randfn(0.0, 0.002), rng.randfn(0.0, 0.004))
+		lm.append(Vector3(u / IMG.x, v / IMG.y, (pc.z - P.z) * f / (P.z * IMG.x)))
+		wlm.append(r)
+	return {"label": label, "score": 0.9, "lm": lm, "wlm": wlm, "img": IMG, "t": t}
+
+## Las dos manos en puño a la altura del pecho, separadas 32 cm, a z m de la webcam.
+func fists3d(off: Vector3 = Vector3.ZERO, z: float = 0.65, dz_right: float = 0.0, rot: Vector3 = Vector3.ZERO) -> Array:
+	return [hand3d("fist", Vector3(0.16, 0.05, z) + off + Vector3(0, 0, dz_right), "Right", rot),
+		hand3d("fist", Vector3(-0.16, 0.05, z) + off - Vector3(0, 0, dz_right), "Left", rot)]
 
 func step_time(dt: float = 1.0 / 60.0) -> float:
 	t += dt
@@ -229,42 +267,214 @@ func _t_pinch_phases() -> void:
 			seen.append(ph)
 	check(seen.slice(0, 5) == ["lejos", "acercando", "cerrando", "activo", "soltando"], "Medidor del pellizco: lejos → acercando → cerrando → activo → soltando %s" % str(seen))
 
+func _t_measure3d() -> void:
+	var r := GestureRecognizer.new()
+	var worst := 0.0
+	var errs := []
+	for P in [Vector3(0.1, -0.05, 0.5), Vector3(-0.2, 0.1, 0.8), Vector3(0.05, 0.02, 1.4)]:
+		for rot in [Vector3.ZERO, Vector3(0.4, 0.8, 0.2)]:
+			var st := r._new_state()
+			r.measure(st, hand3d("fist", P, "Right", rot))
+			var e: float = (st["p3"] as Vector3).distance_to(P) / P.z
+			worst = maxf(worst, e)
+			errs.append("%.1f" % (e * 100.0))
+	# De frente el error es nulo; girada 45° y a un lado, la perspectiva débil se desvía
+	# un 5–8 % en la distancia absoluta (el agarre usa desplazamientos, que salen exactos).
+	check(worst < 0.1, "Manos en 3D: la posición (x, y y profundidad) se reconstruye con la mano cerca, lejos y girada (error en %% de la distancia: %s)" % ", ".join(errs))
+	var st2 := r._new_state()
+	r.measure(st2, hand3d("fist", Vector3(0, 0, 0.6), "Right", Vector3(0.35, 0, 0)))
+	check(absf(float(st2["tilt"]) - 0.35) < 0.02, "Manos en 3D: se mide la inclinación de la muñeca (%.2f rad; real 0.35)" % float(st2["tilt"]))
+
+func _t_far_pinch() -> void:
+	# Con la mano lejos, MediaPipe no llega a juntar las puntas: los dedos juntos se leen
+	# a ~3.8 cm. Con la compensación por distancia el pellizco se detecta igual, sin
+	# falsos pellizcos cerca ni al apuntar lejos.
+	var r := GestureRecognizer.new()
+	var st_far := r._new_state()
+	var g_far := r.classify(st_far, hand3d("pinch", Vector3(0, 0.05, 1.5), "Right", Vector3.ZERO, 3.8))
+	var st_near := r._new_state()
+	var g_near := r.classify(st_near, hand3d("pinch", Vector3(0, 0.05, 0.5), "Right", Vector3.ZERO, 3.8))
+	check(g_far == GestureRecognizer.Gesture.PINCH and g_near != GestureRecognizer.Gesture.PINCH,
+		"Pellizco lejos (1.5 m, palma de %.0f px): los dedos juntos leídos a 3.8 cm cuentan (umbral %.1f cm); cerca, 3.8 cm no (umbral %.1f cm)" % [float(st_far["size_px"]), r.pinch_on_cm + float(st_far["comp"]), r.pinch_on_cm + float(st_near["comp"])])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var r2 := GestureRecognizer.new()
+	var starts := [0]
+	var ends := [0]
+	r2.pinch_started.connect(func(_h, _p): starts[0] += 1)
+	r2.pinch_ended.connect(func(_h, _p, _c): ends[0] += 1)
+	var false_pinch := false
+	for k in range(40):
+		r2.update([hand3d("point", Vector3(0, 0.05, 1.6), "Right", Vector3.ZERO, 1.0, 1.5, rng)], step_time(1.0 / 30.0))
+		false_pinch = false_pinch or r2.gesture_of("Right") == GestureRecognizer.Gesture.PINCH
+	for d in [3.8, 3.6, 3.9, 3.7, 4.0, 3.8, 3.5, 3.9, 3.8, 3.7, 3.6, 3.9, 4.1, 3.8, 3.7, 3.9, 3.8, 3.6, 3.8, 3.9]:
+		r2.update([hand3d("pinch", Vector3(0, 0.05, 1.6), "Right", Vector3.ZERO, d, 1.5, rng)], step_time(1.0 / 30.0))
+	var held: bool = starts[0] == 1 and ends[0] == 0 and r2.gesture_of("Right") == GestureRecognizer.Gesture.PINCH
+	for k in range(15):
+		r2.update([hand3d("pinch", Vector3(0, 0.05, 1.6), "Right", Vector3.ZERO, 11.0, 1.5, rng)], step_time(1.0 / 30.0))
+	check(not false_pinch and held and ends[0] == 1, "Pellizco lejos con ruido: apuntar no lo dispara; pellizcar da un solo inicio y un solo fin")
+
+func _packet(tr: HandTracker, hs: Array, labels: Array, tt: float) -> Dictionary:
+	var out := []
+	for j in range(hs.size()):
+		var lm := []
+		var wlm := []
+		for i in range(21):
+			lm.append([hs[j]["lm"][i].x, hs[j]["lm"][i].y, hs[j]["lm"][i].z])
+			wlm.append([hs[j]["wlm"][i].x, hs[j]["wlm"][i].y, hs[j]["wlm"][i].z])
+		out.append({"label": labels[j], "score": 0.55, "lm": lm, "wlm": wlm})
+	return {"type": "hands", "token": tr.token, "t_cap": tt, "inf_ms": 9.0, "w": 640, "h": 480, "hands": out}
+
+func _t_label_continuity() -> void:
+	# Con la mano lejos, MediaPipe alterna «Right» y «Left» para la misma mano. El
+	# seguimiento por posición conserva la etiqueta y el pellizco no se corta.
+	var tr := HandTracker.new()
+	tr.load_config()
+	var r := GestureRecognizer.new()
+	var starts := [0]
+	var ends := [0]
+	var labels_seen := {}
+	r.pinch_started.connect(func(_h, _p): starts[0] += 1)
+	r.pinch_ended.connect(func(_h, _p, _c): ends[0] += 1)
+	tr.hands_updated.connect(func(hs):
+		for h in hs:
+			labels_seen[h["label"]] = true
+		r.update(hs, hs[0]["t"] if not hs.is_empty() else t))
+	var tt := HandTracker.now()
+	var seq := []
+	for k in range(10):
+		seq.append(10.0)
+	for k in range(30):
+		seq.append(3.7)
+	for k in range(10):
+		seq.append(11.0)
+	for k in range(seq.size()):
+		tt += 1.0 / 30.0
+		var mp := "Right" if k % 3 != 1 else "Left"
+		tr.feed(_packet(tr, [hand3d("pinch", Vector3(0.02 * sin(k * 0.2), 0.05, 1.5), "Right", Vector3.ZERO, seq[k])], [mp], tt))
+	check(labels_seen.keys() == ["Right"] and starts[0] == 1 and ends[0] == 1, "Mano lejos: aunque MediaPipe confunda derecha e izquierda, la mano conserva su etiqueta y el pellizco no se corta (%s, %d inicio, %d fin)" % [str(labels_seen.keys()), starts[0], ends[0]])
+	# Dos manos: cada una sigue siendo la suya aunque MediaPipe las intercambie un momento.
+	var tr2 := HandTracker.new()
+	tr2.load_config()
+	var swapped_ok := true
+	for k in range(20):
+		tt += 1.0 / 30.0
+		var hs := [hand3d("point", Vector3(0.18, 0.05, 0.7), "Right"), hand3d("point", Vector3(-0.18, 0.05, 0.7), "Left")]
+		var mps := ["Right", "Left"] if k < 5 or k > 8 else ["Left", "Right"]
+		tr2.feed(_packet(tr2, hs, mps, tt))
+		for h in tr2.hands:
+			var right_side: bool = (h["lm"][0] as Vector3).x > 0.5
+			swapped_ok = swapped_ok and (h["label"] == "Right") == right_side
+	check(swapped_ok, "Dos manos: si MediaPipe las intercambia unos fotogramas, cada mano conserva su etiqueta")
+	# Cambio de mano real: si MediaPipe insiste, la etiqueta cambia.
+	var tr3 := HandTracker.new()
+	tr3.load_config()
+	for k in range(20):
+		tt += 1.0 / 30.0
+		tr3.feed(_packet(tr3, [hand3d("point", Vector3(0, 0.05, 0.7), "Right")], ["Right" if k < 5 else "Left"], tt))
+	check(tr3.hands.size() == 1 and tr3.hands[0]["label"] == "Left", "Si MediaPipe insiste %d paquetes en la otra mano, se le hace caso" % HandTracker.LABEL_VOTES)
+	tr.free()
+	tr2.free()
+	tr3.free()
+
+func _t_fist_lock() -> void:
+	var r := GestureRecognizer.new()
+	var starts := [0]
+	var zooms := [0]
+	r.pinch_started.connect(func(_h, _p): starts[0] += 1)
+	r.zoom_started.connect(func(_d): zooms[0] += 1)
+	# Puño y, sin abrir la mano, pellizco: no cuenta.
+	for k in range(6):
+		r.update([hand3d("fist", Vector3(0.1, 0.05, 0.6))], step_time())
+	for k in range(10):
+		r.update([hand3d("pinch", Vector3(0.1, 0.05, 0.6))], step_time())
+	var locked_ok: bool = starts[0] == 0 and r.gesture_of("Right") == GestureRecognizer.Gesture.PINCH and r.pinch_phase("Right") == "bloqueado"
+	for k in range(6):
+		r.update([hand3d("point", Vector3(0.1, 0.05, 0.6))], step_time())
+	for k in range(6):
+		r.update([hand3d("pinch", Vector3(0.1, 0.05, 0.6))], step_time())
+	check(locked_ok and starts[0] == 1, "Modo puño: tras un puño el pellizco no cuenta hasta abrir la mano (apuntar); después sí")
+	# Durante el agarre, un pellizco (el pulgar sobre el índice) no lo corta, no arrastra ni hace zoom.
+	var r2 := GestureRecognizer.new()
+	var s2 := [0]
+	var z2 := [0]
+	var ended := [0]
+	r2.pinch_started.connect(func(_h, _p): s2[0] += 1)
+	r2.zoom_started.connect(func(_d): z2[0] += 1)
+	r2.grab_ended.connect(func(): ended[0] += 1)
+	for k in range(6):
+		r2.update(fists3d(), step_time())
+	var grabbing0 := r2.grabbing
+	for k in range(8):
+		r2.update([hand3d("pinch", Vector3(0.16, 0.05, 0.65), "Right"), hand3d("fist", Vector3(-0.16, 0.05, 0.65), "Left")], step_time())
+	for k in range(8):
+		r2.update([hand3d("pinch", Vector3(0.16, 0.05, 0.65), "Right"), hand3d("pinch", Vector3(-0.16, 0.05, 0.65), "Left")], step_time())
+	check(grabbing0 and r2.grabbing and ended[0] == 0 and s2[0] == 0 and z2[0] == 0 and not r2.zooming,
+		"Modo puño: durante el agarre los pellizcos no cuentan (ni arrastre ni zoom) y el agarre sigue")
+	for k in range(8):
+		r2.update([hand3d("pinch", Vector3(0.16, 0.05, 0.65), "Right"), hand3d("open", Vector3(-0.16, 0.05, 0.65), "Left")], step_time())
+	check(ended[0] == 1 and s2[0] == 0, "Modo puño: al abrir una mano termina el agarre, y la que sigue pellizcando no empieza a arrastrar")
+
 func _t_grab_events() -> void:
 	var r := GestureRecognizer.new()
 	var started := [0]
 	var ended := [0]
-	var acc := [Vector3.ZERO, 0.0]
+	var acc := [Vector3.ZERO, Vector3.ZERO]
 	r.grab_started.connect(func(): started[0] += 1)
 	r.grab_ended.connect(func(): ended[0] += 1)
-	r.grab_moved.connect(func(d, a):
+	r.grab_moved.connect(func(d, rot):
 		acc[0] += d
-		acc[1] += a)
+		acc[1] += rot)
 	# Un solo puño no agarra.
 	for k in range(6):
-		r.update([hand("fist", Vector2(0.4, 0.5), "Right", 1.0, r), hand("point", Vector2(0.6, 0.5), "Left", 1.0, r)], step_time())
+		r.update([hand3d("fist", Vector3(0.16, 0.05, 0.65), "Right"), hand3d("point", Vector3(-0.16, 0.05, 0.65), "Left")], step_time())
 	var single_ok: bool = started[0] == 0 and r.gesture_of("Right") == GestureRecognizer.Gesture.FIST
 	for k in range(6):
-		r.update([hand("fist", Vector2(0.4, 0.5), "Right", 1.0, r), hand("fist", Vector2(0.6, 0.5), "Left", 1.0, r)], step_time())
+		r.update(fists3d(), step_time())
 	check(single_ok and started[0] == 1 and r.grabbing, "Dos puños: un puño solo no hace nada; con los dos empieza el agarre")
-	for k in range(10):
-		var dx := 0.01 * (k + 1)
-		r.update([hand("fist", Vector2(0.4 + dx, 0.5), "Right", 1.0, r), hand("fist", Vector2(0.6 + dx, 0.5), "Left", 1.0, r)], step_time())
-	var moved: Vector3 = acc[0]
-	check(absf(moved.x - 0.1) < 0.005 and absf(moved.y) < 0.005 and absf(moved.z) < 0.01, "Dos puños: mover las dos manos traslada la escena (Δx = %.3f)" % moved.x)
+	# Movimientos simulados en las tres dimensiones (cm en el espacio real).
+	var cases := [["derecha", Vector3(0.10, 0, 0), Vector3(0.10, 0, 0)], ["arriba", Vector3(0, -0.08, 0), Vector3(0, 0.08, 0)],
+		["hacia la pantalla", Vector3(0, 0, -0.15), Vector3(0, 0, 0.15)], ["diagonal 3D", Vector3(-0.06, 0.05, 0.1), Vector3(-0.06, -0.05, -0.1)]]
+	var worst := 0.0
+	var names := []
+	for cs in cases:
+		acc[0] = Vector3.ZERO
+		var move: Vector3 = cs[1]
+		for k in range(12):
+			r.update(fists3d(move * (k + 1) / 12.0), step_time())
+		var got: Vector3 = acc[0]
+		var want: Vector3 = cs[2]
+		var err := got.distance_to(want) / want.length()
+		worst = maxf(worst, err)
+		names.append("%s (%.1f, %.1f, %.1f) cm" % [cs[0], got.x * 100, got.y * 100, got.z * 100])
+		for k in range(12):
+			r.update(fists3d(move * (11 - k) / 12.0), step_time())
+	check(worst < 0.1, "Dos puños en 3D: el desplazamiento de las manos se mide en x, y, z (error máx. %.0f %%): %s" % [worst * 100.0, ", ".join(names)])
+	# Mismo movimiento con las manos más lejos: mide lo mismo.
 	acc[0] = Vector3.ZERO
-	for k in range(10):
-		var sm := 1.0 + 0.02 * (k + 1)
-		r.update([hand("fist", Vector2(0.5, 0.5), "Right", 1.0, r, sm), hand("fist", Vector2(0.7, 0.5), "Left", 1.0, r, sm)], step_time())
-	var depth: float = (acc[0] as Vector3).z
-	check(absf(depth - log(1.2)) < 0.03, "Dos puños: acercar las manos a la cámara (×1.2 de tamaño) mueve en profundidad (ln = %.3f)" % depth)
-	acc[1] = 0.0
-	for k in range(10):
-		var dy := 0.01 * (k + 1)
-		r.update([hand("fist", Vector2(0.5, 0.5 - dy), "Right", 1.0, r, 1.2), hand("fist", Vector2(0.7, 0.5 + dy), "Left", 1.0, r, 1.2)], step_time())
-	var ang: float = acc[1]
-	check(ang > 0.3, "Dos puños: girar las manos como un volante da un ángulo (%.2f rad)" % ang)
 	for k in range(6):
-		r.update([hand("fist", Vector2(0.5, 0.4), "Right", 1.0, r), hand("open", Vector2(0.7, 0.6), "Left", 1.0, r)], step_time())
+		r.update(fists3d(Vector3.ZERO, 1.0), step_time())
+	acc[0] = Vector3.ZERO
+	for k in range(12):
+		r.update(fists3d(Vector3(0.10 * (k + 1) / 12.0, 0, 0), 1.0), step_time())
+	check(absf((acc[0] as Vector3).x - 0.10) < 0.01, "Dos puños en 3D: 10 cm a 1 m de la cámara miden lo mismo que a 65 cm (%.1f cm)" % ((acc[0] as Vector3).x * 100.0))
+	for k in range(12):
+		r.update(fists3d(Vector3.ZERO, 0.65), step_time())
+	# Giro: la mano derecha hacia la pantalla y la izquierda hacia atrás.
+	acc[1] = Vector3.ZERO
+	for k in range(12):
+		r.update(fists3d(Vector3.ZERO, 0.65, -0.08 * (k + 1) / 12.0), step_time())
+	var want_yaw := atan2(0.16, 0.32)
+	check(absf((acc[1] as Vector3).y - want_yaw) < 0.06, "Dos puños en 3D: una mano adelante y otra atrás giran %.0f° (real %.0f°)" % [rad_to_deg((acc[1] as Vector3).y), rad_to_deg(want_yaw)])
+	for k in range(12):
+		r.update(fists3d(), step_time())
+	# Inclinación: doblar las dos muñecas 25° hacia la pantalla.
+	acc[1] = Vector3.ZERO
+	for k in range(12):
+		r.update(fists3d(Vector3.ZERO, 0.65, 0.0, Vector3(deg_to_rad(25.0) * (k + 1) / 12.0, 0, 0)), step_time())
+	check(absf(rad_to_deg((acc[1] as Vector3).x) - 25.0) < 2.0, "Dos puños en 3D: doblar las muñecas se mide como inclinación (%.1f°; real 25°)" % rad_to_deg((acc[1] as Vector3).x))
+	for k in range(6):
+		r.update([hand3d("fist", Vector3(0.16, 0.05, 0.65), "Right"), hand3d("open", Vector3(-0.16, 0.05, 0.65), "Left")], step_time())
 	check(ended[0] == 1 and not r.grabbing, "Dos puños: al abrir una mano termina el agarre")
 
 # --- Controlador sobre el laboratorio real --------------------------------------------------
@@ -337,29 +547,44 @@ func _t_controller() -> void:
 	check(froze and absf(d_before - target_dist) > 0.5 and absf(lab.cam.distance - target_dist) < 1e-4, "Controlador: la palma abierta congela y, mantenida 1 s, reinicia la vista")
 	_feed(ctrl, [hand("point", Vector2(0.5, 0.45), "Right", 1.0, ctrl.recognizer)], 8)
 	check(not ctrl.frozen, "Controlador: al cerrar la palma se reanuda la interacción")
-	# Dos puños: traslación en pantalla, profundidad y giro.
+	# Dos puños en 3D: la escena se mueve como un objeto sujeto con las dos manos.
 	var cam: LabCamera = lab.cam
-	var right_v: Vector3 = cam.global_transform.basis.x
-	var fwd_v: Vector3 = -cam.global_transform.basis.z
-	var t0: Vector3 = cam.target
-	for k in range(6):
-		_feed(ctrl, [hand("fist", Vector2(0.4, 0.5), "Right", 1.0, ctrl.recognizer), hand("fist", Vector2(0.6, 0.5), "Left", 1.0, ctrl.recognizer)])
+	_feed(ctrl, fists3d(), 6)
 	var gmode: String = ctrl.drag_mode
-	for k in range(10):
-		var dx := 0.01 * (k + 1)
-		_feed(ctrl, [hand("fist", Vector2(0.4 + dx, 0.5), "Right", 1.0, ctrl.recognizer), hand("fist", Vector2(0.6 + dx, 0.5), "Left", 1.0, ctrl.recognizer)])
-	var shift: Vector3 = cam.target - t0
-	check(gmode == "grab" and shift.dot(right_v) < -0.05, "Controlador: con dos puños la escena se arrastra con las manos (Δ = %.2f)" % shift.length())
+	var bx: Vector3 = cam.global_transform.basis.x
+	var by: Vector3 = cam.global_transform.basis.y
+	var t0: Vector3 = cam.target
+	var sgrab: float = ctrl.visible_width() / VirtualLabController.GRAB_REACH * ctrl.grab_gain
+	for k in range(12):
+		_feed(ctrl, fists3d(Vector3(0.10 * (k + 1) / 12.0, 0, 0)))
+	var sh: Vector3 = cam.target - t0
+	check(gmode == "grab" and absf(sh.dot(bx) + 0.10 * sgrab) < 0.12 * 0.10 * sgrab and absf(sh.dot(by)) < 0.02 * sgrab,
+		"Controlador: mover los puños 10 cm a la derecha lleva la escena a la derecha (la cámara se desplaza %.2f; esperado %.2f)" % [-sh.dot(bx), 0.10 * sgrab])
 	var t1: Vector3 = cam.target
-	for k in range(10):
-		var sm := 1.0 + 0.02 * (k + 1)
-		_feed(ctrl, [hand("fist", Vector2(0.5, 0.5), "Right", 1.0, ctrl.recognizer, sm), hand("fist", Vector2(0.7, 0.5), "Left", 1.0, ctrl.recognizer, sm)])
-	check((cam.target - t1).dot(fwd_v) > 0.1, "Controlador: acercar los dos puños a la cámara mueve la escena en profundidad")
-	var y1: float = cam.yaw
-	for k in range(10):
-		var dy := 0.01 * (k + 1)
-		_feed(ctrl, [hand("fist", Vector2(0.5, 0.5 - dy), "Right", 1.0, ctrl.recognizer, 1.2), hand("fist", Vector2(0.7, 0.5 + dy), "Left", 1.0, ctrl.recognizer, 1.2)])
-	check(absf(cam.yaw - y1) > 0.3, "Controlador: girar los dos puños como un volante rota la escena (Δyaw = %.2f)" % (cam.yaw - y1))
+	for k in range(12):
+		_feed(ctrl, fists3d(Vector3(0.10, -0.08 * (k + 1) / 12.0, 0)))
+	check((cam.target - t1).dot(by) < -0.5 * 0.08 * sgrab, "Controlador: subir los puños sube la escena")
+	var dist0: float = cam.distance
+	for k in range(12):
+		_feed(ctrl, fists3d(Vector3(0.10, -0.08, -0.12 * (k + 1) / 12.0)))
+	check(cam.distance > dist0 * 1.2, "Controlador: empujar los puños hacia la pantalla aleja la escena (distancia %.2f → %.2f)" % [dist0, cam.distance])
+	var dist1: float = cam.distance
+	for k in range(12):
+		_feed(ctrl, fists3d(Vector3(0.10, -0.08, -0.12 + 0.12 * (k + 1) / 12.0)))
+	check(absf(cam.distance - dist0) < dist0 * 0.06, "Controlador: tirar de los puños hacia uno la vuelve a acercar (%.2f → %.2f)" % [dist1, cam.distance])
+	var yaw1: float = cam.yaw
+	var base := Vector3(0.10, -0.08, 0)
+	for k in range(12):
+		_feed(ctrl, fists3d(base, 0.65, -0.08 * (k + 1) / 12.0))
+	var want_turn := atan2(0.16, 0.32) - VirtualLabController.TURN_DEAD
+	check(absf((yaw1 - cam.yaw) - want_turn) < 0.08, "Controlador: una mano adelante y otra atrás giran la escena %.0f° (esperado %.0f° con 5° de zona muerta)" % [rad_to_deg(yaw1 - cam.yaw), rad_to_deg(want_turn)])
+	for k in range(12):
+		_feed(ctrl, fists3d(base, 0.65, -0.08 + 0.08 * (k + 1) / 12.0))
+	var pitch1: float = cam.pitch
+	for k in range(12):
+		_feed(ctrl, fists3d(base, 0.65, 0.0, Vector3(deg_to_rad(25.0) * (k + 1) / 12.0, 0, 0)))
+	var want_tilt := deg_to_rad(25.0) - VirtualLabController.TILT_DEAD
+	check(absf((pitch1 - cam.pitch) - want_tilt) < 0.06, "Controlador: doblar las muñecas inclina la escena %.0f° (esperado %.0f° con 8° de zona muerta)" % [rad_to_deg(pitch1 - cam.pitch), rad_to_deg(want_tilt)])
 	_feed(ctrl, [hand("point", Vector2(0.5, 0.45), "Right", 1.0, ctrl.recognizer)], 30)
 	check(ctrl.drag_mode == "", "Controlador: al soltar los puños termina el agarre")
 	# Precisión adaptativa: el mismo recorrido gira menos si la mano va despacio.

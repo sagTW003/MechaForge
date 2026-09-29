@@ -173,6 +173,13 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       inyectados, ajuste fino de deslizadores, giro, pan, zoom, pausa y reinicio de
       vista; HUD con esqueleto y latencia; panel de ajustes).
 - [x] Pruebas `mfmanos` con manos sintéticas y el proceso real de MediaPipe.
+- [x] Agarre con dos puños en 3D real: posición de cada mano en metros (cámara
+      estenopeica), desplazamiento en x, y, z, giro e inclinación; vista 3D de los
+      puños en el HUD; modo puño que bloquea el pellizco.
+- [x] Pellizco con la mano lejos: compensación por distancia y etiqueta estable de
+      cada mano; zona de interacción y minimapa más grandes; opción 1280×720.
+- [ ] Probarlo con la webcam real y ajustar los valores por defecto (compensación,
+      zonas muertas, campo de visión).
 
 ## ✅ Laboratorio matemático 3D
 - [x] Modo **∑ Laboratorio** dentro de MechaForge (la escena del simulador se conserva)

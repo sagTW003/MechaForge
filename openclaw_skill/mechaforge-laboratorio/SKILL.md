@@ -106,7 +106,7 @@ humano pregunta cómo funciona, explícale los gestos:
 | ☝ Índice extendido | Mueve el cursor y muestra el tooltip |
 | 🤏 Pellizco pulgar–índice | Gira la gráfica 3D o desplaza la 2D; sobre un deslizador, ajuste fino; sobre un botón, clic |
 | 🤏🤏 Pellizco con las dos manos | Zoom: separarlas acerca la cámara |
-| ✊✊ Las dos manos en puño | Mueve la escena en 3D: arrastrar la traslada, acercar o alejar las manos de la cámara la lleva en profundidad y girarlas como un volante la rota |
+| ✊✊ Las dos manos en puño | Agarra la escena en 3D como un objeto: se desplaza con las manos, empujar hacia la pantalla la aleja (tirar la acerca), adelantar una mano y retrasar la otra la gira, doblar las muñecas la inclina |
 | 🖐 Palma abierta | Pausa; mantenida 1 s, reinicia la vista |
 
 Detalles del pellizco:
@@ -114,7 +114,11 @@ Detalles del pellizco:
 - junto al cursor, un medidor muestra la distancia y la fase: acercando, activo o
   soltando;
 - con precisión adaptativa, los movimientos lentos son finos (×0.35) y los rápidos
-  van 1:1.
+  van 1:1;
+- modo puño: mientras una mano está en puño, sus pellizcos no cuentan hasta que se
+  abre (apuntar o palma);
+- con la mano lejos, los umbrales crecen solos. Si aun así no detecta el pellizco,
+  sugiere «Compensación con la mano lejos» o «Cámara en 1280×720» en el panel.
 
 Todo se ajusta en el panel «✋ Seguimiento de manos». Guía completa:
 `docs/SEGUIMIENTO_MANOS.md` del repositorio.
