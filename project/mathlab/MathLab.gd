@@ -426,6 +426,12 @@ func _apply_clip() -> void:
 func go_back() -> void:
 	closed.emit()
 
+## Si la aplicación se cierra con el laboratorio abierto, MechaForge está fuera del
+## árbol y nadie lo liberaría (el ejecutable exportado terminaba con código 127).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(main_scene) and not main_scene.is_inside_tree():
+		main_scene.free()
+
 func _status(t: String) -> void:
 	if status_label:
 		status_label.text = t
