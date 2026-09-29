@@ -107,6 +107,7 @@ var _ui := {}
 func title() -> String: return "Ecuaciones no lineales"
 func formula() -> String: return FORMULAS[method]
 func uses_time() -> bool: return true
+func planar() -> bool: return true
 func perturb_hint() -> String: return "clic sobre el eje x: fija el punto inicial (o el extremo más cercano del intervalo)"
 func view() -> Dictionary: return {"target": Vector3(0, LIFT, 0), "dist": 8.5, "yaw": -8.0, "pitch": -8.0}
 

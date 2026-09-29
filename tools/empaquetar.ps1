@@ -42,6 +42,10 @@ Write-Host "[4/5] Copiando la aplicación..."
 robocopy $proj (Join-Path $out "app") /E /NFL /NDL /NJH /NJS /NP `
     /XD "$proj\.godot\editor" "$proj\.godot\shader_cache" "$proj\.godot\exported" "$proj\.godot\mono\temp\bin\ExportRelease" "$proj\.godot\mono\temp\bin\ExportDebug" "$proj\obj" "$proj\.godot\mono\temp\obj" /XF *.jpg *.hdr | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falló ($LASTEXITCODE)" }
+# Seguimiento de manos: proceso de Python y modelo (se buscan en ..\handtracking junto a app\).
+$hands = Join-Path $root "tools\handtracking"
+robocopy $hands (Join-Path $out "handtracking") /E /NFL /NDL /NJH /NJS /NP /XD "__pycache__" | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy (handtracking) falló ($LASTEXITCODE)" }
 
 $godotExe = "Godot_v4.7.2-stable_mono_win64.exe"
 Set-Content -Encoding ASCII (Join-Path $out "MechaForge.bat") @"
@@ -85,12 +89,15 @@ if ($Exe) {
     New-Item -ItemType Directory -Force $exeDir | Out-Null
     Write-Host "[Exe] Exportando con el preset 'Windows Desktop'..."
     & $godotCon --headless --path $proj --export-release "Windows Desktop" (Join-Path $exeDir "MechaForge.exe") 2>&1 | Select-String -Pattern "ERROR" | Out-Host
+    robocopy $hands (Join-Path $exeDir "handtracking") /E /NFL /NDL /NJH /NJS /NP /XD "__pycache__" | Out-Null
     Set-Content -Encoding UTF8 (Join-Path $exeDir "LEEME.txt") @"
 MechaForge - ejecutable para Windows
 ====================================
 Doble clic en MechaForge.exe (MechaForge.console.exe muestra el registro).
 Requisitos: Windows 10/11, GPU con Vulkan y el runtime de .NET 8 (Microsoft.NETCore.App 8.x).
 Conserva juntos MechaForge.exe, MechaForge.pck y la carpeta data_MechaForge_windows_x86_64.
+Seguimiento de manos (opcional, boton Manos del Laboratorio): carpeta handtracking;
+requiere Python 3 con: python -m pip install -r handtracking\requirements.txt
 Los datos del usuario (proyectos, autoguardado, API de OpenClaw, HDRI) estan en:
   %APPDATA%\Godot\app_userdata\MechaForge
 "@

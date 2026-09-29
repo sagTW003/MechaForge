@@ -163,6 +163,17 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       en engranajes, prealimentación en control de posición, ángulo de unión exacto
       (sin deriva) y eje de la unión solidario al cuerpo (vehículos que giran).
 
+## ✅ Seguimiento de manos (Laboratorio)
+- [x] `mf_hands.py`: webcam (hilo de captura con el último fotograma) + MediaPipe
+      HandLandmarker en un proceso aparte → UDP 127.0.0.1 con token; autoprueba sin
+      cámara; se cierra solo si MechaForge termina.
+- [x] Tres capas en Godot: `HandTracker` (proceso, UDP, One Euro), `GestureRecognizer`
+      (apuntar, pellizco, dos pellizcos, palma; histéresis, antirrebote, deriva del
+      clic y al soltar, zona de interacción) y `VirtualLabController` (cursor, clics
+      inyectados, ajuste fino de deslizadores, giro, pan, zoom, pausa y reinicio de
+      vista; HUD con esqueleto y latencia; panel de ajustes).
+- [x] Pruebas `mfmanos` con manos sintéticas y el proceso real de MediaPipe.
+
 ## ✅ Laboratorio matemático 3D
 - [x] Modo **∑ Laboratorio** dentro de MechaForge (la escena del simulador se conserva)
       con escenario holodeck, post-procesado completo y cámara amortiguada con vistas

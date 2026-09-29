@@ -284,7 +284,7 @@ func _ready() -> void:
 		ft.main = self
 		add_child(ft)
 		ft.call_deferred("run")
-	elif "mflab" in OS.get_cmdline_user_args() or "mflabtest" in OS.get_cmdline_user_args() or "mflabshot" in OS.get_cmdline_user_args():
+	elif "mflab" in OS.get_cmdline_user_args() or "mflabtest" in OS.get_cmdline_user_args() or "mflabshot" in OS.get_cmdline_user_args() or "mfmanos" in OS.get_cmdline_user_args():
 		call_deferred("_open_math_lab")
 	elif "mfmulti" in OS.get_cmdline_user_args():
 		var mt: Node = load("res://tests/MultimetroTests.gd").new()
@@ -5039,6 +5039,11 @@ func _swap_to_lab() -> void:
 		t.lab = math_lab
 		math_lab.add_child(t)
 		t.call_deferred("run")
+	elif "mfmanos" in ua:
+		var ht: Node = load("res://tests/HandTests.gd").new()
+		ht.lab = math_lab
+		math_lab.add_child(ht)
+		ht.call_deferred("run")
 
 func _close_math_lab() -> void:
 	call_deferred("_swap_from_lab")

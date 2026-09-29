@@ -26,3 +26,6 @@ project/ai_bridge/openclaw_config.json
 
 # --- Paquetes generados (tools\empaquetar.ps1) ---
 dist/
+
+# --- Cachés de Python ---
+__pycache__/

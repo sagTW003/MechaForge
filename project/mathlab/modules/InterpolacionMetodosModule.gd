@@ -91,6 +91,7 @@ var _sel: int = -1
 var _ui := {}
 
 func title() -> String: return "Métodos de interpolación"
+func planar() -> bool: return true
 func formula() -> String: return "pₙ(xᵢ) = yᵢ,  i = 0 … n − 1   ·   error f(x) − p(x) = f⁽ⁿ⁾(ξ)/n! · Π(x − xᵢ)"
 func perturb_hint() -> String: return "arrastra un nodo en vertical" if free_data else "clic: punto x* donde se evalúan los métodos"
 func view() -> Dictionary: return {"target": Vector3(0, LIFT, 0), "dist": 8.0, "yaw": -6.0, "pitch": -6.0}

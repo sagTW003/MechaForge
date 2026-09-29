@@ -278,8 +278,8 @@ intacta y se vuelve con **← MechaForge** (Esc).
   entorno (reflejos tipo HDRI), suelo con rejilla luminosa y reflejos (SSR), luz con
   sombras suaves, bloom suave, SSAO, SSIL, niebla volumétrica, tonemapping AgX y
   profundidad de campo opcional (**Macro**).
-- **Cámara** orbital amortiguada (arrastrar/rueda), vistas **Perspectiva**, **Superior
-  2D** (ortográfica, mapas de calor y contornos) e **Isométrica**, y **🎯 Encuadrar** (F)
+- **Cámara** orbital amortiguada (arrastrar/rueda), vistas **3D** (perspectiva), **2D**
+  (superior ortográfica, mapas de calor y contornos) e **Iso** (isométrica), y **🎯 Encuadrar** (F)
   que recorre los puntos críticos de cada módulo (crestas, ceros, polos, equilibrios…).
 - **✋ Perturbar** (P): clic/arrastre sobre la superficie para crear pulsos, inyectar calor,
   pintar barreras de potencial, fijar puntos iniciales… **Tooltip 3D** flotante con
@@ -329,6 +329,31 @@ intacta y se vuelve con **← MechaForge** (Esc).
 
 ![Sistemas lineales](docs/demo_lab_sistemas.png)
 *Eliminación gaussiana geométrica: tras dos pasos el tercer plano es horizontal y el segundo paralelo al eje x.*
+
+#### 🖐 Seguimiento de manos
+
+El botón **🖐 Manos** (o la tecla **H**) del Laboratorio permite manejarlo con las
+manos delante de la webcam. Usa MediaPipe HandLandmarker en un proceso aparte, con
+inferencia de unos 11 ms en CPU, y un filtro One Euro contra el temblor.
+
+| Gesto | Acción |
+|---|---|
+| ☝ Apuntar | Cursor y tooltip. |
+| 🤏 Pellizco | Gira la gráfica 3D, desplaza la 2D, ajusta deslizadores (ajuste fino ×3) o pulsa botones. |
+| 🤏🤏 Pellizco con las dos manos | Zoom. |
+| 🖐 Palma abierta | Pausa; mantenida 1 s, reinicia la vista. |
+
+- Tiene histéresis (el pellizco se activa a 3 cm y se suelta a 4,5 cm), antirrebote
+  y corrección de la deriva al pellizcar y al soltar.
+- La zona de interacción, a la altura del pecho, evita el «brazo de gorila».
+
+Requiere Python 3 con `pip install -r tools/handtracking/requirements.txt`. La cámara
+solo se usa mientras está activo y no se guarda ninguna imagen. Guía completa, con la
+arquitectura y cómo enlazar los eventos, en
+[docs/SEGUIMIENTO_MANOS.md](docs/SEGUIMIENTO_MANOS.md).
+
+![Manos](docs/demo_lab_manos.png)
+*Pellizco con la mano derecha girando la onda (cursor naranja); en el minimapa, el esqueleto de las dos manos y la zona de interacción.*
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
@@ -438,6 +463,7 @@ cada copia ejecutando las pruebas dentro de ella.
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
 | Laboratorio matemático (16 módulos, motor de expresiones y API) | `mflabtest` |
+| Seguimiento de manos (filtro, gestos, controlador, UDP y proceso de MediaPipe) | `mfmanos` |
 
 ## Arquitectura
 

@@ -38,7 +38,16 @@
 | `F` | Encuadrar el siguiente punto crítico |
 | `P` | Alternar la herramienta Orbitar / **Perturbar** |
 | `Espacio` / `R` | Pausa / reiniciar el módulo |
+| `H` | Activar o desactivar el seguimiento de manos (🖐 Manos) |
 | `Esc` | Volver a MechaForge |
+
+### Gestos con la mano (🖐 Manos)
+| Gesto | Acción |
+|---|---|
+| ☝ Índice extendido | Mover el cursor |
+| 🤏 Pellizco pulgar–índice | Girar la gráfica 3D · desplazar la 2D · ajustar un deslizador · pulsar un botón |
+| 🤏🤏 Pellizco con las dos manos | Zoom (separar = acercar) |
+| 🖐 Palma abierta | Pausa; mantenida 1 s reinicia la vista |
 
 ## Multímetro (📟)
 | Control | Acción |

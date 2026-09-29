@@ -12,6 +12,7 @@ extends Node3D
 ## Escenario holodeck con post-procesado, cámara orbital amortiguada (perspectiva,
 ## superior 2D, isométrica), herramienta «Perturbar», tooltip 3D flotante y
 ## planos de corte X/Y/Z.
+## Seguimiento de manos opcional (botón «🖐 Manos» o tecla H): handtracking/.
 
 signal closed
 
@@ -81,6 +82,8 @@ var status_label: Label
 var pillar_buttons: Array = []
 var tool_buttons: Array = []
 var play_button: Button
+var hands: VirtualLabController
+var hands_button: Button
 var speed_option: OptionButton
 var view_buttons: Array = []
 var _info_accum: float = 0.0
@@ -271,6 +274,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_SPACE: toggle_play()
 			KEY_R: reset_module()
 			KEY_P: set_tool(Tool.PERTURBAR if tool == Tool.ORBITAR else Tool.ORBITAR)
+			KEY_H: toggle_hands(not (hands != null and hands.enabled))
 			KEY_ESCAPE: go_back()
 
 func _pick(screen: Vector2):
@@ -337,6 +341,38 @@ func set_tool(t: int) -> void:
 func toggle_play() -> void:
 	playing = not playing
 	play_button.text = "⏸" if playing else "▶"
+
+## Vista inicial del módulo (sin cambiar el modo de vista).
+func reset_view() -> void:
+	if module == null:
+		return
+	var v: Dictionary = module.view()
+	cam.target = v["target"]
+	cam.distance = float(v["dist"])
+	if cam.view_mode == LabCamera.ViewMode.PERSPECTIVA:
+		cam.yaw = deg_to_rad(float(v["yaw"]))
+		cam.pitch = deg_to_rad(float(v["pitch"]))
+	else:
+		cam.set_view(cam.view_mode)
+
+## Activa o desactiva el seguimiento de manos (crea el controlador la primera vez).
+func toggle_hands(on: bool) -> void:
+	if hands == null:
+		hands = VirtualLabController.new()
+		add_child(hands)
+		hands.setup(self)
+		hands.build_panel(ui)
+		hands.enabled_changed.connect(func(v):
+			if hands_button:
+				hands_button.set_pressed_no_signal(v))
+	if on:
+		hands.panel.visible = true
+		hands.panel.set_collapsed(false)
+		var vp := get_viewport().get_visible_rect().size
+		hands.panel.position = Vector2(vp.x - 620, 56)
+	hands.set_enabled(on)
+	if hands_button:
+		hands_button.set_pressed_no_signal(hands.enabled)
 
 func set_speed(s: float) -> void:
 	var speeds := [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
@@ -507,10 +543,11 @@ func _topbar() -> Control:
 		var idx := i
 		pillar_buttons.append(_tb(hb, PILLARS[i], func(): open_pillar(idx), true))
 	hb.add_child(VSeparator.new())
-	var views := ["Perspectiva", "Superior 2D", "Isométrica"]
+	var views := ["3D", "2D", "Iso"]
+	var view_tips := ["Perspectiva (tecla 1)", "Superior 2D, ortográfica: mapas de calor y contornos (tecla 2)", "Isométrica (tecla 3)"]
 	for i in range(3):
 		var vi := i
-		var b := _tb(hb, views[i], func(): set_view(vi), true, "Tecla %d" % (i + 1))
+		var b := _tb(hb, views[i], func(): set_view(vi), true, view_tips[i])
 		b.button_pressed = i == 0
 		view_buttons.append(b)
 	_tb(hb, "🎯 Encuadrar", frame_next, false, "Recorre los puntos críticos (F)")
@@ -532,6 +569,7 @@ func _topbar() -> Control:
 	hb.add_child(VSeparator.new())
 	var macro := _tb(hb, "Macro", func(): pass, true, "Profundidad de campo (efecto macro)")
 	macro.toggled.connect(func(v): stage.set_macro(v, cam.distance))
+	hands_button = _tb(hb, "🖐 Manos", func(): toggle_hands(hands_button.button_pressed), true, "Seguimiento de manos con la cámara (H): apuntar, pellizcar, zoom con dos manos, palma para pausar")
 	_tb(hb, "Cortes", func():
 		clip_panel.visible = true
 		clip_panel.set_collapsed(not clip_panel.is_collapsed()), false, "Planos de corte X/Y/Z")

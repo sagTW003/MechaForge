@@ -137,6 +137,35 @@ func _t_api() -> void:
 	_http_ok = h.has("result") and str(h["result"].get("modulo", "")) == "onda"
 	check(_http_ok, "API HTTP: lab_get_state responde por 127.0.0.1 con el laboratorio abierto")
 
+## Captura del HUD de manos con manos sintéticas (sin cámara): la derecha pellizca y
+## gira la gráfica; la izquierda está en reposo.
+func _hands_demo() -> void:
+	var ht = load("res://tests/HandTests.gd").new()
+	lab.toggle_hands(false)
+	var ctrl: VirtualLabController = lab.hands
+	ctrl.enabled = true
+	ctrl.move_mouse = false
+	ctrl.hud.visible = true
+	ctrl.tracker.status_text = "Demostración con manos sintéticas (sin cámara)"
+	var frames := []
+	for k in range(20):
+		frames.append(["point", Vector2(0.46, 0.5)])
+	for k in range(10):
+		frames.append(["pinch", Vector2(0.46, 0.5)])
+	for k in range(40):
+		frames.append(["pinch", Vector2(0.46 + 0.004 * k, 0.5 - 0.001 * k)])
+	for f in frames:
+		ht.t += 1.0 / 60.0
+		var right: Dictionary = ht.hand(f[0], f[1], "Right", 1.0, ctrl.recognizer)
+		var left: Dictionary = ht.hand("fist", Vector2(0.3, 0.62), "Left", 1.0, ctrl.recognizer)
+		right["t"] = ht.t
+		left["t"] = ht.t
+		ctrl.tracker.hands = [right, left]
+		ctrl.tracker.last_packet = HandTracker.now()
+		ctrl._on_hands([right, left])
+		await get_tree().process_frame
+	ht.free()
+
 func _shot(ua: PackedStringArray) -> void:
 	var i := ua.find("mflabshot")
 	var out: String = ua[i + 1]
@@ -146,6 +175,8 @@ func _shot(ua: PackedStringArray) -> void:
 	await get_tree().process_frame
 	if lab.module.has_method("demo"):
 		await lab.module.demo(extra)
+	if "manos" in extra:
+		await _hands_demo()
 	if "superior" in extra:
 		lab.set_view(LabCamera.ViewMode.SUPERIOR)
 	if "iso" in extra:
