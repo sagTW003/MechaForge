@@ -10,8 +10,15 @@ extends Node
 ##                      · sobre la escena 3D: giro orbital (o perturbación si la
 ##                        herramienta «✋ Perturbar» está activa);
 ##                      · en vista superior 2D o en módulos planos: desplazamiento.
-##   Dos pellizcos      zoom por la variación de distancia entre las manos.
+##   Dos pellizcos      zoom por la variación de distancia entre las manos
+##                      (ratio^zoom_sens: más sensible que 1:1).
+##   Dos puños          agarra la escena: moverlos la traslada en 3D (pantalla y
+##                      profundidad, acercando o alejando las manos de la cámara) y
+##                      girarlos como un volante la rota.
 ##   Palma abierta      congela la interacción; mantenida 1 s reinicia la vista.
+##
+## Precisión adaptativa del pellizco: los movimientos lentos de la mano se escalan
+## por slow_gain (ajuste fino) y los rápidos van 1:1, como la aceleración de un ratón.
 ##
 ## Los clics y arrastres sobre la interfaz se inyectan como eventos de ratón en el
 ## viewport (Viewport.push_input), así funcionan con cualquier control sin código
@@ -28,6 +35,15 @@ var orbit_gain: float = 0.9
 var fine: float = 3.0
 var show_skeleton: bool = true
 var move_mouse: bool = true     # mover también el puntero del sistema (resalta los controles bajo el cursor)
+var zoom_sens: float = 1.8      # exponente del zoom con dos manos (1 = proporcional)
+var adaptive: bool = true       # precisión adaptativa en los arrastres con pellizco
+var slow_gain: float = 0.35     # ganancia en movimientos lentos (≤ SLOW_V)
+var grab_gain: float = 1.0      # traslación con dos puños
+var grab_depth: float = 1.5     # profundidad: fracción de la distancia de la cámara por unidad de ln(escala)
+var grab_rotate: bool = true    # girar con los dos puños («volante»)
+var last_gain: float = 1.0      # última ganancia aplicada (para el HUD)
+const SLOW_V := 120.0           # px/s: por debajo, ganancia mínima
+const FAST_V := 900.0           # px/s: por encima, 1:1
 var frozen: bool = false
 var cursor := Vector2(-1, -1)   # píxeles
 var cursor_hand: String = ""
@@ -40,6 +56,9 @@ var _slider: Range
 var _slider_value: float = 0.0
 var _gui_pressed: bool = false
 var injected: Array = []        # últimos clics inyectados [pulsado, posición] (diagnóstico y pruebas)
+var _frame_dt: float = 1.0 / 30.0
+var _last_t: float = 0.0
+var _zoom_acc: float = 0.0
 
 func setup(p_lab: Node) -> void:
 	lab = p_lab
@@ -59,6 +78,9 @@ func setup(p_lab: Node) -> void:
 	recognizer.palm_reset.connect(_on_palm_reset)
 	recognizer.palm_ended.connect(_on_palm_end)
 	recognizer.hand_lost.connect(_on_hand_lost)
+	recognizer.grab_started.connect(_on_grab_start)
+	recognizer.grab_moved.connect(_on_grab_move)
+	recognizer.grab_ended.connect(_on_grab_end)
 	_load_settings()
 	hud = Hud.new()
 	hud.ctrl = self
@@ -73,6 +95,11 @@ func _load_settings() -> void:
 	fine = float(s.get("fine", fine))
 	show_skeleton = bool(s.get("skeleton", show_skeleton))
 	move_mouse = bool(s.get("move_mouse", move_mouse))
+	zoom_sens = float(s.get("zoom_sens", zoom_sens))
+	adaptive = bool(s.get("adaptive", adaptive))
+	slow_gain = float(s.get("slow_gain", slow_gain))
+	grab_gain = float(s.get("grab_gain", grab_gain))
+	grab_rotate = bool(s.get("grab_rotate", grab_rotate))
 	recognizer.pinch_on_cm = float(s.get("pinch_on", recognizer.pinch_on_cm))
 	recognizer.pinch_off_cm = float(s.get("pinch_off", recognizer.pinch_off_cm))
 	var bs := float(s.get("box_size", 0.6))
@@ -82,7 +109,8 @@ func _load_settings() -> void:
 func save_settings() -> void:
 	tracker.settings = {"primary": primary, "orbit_gain": orbit_gain, "fine": fine, "skeleton": show_skeleton, "move_mouse": move_mouse,
 		"pinch_on": recognizer.pinch_on_cm, "pinch_off": recognizer.pinch_off_cm,
-		"box_size": recognizer.box_size.x, "box_y": recognizer.box_center.y}
+		"box_size": recognizer.box_size.x, "box_y": recognizer.box_center.y, "zoom_sens": zoom_sens,
+		"adaptive": adaptive, "slow_gain": slow_gain, "grab_gain": grab_gain, "grab_rotate": grab_rotate}
 	tracker.save_config()
 
 func set_enabled(on: bool) -> void:
@@ -115,7 +143,11 @@ func _on_status(text: String, level: String) -> void:
 			enabled_changed.emit(false)
 
 func _on_hands(hands: Array) -> void:
-	recognizer.update(hands, hands[0]["t"] if not hands.is_empty() else HandTracker.now())
+	var t: float = hands[0]["t"] if not hands.is_empty() else HandTracker.now()
+	if _last_t > 0.0:
+		_frame_dt = clampf(t - _last_t, 1.0 / 240.0, 0.1)
+	_last_t = t
+	recognizer.update(hands, t)
 	if hud:
 		hud.queue_redraw()
 
@@ -190,7 +222,14 @@ func _move_to(px: Vector2, rel: Vector2, mask: int = 0) -> void:
 func _is_cursor_hand(hand: String) -> bool:
 	if cursor_hand != "" and cursor_hand != hand and drag_mode != "":
 		return false
-	return primary == "" or hand == primary or recognizer.gesture_of(primary) in [GestureRecognizer.Gesture.NONE, GestureRecognizer.Gesture.IDLE]
+	return primary == "" or hand == primary or recognizer.gesture_of(primary) in [GestureRecognizer.Gesture.NONE, GestureRecognizer.Gesture.IDLE, GestureRecognizer.Gesture.FIST]
+
+## Ganancia de un arrastre según la velocidad de la mano (precisión adaptativa).
+func ballistic(rel: Vector2) -> float:
+	if not adaptive:
+		return 1.0
+	var speed := rel.length() / _frame_dt
+	return lerpf(slow_gain, 1.0, smoothstep(SLOW_V, FAST_V, speed))
 
 # --- Eventos de gestos -------------------------------------------------------------------
 
@@ -238,18 +277,20 @@ func _on_pinch_move(hand: String, pos: Vector2, _delta: Vector2) -> void:
 	var px := to_px(pos)
 	var rel := px - cursor
 	cursor = px
+	var g := ballistic(rel)
+	last_gain = g
 	match drag_mode:
 		"slider":
 			if is_instance_valid(_slider):
 				var w := maxf(40.0, _slider.size.x)
-				_slider_value += rel.x * (_slider.max_value - _slider.min_value) / (w * fine)
+				_slider_value += rel.x * g * (_slider.max_value - _slider.min_value) / (w * fine)
 				_slider.value = clampf(_slider_value, _slider.min_value, _slider.max_value)
 		"gui", "perturb":
 			_move_to(px, rel, MOUSE_BUTTON_MASK_LEFT)
 		"orbit":
-			lab.cam.orbit(rel.x * orbit_gain, rel.y * orbit_gain)
+			lab.cam.orbit(rel.x * orbit_gain * g, rel.y * orbit_gain * g)
 		"pan":
-			lab.cam.pan(rel.x, rel.y)
+			lab.cam.pan(rel.x * g, rel.y * g)
 
 func _on_pinch_end(hand: String, _pos: Vector2, _cancelled: bool) -> void:
 	if hand != cursor_hand:
@@ -263,10 +304,36 @@ func _cancel_drag() -> void:
 	drag_mode = ""
 	_slider = null
 
+## Zoom con dos manos: distancia de la cámara × ratio^(−zoom_sens). Los cambios
+## minúsculos se acumulan (zona muerta) para que el temblor no haga «respirar» la vista.
 func _on_zoom(ratio: float, _total: float) -> void:
+	if frozen or ratio <= 0.0:
+		return
+	_zoom_acc += log(ratio)
+	if absf(_zoom_acc) < 0.001:
+		return
+	lab.cam.zoom(clampf(exp(-zoom_sens * _zoom_acc), 0.7, 1.4))
+	_zoom_acc = 0.0
+
+func _on_grab_start() -> void:
+	_cancel_drag()
+	drag_mode = "grab"
+
+## Dos puños: traslación en el plano de la pantalla, profundidad y giro.
+func _on_grab_move(d: Vector3, angle: float) -> void:
 	if frozen:
 		return
-	lab.cam.zoom(1.0 / clampf(ratio, 0.8, 1.25))
+	var vp := _vp()
+	lab.cam.pan(d.x * vp.x * grab_gain, d.y * vp.y * grab_gain)
+	# Acercar las manos a la cámara (escala mayor) trae la escena hacia uno.
+	var fwd: Vector3 = -lab.cam.global_transform.basis.z
+	lab.cam.target += fwd * d.z * lab.cam.distance * grab_depth * grab_gain
+	if grab_rotate and absf(angle) > 0.002:
+		lab.cam.yaw -= angle * 1.5
+
+func _on_grab_end() -> void:
+	if drag_mode == "grab":
+		drag_mode = ""
 
 func _on_palm_start(_hand: String) -> void:
 	_cancel_drag()
@@ -325,13 +392,28 @@ func build_panel(parent: CanvasLayer) -> FloatingPanel:
 	LabUI.slider(box, "Ajuste fino de deslizadores (×)", 1.0, 8.0, 0.5, fine, func(v):
 		fine = v
 		save_settings(), "%.1f")
+	LabUI.check(box, "Precisión adaptativa (lento = fino)", adaptive, func(v):
+		adaptive = v
+		save_settings())
+	LabUI.slider(box, "Ganancia en movimientos lentos", 0.1, 1.0, 0.05, slow_gain, func(v):
+		slow_gain = v
+		save_settings())
+	LabUI.slider(box, "Sensibilidad del zoom (dos pellizcos)", 0.5, 4.0, 0.1, zoom_sens, func(v):
+		zoom_sens = v
+		save_settings(), "%.1f")
+	LabUI.slider(box, "Sensibilidad de los dos puños", 0.2, 3.0, 0.05, grab_gain, func(v):
+		grab_gain = v
+		save_settings())
+	LabUI.check(box, "Dos puños: girar como un volante", grab_rotate, func(v):
+		grab_rotate = v
+		save_settings())
 	LabUI.check(box, "Mostrar el esqueleto de las manos", show_skeleton, func(v):
 		show_skeleton = v
 		save_settings())
 	LabUI.check(box, "Mover también el puntero del ratón", move_mouse, func(v):
 		move_mouse = v
 		save_settings())
-	LabUI.note(box, "☝ apuntar: cursor · 🤏 pellizco: girar, arrastrar deslizadores, pulsar · 🤏🤏 dos manos: zoom · 🖐 palma: pausa (1 s: reinicia la vista). La cámara solo se usa mientras el seguimiento está activo; no se guarda ninguna imagen.")
+	LabUI.note(box, "☝ apuntar: cursor · 🤏 pellizco: girar, arrastrar deslizadores, pulsar · 🤏🤏 dos manos: zoom · ✊✊ dos puños: mover la escena en 3D (acercar/alejar las manos = profundidad, girarlas = rotar) · 🖐 palma: pausa (1 s: reinicia la vista). La cámara solo se usa mientras el seguimiento está activo; no se guarda ninguna imagen.")
 	panel.set_collapsed(true)
 	panel.visible = false
 	return panel
@@ -340,6 +422,9 @@ func build_panel(parent: CanvasLayer) -> FloatingPanel:
 
 const BONES := [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
 	[9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]]
+
+const PHASE_COLORS := {"lejos": Color(0.5, 0.55, 0.6), "acercando": Color(1.0, 0.9, 0.35), "cerrando": Color(1.0, 0.75, 0.3),
+	"activo": Color(1.0, 0.6, 0.15), "soltando": Color(0.9, 0.9, 1.0)}
 
 class Hud extends Control:
 	var ctrl
@@ -374,6 +459,13 @@ class Hud extends Control:
 					draw_line(mm.position + Vector2(lm[b[0]].x, lm[b[0]].y) * mm.size, mm.position + Vector2(lm[b[1]].x, lm[b[1]].y) * mm.size, col, 1.5, true)
 				for p in lm:
 					draw_circle(mm.position + Vector2(p.x, p.y) * mm.size, 1.8, col.lightened(0.3))
+				# Pulgar–índice coloreado por la fase del pellizco.
+				var ph := rec.pinch_phase(str(h["label"]))
+				var a4 := mm.position + Vector2(lm[4].x, lm[4].y) * mm.size
+				var a8 := mm.position + Vector2(lm[8].x, lm[8].y) * mm.size
+				draw_line(a4, a8, VirtualLabController.PHASE_COLORS.get(ph, Color(0.5, 0.5, 0.55)), 2.5 if ph != "lejos" else 1.0, true)
+				if ph == "activo":
+					draw_circle((a4 + a8) * 0.5, 3.5, VirtualLabController.PHASE_COLORS["activo"])
 				var wr: Vector3 = lm[0]
 				draw_string(font, mm.position + Vector2(wr.x, wr.y) * mm.size + Vector2(-20, 14), "%s · %s" % ["D" if str(h["label"]) == "Right" else "I", GestureRecognizer.NAMES[g]], HORIZONTAL_ALIGNMENT_LEFT, -1, 10, col)
 		var live := tr.running
@@ -382,6 +474,23 @@ class Hud extends Control:
 		draw_multiline_string(font, mm.position + Vector2(20, 14), line, HORIZONTAL_ALIGNMENT_LEFT, mm.size.x - 26, 10, 2, Color(0.8, 0.86, 0.94))
 		if live and tr.hands.is_empty():
 			draw_string(font, mm.position + Vector2(10, mm.size.y * 0.55), "Muestra la mano a la cámara", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.7, 0.8, 0.9))
+		# Agarre con dos puños: línea entre las palmas y cruz de movimiento.
+		if rec.grabbing:
+			var pts := []
+			for label in rec.states:
+				if int(rec.states[label]["gesture"]) == GestureRecognizer.Gesture.FIST:
+					pts.append((rec.states[label]["palm_c"] as Vector2) * vp)
+			if pts.size() >= 2:
+				var gc := Color(0.55, 1.0, 0.6)
+				draw_line(pts[0], pts[1], gc, 3.0, true)
+				for q in pts:
+					draw_arc(q, 18.0, 0.0, TAU, 36, gc, 3.0, true)
+				var m: Vector2 = (pts[0] + pts[1]) * 0.5
+				for dirv in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+					draw_line(m + dirv * 6.0, m + dirv * 20.0, gc, 2.5, true)
+					draw_line(m + dirv * 20.0, m + dirv * 15.0 + dirv.orthogonal() * 4.0, gc, 2.5, true)
+					draw_line(m + dirv * 20.0, m + dirv * 15.0 - dirv.orthogonal() * 4.0, gc, 2.5, true)
+				_label(font, m + Vector2(28, -10), "✊✊ mover en 3D · acerca o aleja las manos: profundidad · gíralas: rotar", 13, gc)
 		# Cursor.
 		var c: Vector2 = ctrl.cursor
 		if c.x < 0.0:
@@ -404,7 +513,37 @@ class Hud extends Control:
 				draw_arc(c, 9.0, -PI * 0.5, -PI * 0.5 + TAU * k, 32, Color(1.0, 0.8, 0.4, 0.8), 2.0, true)
 		if ctrl.frozen:
 			draw_arc(c, 22.0, -PI * 0.5, -PI * 0.5 + TAU * ctrl.palm_progress, 48, Color(1, 1, 1, 0.9), 3.0, true)
-			draw_string(font, c + Vector2(26, 5), "⏸ pausa · mantén para reiniciar la vista", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1))
-		elif ctrl.drag_mode != "" and ctrl.drag_mode != "none":
+			_label(font, c + Vector2(28, 5), "⏸ pausa · mantén para reiniciar la vista", 12, Color(1, 1, 1))
+		elif ctrl.drag_mode != "" and ctrl.drag_mode != "none" and ctrl.drag_mode != "grab":
 			var names := {"slider": "ajuste fino", "gui": "clic", "orbit": "girar", "pan": "desplazar", "perturb": "perturbar"}
-			draw_string(font, c + Vector2(20, 5), str(names.get(ctrl.drag_mode, "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col2)
+			var txt := str(names.get(ctrl.drag_mode, ""))
+			if ctrl.drag_mode in ["slider", "orbit", "pan"] and ctrl.adaptive:
+				txt += "  ·  precisión ×%.2f" % ctrl.last_gain
+			_label(font, c + Vector2(22, 5), txt, 12, col2)
+		# Medidor del pellizco junto al cursor.
+		if not ctrl.frozen and ctrl.cursor_hand != "" and rec.states.has(ctrl.cursor_hand):
+			_pinch_meter(font, c + Vector2(20, 18), rec, ctrl.cursor_hand)
+
+	## Barra 0–8 cm con la zona de activación (naranja) y la de histéresis (amarilla),
+	## la distancia actual pulgar–índice y la fase del gesto.
+	func _pinch_meter(font: Font, pos: Vector2, rec: GestureRecognizer, label: String) -> void:
+		var ph := rec.pinch_phase(label)
+		if ph == "lejos":
+			return
+		var cm := float(rec.states[label]["pinch_cm"])
+		var w := 120.0
+		var h := 6.0
+		var maxcm := 8.0
+		draw_rect(Rect2(pos, Vector2(w, h)), Color(0.05, 0.08, 0.12, 0.9))
+		draw_rect(Rect2(pos, Vector2(w * rec.pinch_on_cm / maxcm, h)), Color(1.0, 0.6, 0.2, 0.4))
+		draw_rect(Rect2(pos + Vector2(w * rec.pinch_on_cm / maxcm, 0), Vector2(w * (rec.pinch_off_cm - rec.pinch_on_cm) / maxcm, h)), Color(1.0, 0.85, 0.3, 0.22))
+		var col: Color = VirtualLabController.PHASE_COLORS.get(ph, Color.WHITE)
+		var x := clampf(cm / maxcm, 0.0, 1.0) * w
+		draw_rect(Rect2(pos + Vector2(x - 1.5, -3), Vector2(3, h + 6)), col)
+		_label(font, pos + Vector2(0, h + 15), "pellizco %.1f cm · %s" % [cm, ph], 11, col)
+
+	## Texto con un fondo oscuro para que se lea sobre cualquier escena.
+	func _label(font: Font, pos: Vector2, text: String, size: int, col: Color) -> void:
+		var sz := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+		draw_rect(Rect2(pos + Vector2(-4, -sz.y + 3), sz + Vector2(8, 4)), Color(0.02, 0.03, 0.05, 0.72))
+		draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)

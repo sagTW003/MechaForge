@@ -95,6 +95,30 @@ Acciones de `lab_control`:
 - `x, y` de `lab_sample` / `lab_perturb` son las coordenadas del tooltip de cada
   módulo (tabla de abajo). Fuera de la superficie visible devuelven un error.
 
+## Seguimiento de manos (lo maneja el humano)
+
+El laboratorio también se controla con las manos delante de la webcam: botón
+«🖐 Manos» o tecla H. **Tú no puedes activarlo**: la API no enciende la cámara. Si el
+humano pregunta cómo funciona, explícale los gestos:
+
+| Gesto | Acción |
+|---|---|
+| ☝ Índice extendido | Mueve el cursor y muestra el tooltip |
+| 🤏 Pellizco pulgar–índice | Gira la gráfica 3D o desplaza la 2D; sobre un deslizador, ajuste fino; sobre un botón, clic |
+| 🤏🤏 Pellizco con las dos manos | Zoom: separarlas acerca la cámara |
+| ✊✊ Las dos manos en puño | Mueve la escena en 3D: arrastrar la traslada, acercar o alejar las manos de la cámara la lleva en profundidad y girarlas como un volante la rota |
+| 🖐 Palma abierta | Pausa; mantenida 1 s, reinicia la vista |
+
+Detalles del pellizco:
+- se activa a 3 cm y se suelta a 4,5 cm (histéresis);
+- junto al cursor, un medidor muestra la distancia y la fase: acercando, activo o
+  soltando;
+- con precisión adaptativa, los movimientos lentos son finos (×0.35) y los rápidos
+  van 1:1.
+
+Todo se ajusta en el panel «✋ Seguimiento de manos». Guía completa:
+`docs/SEGUIMIENTO_MANOS.md` del repositorio.
+
 ## Expresiones
 
 Admiten:

@@ -139,7 +139,7 @@ func _t_api() -> void:
 
 ## Captura del HUD de manos con manos sintéticas (sin cámara): la derecha pellizca y
 ## gira la gráfica; la izquierda está en reposo.
-func _hands_demo() -> void:
+func _hands_demo(fists: bool = false) -> void:
 	var ht = load("res://tests/HandTests.gd").new()
 	lab.toggle_hands(false)
 	var ctrl: VirtualLabController = lab.hands
@@ -148,16 +148,21 @@ func _hands_demo() -> void:
 	ctrl.hud.visible = true
 	ctrl.tracker.status_text = "Demostración con manos sintéticas (sin cámara)"
 	var frames := []
-	for k in range(20):
-		frames.append(["point", Vector2(0.46, 0.5)])
-	for k in range(10):
-		frames.append(["pinch", Vector2(0.46, 0.5)])
-	for k in range(40):
-		frames.append(["pinch", Vector2(0.46 + 0.004 * k, 0.5 - 0.001 * k)])
+	if fists:
+		for k in range(50):
+			var dx := 0.0012 * k
+			frames.append(["fist", Vector2(0.52 + dx, 0.5 - dx * 0.5), "fist", Vector2(0.3 + dx, 0.56 + dx * 0.5)])
+	else:
+		for k in range(20):
+			frames.append(["point", Vector2(0.46, 0.5), "fist", Vector2(0.3, 0.62)])
+		for k in range(10):
+			frames.append(["pinch", Vector2(0.46, 0.5), "fist", Vector2(0.3, 0.62)])
+		for k in range(40):
+			frames.append(["pinch", Vector2(0.46 + 0.0015 * k, 0.5 - 0.0005 * k), "fist", Vector2(0.3, 0.62)])
 	for f in frames:
 		ht.t += 1.0 / 60.0
 		var right: Dictionary = ht.hand(f[0], f[1], "Right", 1.0, ctrl.recognizer)
-		var left: Dictionary = ht.hand("fist", Vector2(0.3, 0.62), "Left", 1.0, ctrl.recognizer)
+		var left: Dictionary = ht.hand(f[2], f[3], "Left", 1.0, ctrl.recognizer)
 		right["t"] = ht.t
 		left["t"] = ht.t
 		ctrl.tracker.hands = [right, left]
@@ -176,7 +181,7 @@ func _shot(ua: PackedStringArray) -> void:
 	if lab.module.has_method("demo"):
 		await lab.module.demo(extra)
 	if "manos" in extra:
-		await _hands_demo()
+		await _hands_demo("punos" in extra)
 	if "superior" in extra:
 		lab.set_view(LabCamera.ViewMode.SUPERIOR)
 	if "iso" in extra:

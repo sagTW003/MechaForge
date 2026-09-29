@@ -61,7 +61,8 @@ fotogramas la limita la cámara: la mayoría dan 30 fps y algunas 60 fps en MJPG
 |---|---|---|
 | ☝ **Apuntar** | Índice extendido, resto cerrados | Mueve el cursor. Sobre la escena 3D aparece el tooltip con coordenadas y valores; sobre la interfaz, los controles se resaltan. |
 | 🤏 **Pellizco** | Pulgar e índice juntos (< 3 cm) | Depende de dónde esté el cursor (ver abajo). |
-| 🤏🤏 **Dos pellizcos** | Pellizcar con ambas manos | La variación de distancia entre las manos hace zoom: separarlas acerca la cámara. |
+| 🤏🤏 **Dos pellizcos** | Pellizcar con ambas manos | Zoom: separarlas acerca la cámara. |
+| ✊✊ **Dos puños** | Cerrar las dos manos | Agarra la escena y la mueve en 3D. |
 | 🖐 **Palma abierta** | Cinco dedos extendidos y separados | Congela la interacción mientras se mantiene. Pasado 1 s, reinicia la vista del módulo (anillo de progreso en el cursor). |
 
 Qué hace el pellizco según dónde esté el cursor:
@@ -73,6 +74,31 @@ Qué hace el pellizco según dónde esté el cursor:
 | La gráfica 3D | Giro orbital. |
 | Una gráfica 2D (vista superior, módulos de tablero) | Desplazamiento (pan). |
 | La escena, con «✋ Perturbar» activa | Perturba la escena: pulsos, calor, barreras… |
+
+**Zoom con dos pellizcos:** la distancia de la cámara se multiplica por
+ratio^(−sensibilidad), con sensibilidad 1,8 por defecto. Por ejemplo, separar las
+manos al doble acerca la cámara ×3,5, más que el 1:1 anterior. Los cambios
+minúsculos del temblor se acumulan en una zona muerta, así la vista no «respira».
+
+**Dos puños:** al cerrar las dos manos se agarra la escena, que se mueve con ellas:
+- **trasladar**: mover las dos manos arrastra la escena en el plano de la pantalla;
+- **profundidad**: acercar las manos a la cámara, que se ven más grandes, la trae
+  hacia uno; alejarlas la aleja;
+- **rotar**: girar la línea entre los dos puños, como un volante, la gira sobre el
+  eje vertical. Se desactiva en el panel.
+
+Un puño solo no hace nada, igual que el reposo. El agarre termina al abrir una de
+las manos.
+
+**Detalle del pellizco:**
+- **Medidor** junto al cursor: una barra de 0 a 8 cm con la zona de activación
+  (naranja, hasta 3 cm) y la de histéresis (amarilla, hasta 4,5 cm), la distancia
+  actual pulgar–índice y la fase: *acercando*, *cerrando*, *activo* o *soltando*.
+- En el minimapa, la línea pulgar–índice de cada mano se colorea con esa fase.
+- **Precisión adaptativa**: la ganancia sube de 0,35 a 1 según la velocidad de la
+  mano (de 120 a 900 px/s), como la aceleración de un ratón. Mover la mano despacio
+  da un ajuste fino de giros, desplazamientos y deslizadores; moverla deprisa
+  recorre mucho. El HUD muestra la ganancia en uso («precisión ×0.36»).
 
 **Ergonomía:**
 - **Zona de interacción**: un rectángulo de la imagen de la cámara, por defecto
@@ -96,7 +122,10 @@ Qué hace el pellizco según dónde esté el cursor:
 - Umbrales del pellizco.
 - Suavizado (corte mínimo del One Euro) y reactividad (β).
 - Sensibilidad de giro y factor del ajuste fino.
-- Mostrar el esqueleto.
+- Precisión adaptativa y su ganancia en movimientos lentos.
+- Sensibilidad del zoom.
+- Sensibilidad de los dos puños y giro de «volante».
+- Mostrar el esqueleto y mover el puntero del ratón.
 
 El HUD (abajo a la derecha) muestra:
 - la imagen de la cámara reducida a esqueleto;
@@ -124,6 +153,8 @@ Las señales de `GestureRecognizer` corresponden a los eventos del diseño:
 | `pinch_ended` | `onPinchEnd` | `hand, pos, cancelled` (true si lo anuló el zoom de dos manos) |
 | `zoom_started` / `zoom_changed` / `zoom_ended` | `onZoomStart/Move/End` | `zoom_changed(ratio_del_fotograma, ratio_total)` |
 | `palm_started` / `palm_held` / `palm_reset` / `palm_ended` | `onPalm…` | `palm_held(hand, progreso 0–1)` |
+| `grab_started` / `grab_moved` / `grab_ended` | `onGrabStart/Move/End` | `grab_moved(delta: Vector3, ángulo)`: delta.x, delta.y en pantalla [0, 1]; delta.z = ln(escala), positivo al acercar las manos a la cámara |
+| `pinch_phase(hand)` | — | «lejos», «acercando», «cerrando», «activo» o «soltando» (función, no señal) |
 | `gesture_changed`, `hand_lost` | — | cambios de estado por mano |
 
 Ejemplo: en un módulo, que el pellizco cambie la constante k de `f(x) = k·x²`:
@@ -152,7 +183,10 @@ Para otra escena de Godot, instancia `HandTracker` y `GestureRecognizer` y en
   - clasificación de gestos;
   - histéresis y antirrebote;
   - cursor sin saltos;
-  - zoom con dos manos;
+  - zoom con dos manos y su sensibilidad;
+  - fases del pellizco;
+  - agarre con dos puños: traslación, profundidad, volante y fin del agarre;
+  - precisión adaptativa;
   - controlador sobre el Laboratorio real: giro, pan, zoom, palma, deslizador y
     botón;
   - canal UDP con token;

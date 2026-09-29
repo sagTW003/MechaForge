@@ -9,6 +9,7 @@ extends RefCounted
 ##   Pellizco pulgar–índice                     pinch_started / pinch_moved / pinch_ended  onPinchStart/Move/End
 ##   Pellizco con las dos manos                 zoom_started / zoom_changed / zoom_ended   onZoomStart/Move/End
 ##   Palma abierta (5 dedos extendidos)         palm_started / palm_held / palm_reset / palm_ended
+##   Puño con las dos manos (agarrar)           grab_started / grab_moved / grab_ended     onGrabStart/Move/End
 ##
 ## · Las posiciones pos van en [0, 1]² de pantalla, tras la «zona de interacción»:
 ##   un rectángulo cómodo de la imagen de la cámara (a la altura del pecho, sin
@@ -20,6 +21,9 @@ extends RefCounted
 ##   medio pulgar–índice) se conserva la posición con un desfase que luego se disipa.
 ## · Distancias en coordenadas métricas de MediaPipe (independientes de lo cerca que
 ##   esté la mano de la cámara).
+## · Agarre con dos puños: el punto medio de las palmas mueve la escena en el plano
+##   de la pantalla; el tamaño aparente de las manos (acercarlas o alejarlas de la
+##   cámara) la mueve en profundidad; girar la línea entre ambas («volante») la gira.
 
 signal pointed(hand: String, pos: Vector2)
 signal pinch_started(hand: String, pos: Vector2)
@@ -32,11 +36,14 @@ signal palm_started(hand: String)
 signal palm_held(hand: String, progress: float)
 signal palm_reset(hand: String)
 signal palm_ended(hand: String)
+signal grab_started()
+signal grab_moved(delta: Vector3, angle: float)   # delta.x/y: pantalla [0, 1]; delta.z: ln(escala); angle: rad
+signal grab_ended()
 signal gesture_changed(hand: String, gesture: int)
 signal hand_lost(hand: String)
 
-enum Gesture { NONE, IDLE, POINT, PINCH, PALM }
-const NAMES := ["sin mano", "reposo", "apuntar", "pellizco", "palma abierta"]
+enum Gesture { NONE, IDLE, POINT, PINCH, PALM, FIST }
+const NAMES := ["sin mano", "reposo", "apuntar", "pellizco", "palma abierta", "puño"]
 
 # Índices de MediaPipe Hands.
 const WRIST := 0
@@ -65,6 +72,8 @@ var box_size := Vector2(0.6, 0.5)
 
 var states := {}                # label → estado de la mano
 var zooming: bool = false
+var grabbing: bool = false
+var _grab_prev := {}
 var _zoom_d0: float = 0.0
 var _zoom_prev: float = 0.0
 var _zoom_lock := {}            # manos que deben soltar el pellizco antes de volver a arrastrar
@@ -85,7 +94,28 @@ func gesture_of(label: String) -> int:
 func _new_state() -> Dictionary:
 	return {"gesture": Gesture.NONE, "candidate": Gesture.NONE, "since": 0.0, "ext": [false, false, false, false, false],
 		"pinch": false, "pinch_cm": 99.0, "pos": Vector2(-1, -1), "offset": Vector2.ZERO, "palm_since": 0.0,
-		"palm_fired": false, "dragging": false, "last_t": 0.0, "anchor": Vector2.ZERO, "pinch_min": 99.0, "holding": false, "reach": 0.0}
+		"palm_fired": false, "dragging": false, "last_t": 0.0, "anchor": Vector2.ZERO, "pinch_min": 99.0, "holding": false, "reach": 0.0,
+		"palm_c": Vector2.ZERO, "scale": 0.0}
+
+## Fase del pellizco de una mano (para el medidor del HUD):
+## "lejos", "acercando" (a menos de 1.6 × el umbral de soltar), "cerrando" (ya bajo el
+## umbral de activación, pendiente del antirrebote), "activo" o "soltando".
+func pinch_phase(label: String) -> String:
+	if not states.has(label):
+		return "lejos"
+	var st: Dictionary = states[label]
+	var cm := float(st["pinch_cm"])
+	if int(st["gesture"]) == Gesture.PINCH:
+		return "soltando" if st["holding"] or cm > pinch_off_cm else "activo"
+	if st["pinch"]:
+		return "cerrando"
+	if cm < pinch_off_cm * 1.6:
+		return "acercando"
+	return "lejos"
+
+## Zona de interacción sin recortar (para el agarre, que puede salirse del rectángulo).
+func to_box(p: Vector3) -> Vector2:
+	return (Vector2(p.x, p.y) - (box_center - box_size * 0.5)) / box_size
 
 ## Procesa un fotograma: hands como las publica HandTracker; t en segundos.
 func update(hands: Array, t: float) -> void:
@@ -100,6 +130,7 @@ func update(hands: Array, t: float) -> void:
 		if not seen.has(label) and t - float(states[label]["last_t"]) > lost_time:
 			_lose(label)
 	_update_zoom()
+	_update_grab()
 
 ## Clasificación instantánea (sin antirrebote) a partir de los landmarks.
 func classify(st: Dictionary, h: Dictionary) -> int:
@@ -129,6 +160,8 @@ func classify(st: Dictionary, h: Dictionary) -> int:
 		return Gesture.PALM
 	if ext[1] and not ext[2] and not ext[3] and not ext[4]:
 		return Gesture.POINT
+	if not ext[0] and not ext[1] and not ext[2] and not ext[3] and not ext[4]:
+		return Gesture.FIST
 	return Gesture.IDLE
 
 func _update_hand(label: String, h: Dictionary, t: float, dt: float) -> void:
@@ -139,6 +172,10 @@ func _update_hand(label: String, h: Dictionary, t: float, dt: float) -> void:
 	var lm: PackedVector3Array = h["lm"]
 	var tip := to_screen(lm[INDEX_TIP])
 	var mid := to_screen((lm[THUMB_TIP] + lm[INDEX_TIP]) * 0.5)
+	# Centro y tamaño aparente de la palma en la imagen (agarre con dos puños).
+	st["palm_c"] = to_box((lm[WRIST] + lm[INDEX_MCP] + lm[PINKY_MCP]) / 3.0)
+	st["scale"] = (Vector2(lm[INDEX_MCP].x - lm[PINKY_MCP].x, lm[INDEX_MCP].y - lm[PINKY_MCP].y).length()
+		+ Vector2(lm[WRIST].x - lm[9].x, lm[WRIST].y - lm[9].y).length()) * 0.5
 	var raw := classify(st, h)
 	# Antirrebote: el gesto candidato debe mantenerse confirm_time.
 	if raw != int(st["gesture"]):
@@ -248,3 +285,37 @@ func _update_zoom() -> void:
 		zoom_ended.emit()
 		for label in pinching:
 			_zoom_lock[label] = true
+
+## Agarre con los dos puños: traslación en pantalla, profundidad y giro («volante»).
+func _update_grab() -> void:
+	var fists := []
+	for label in states:
+		if int(states[label]["gesture"]) == Gesture.FIST:
+			fists.append(label)
+	if fists.size() >= 2 and not zooming:
+		var a: Dictionary = states[fists[0]]
+		var b: Dictionary = states[fists[1]]
+		var pa: Vector2 = a["palm_c"]
+		var pb: Vector2 = b["palm_c"]
+		var left := pa if pa.x <= pb.x else pb
+		var right := pb if pa.x <= pb.x else pa
+		var mid := (pa + pb) * 0.5
+		var sc := maxf(1e-4, (float(a["scale"]) + float(b["scale"])) * 0.5)
+		var v := (right - left) * box_size         # a escala de imagen: el ángulo no se deforma
+		var ang := atan2(v.y, v.x)
+		if not grabbing:
+			grabbing = true
+			_grab_prev = {"mid": mid, "scale": sc, "angle": ang}
+			grab_started.emit()
+		else:
+			var d := Vector3(mid.x - (_grab_prev["mid"] as Vector2).x, mid.y - (_grab_prev["mid"] as Vector2).y, log(sc / float(_grab_prev["scale"])))
+			var da := wrapf(ang - float(_grab_prev["angle"]), -PI, PI)
+			_grab_prev = {"mid": mid, "scale": sc, "angle": ang}
+			grab_moved.emit(d, da)
+	elif grabbing:
+		grabbing = false
+		grab_ended.emit()
+
+## Punto medio del agarre en pantalla (para el HUD), o (-1, -1).
+func grab_point() -> Vector2:
+	return (_grab_prev["mid"] as Vector2) if grabbing else Vector2(-1, -1)

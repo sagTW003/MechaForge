@@ -27,6 +27,8 @@ func run() -> void:
 	_t_hysteresis()
 	_t_debounce_and_cursor()
 	_t_zoom_events()
+	_t_pinch_phases()
+	_t_grab_events()
 	await _t_controller()
 	await _t_udp()
 	await _t_sidecar()
@@ -80,7 +82,7 @@ static func world(pose: String, pinch_cm: float = 1.0) -> Array:
 
 ## Mano como la publica HandTracker, con el ancla (punta del índice, o punto medio
 ## del pellizco) en la posición de pantalla q.
-func hand(pose: String, q: Vector2, label: String = "Right", pinch_cm: float = 1.0, rec: GestureRecognizer = null) -> Dictionary:
+func hand(pose: String, q: Vector2, label: String = "Right", pinch_cm: float = 1.0, rec: GestureRecognizer = null, smul: float = 1.0) -> Dictionary:
 	var w := world(pose, pinch_cm)
 	var anchor: Vector3 = (w[4] + w[8]) * 0.5 if pose == "pinch" else w[8]
 	var r := rec if rec != null else GestureRecognizer.new()
@@ -89,7 +91,7 @@ func hand(pose: String, q: Vector2, label: String = "Right", pinch_cm: float = 1
 	var wlm := PackedVector3Array()
 	for p in w:
 		var d: Vector3 = p - anchor
-		lm.append(Vector3(target.x + d.x * SCALE, target.y + d.y * SCALE, p.z))
+		lm.append(Vector3(target.x + d.x * SCALE * smul, target.y + d.y * SCALE * smul, p.z))
 		wlm.append(p)
 	return {"label": label, "score": 0.98, "lm": lm, "wlm": wlm, "t": t}
 
@@ -149,8 +151,8 @@ func _t_classify() -> void:
 		var st := r._new_state()
 		names[pose] = r.classify(st, hand(pose, Vector2(0.5, 0.5)))
 	check(names["open"] == GestureRecognizer.Gesture.PALM and names["point"] == GestureRecognizer.Gesture.POINT
-		and names["fist"] == GestureRecognizer.Gesture.IDLE and names["pinch"] == GestureRecognizer.Gesture.PINCH,
-		"Gestos: palma abierta, apuntar, puño (reposo) y pellizco se clasifican bien %s" % str(names))
+		and names["fist"] == GestureRecognizer.Gesture.FIST and names["pinch"] == GestureRecognizer.Gesture.PINCH,
+		"Gestos: palma abierta, apuntar, puño y pellizco se clasifican bien %s" % str(names))
 	var stf := r._new_state()
 	r.classify(stf, hand("fist", Vector2(0.5, 0.5)))
 	check(float(stf["pinch_cm"]) < r.pinch_on_cm and not stf["pinch"], "Gestos: un puño no es un pellizco aunque el pulgar toque el índice (%.1f cm)" % float(stf["pinch_cm"]))
@@ -217,6 +219,54 @@ func _t_zoom_events() -> void:
 		r.update([hand("pinch", Vector2(0.3, 0.5), "Right", 1.0, r)], step_time())
 	check(not r.states.has("Left"), "Una mano que sale de la imagen se da por perdida a los 0.25 s")
 
+func _t_pinch_phases() -> void:
+	var r := GestureRecognizer.new()
+	var seen := []
+	for d in [10.0, 6.0, 2.5, 2.5, 2.5, 2.5, 2.5, 4.0, 5.2]:
+		r.update([hand("pinch", Vector2(0.5, 0.5), "Right", d, r)], step_time())
+		var ph := r.pinch_phase("Right")
+		if seen.is_empty() or seen[seen.size() - 1] != ph:
+			seen.append(ph)
+	check(seen.slice(0, 5) == ["lejos", "acercando", "cerrando", "activo", "soltando"], "Medidor del pellizco: lejos → acercando → cerrando → activo → soltando %s" % str(seen))
+
+func _t_grab_events() -> void:
+	var r := GestureRecognizer.new()
+	var started := [0]
+	var ended := [0]
+	var acc := [Vector3.ZERO, 0.0]
+	r.grab_started.connect(func(): started[0] += 1)
+	r.grab_ended.connect(func(): ended[0] += 1)
+	r.grab_moved.connect(func(d, a):
+		acc[0] += d
+		acc[1] += a)
+	# Un solo puño no agarra.
+	for k in range(6):
+		r.update([hand("fist", Vector2(0.4, 0.5), "Right", 1.0, r), hand("point", Vector2(0.6, 0.5), "Left", 1.0, r)], step_time())
+	var single_ok: bool = started[0] == 0 and r.gesture_of("Right") == GestureRecognizer.Gesture.FIST
+	for k in range(6):
+		r.update([hand("fist", Vector2(0.4, 0.5), "Right", 1.0, r), hand("fist", Vector2(0.6, 0.5), "Left", 1.0, r)], step_time())
+	check(single_ok and started[0] == 1 and r.grabbing, "Dos puños: un puño solo no hace nada; con los dos empieza el agarre")
+	for k in range(10):
+		var dx := 0.01 * (k + 1)
+		r.update([hand("fist", Vector2(0.4 + dx, 0.5), "Right", 1.0, r), hand("fist", Vector2(0.6 + dx, 0.5), "Left", 1.0, r)], step_time())
+	var moved: Vector3 = acc[0]
+	check(absf(moved.x - 0.1) < 0.005 and absf(moved.y) < 0.005 and absf(moved.z) < 0.01, "Dos puños: mover las dos manos traslada la escena (Δx = %.3f)" % moved.x)
+	acc[0] = Vector3.ZERO
+	for k in range(10):
+		var sm := 1.0 + 0.02 * (k + 1)
+		r.update([hand("fist", Vector2(0.5, 0.5), "Right", 1.0, r, sm), hand("fist", Vector2(0.7, 0.5), "Left", 1.0, r, sm)], step_time())
+	var depth: float = (acc[0] as Vector3).z
+	check(absf(depth - log(1.2)) < 0.03, "Dos puños: acercar las manos a la cámara (×1.2 de tamaño) mueve en profundidad (ln = %.3f)" % depth)
+	acc[1] = 0.0
+	for k in range(10):
+		var dy := 0.01 * (k + 1)
+		r.update([hand("fist", Vector2(0.5, 0.5 - dy), "Right", 1.0, r, 1.2), hand("fist", Vector2(0.7, 0.5 + dy), "Left", 1.0, r, 1.2)], step_time())
+	var ang: float = acc[1]
+	check(ang > 0.3, "Dos puños: girar las manos como un volante da un ángulo (%.2f rad)" % ang)
+	for k in range(6):
+		r.update([hand("fist", Vector2(0.5, 0.4), "Right", 1.0, r), hand("open", Vector2(0.7, 0.6), "Left", 1.0, r)], step_time())
+	check(ended[0] == 1 and not r.grabbing, "Dos puños: al abrir una mano termina el agarre")
+
 # --- Controlador sobre el laboratorio real --------------------------------------------------
 
 func _feed(ctrl: VirtualLabController, hands: Array, frames: int = 1) -> void:
@@ -275,7 +325,8 @@ func _t_controller() -> void:
 	for k in range(12):
 		var s := 0.08 + 0.01 * (k + 1)
 		_feed(ctrl, [hand("pinch", Vector2(0.5 - s, 0.5), "Right", 1.0, ctrl.recognizer), hand("pinch", Vector2(0.5 + s, 0.5), "Left", 1.0, ctrl.recognizer)])
-	check(lab.cam.distance < d0 * 0.7, "Controlador: separar las manos pellizcando acerca la cámara (%.2f → %.2f)" % [d0, lab.cam.distance])
+	var want := pow(2.5, -ctrl.zoom_sens)
+	check(absf(lab.cam.distance / d0 - want) < 0.03, "Controlador: separar las manos pellizcando ×2.5 acerca la cámara ×%.3f (sensibilidad %.1f: 2.5^−%.1f = %.3f)" % [lab.cam.distance / d0, ctrl.zoom_sens, ctrl.zoom_sens, want])
 	_feed(ctrl, [hand("point", Vector2(0.5, 0.45), "Right", 1.0, ctrl.recognizer)], 30)
 	# Palma abierta: pausa y, mantenida, reinicia la vista.
 	var target_dist := float(lab.module.view()["dist"])
@@ -286,7 +337,47 @@ func _t_controller() -> void:
 	check(froze and absf(d_before - target_dist) > 0.5 and absf(lab.cam.distance - target_dist) < 1e-4, "Controlador: la palma abierta congela y, mantenida 1 s, reinicia la vista")
 	_feed(ctrl, [hand("point", Vector2(0.5, 0.45), "Right", 1.0, ctrl.recognizer)], 8)
 	check(not ctrl.frozen, "Controlador: al cerrar la palma se reanuda la interacción")
-	# Deslizador: ajuste fino con pellizco.
+	# Dos puños: traslación en pantalla, profundidad y giro.
+	var cam: LabCamera = lab.cam
+	var right_v: Vector3 = cam.global_transform.basis.x
+	var fwd_v: Vector3 = -cam.global_transform.basis.z
+	var t0: Vector3 = cam.target
+	for k in range(6):
+		_feed(ctrl, [hand("fist", Vector2(0.4, 0.5), "Right", 1.0, ctrl.recognizer), hand("fist", Vector2(0.6, 0.5), "Left", 1.0, ctrl.recognizer)])
+	var gmode: String = ctrl.drag_mode
+	for k in range(10):
+		var dx := 0.01 * (k + 1)
+		_feed(ctrl, [hand("fist", Vector2(0.4 + dx, 0.5), "Right", 1.0, ctrl.recognizer), hand("fist", Vector2(0.6 + dx, 0.5), "Left", 1.0, ctrl.recognizer)])
+	var shift: Vector3 = cam.target - t0
+	check(gmode == "grab" and shift.dot(right_v) < -0.05, "Controlador: con dos puños la escena se arrastra con las manos (Δ = %.2f)" % shift.length())
+	var t1: Vector3 = cam.target
+	for k in range(10):
+		var sm := 1.0 + 0.02 * (k + 1)
+		_feed(ctrl, [hand("fist", Vector2(0.5, 0.5), "Right", 1.0, ctrl.recognizer, sm), hand("fist", Vector2(0.7, 0.5), "Left", 1.0, ctrl.recognizer, sm)])
+	check((cam.target - t1).dot(fwd_v) > 0.1, "Controlador: acercar los dos puños a la cámara mueve la escena en profundidad")
+	var y1: float = cam.yaw
+	for k in range(10):
+		var dy := 0.01 * (k + 1)
+		_feed(ctrl, [hand("fist", Vector2(0.5, 0.5 - dy), "Right", 1.0, ctrl.recognizer, 1.2), hand("fist", Vector2(0.7, 0.5 + dy), "Left", 1.0, ctrl.recognizer, 1.2)])
+	check(absf(cam.yaw - y1) > 0.3, "Controlador: girar los dos puños como un volante rota la escena (Δyaw = %.2f)" % (cam.yaw - y1))
+	_feed(ctrl, [hand("point", Vector2(0.5, 0.45), "Right", 1.0, ctrl.recognizer)], 30)
+	check(ctrl.drag_mode == "", "Controlador: al soltar los puños termina el agarre")
+	# Precisión adaptativa: el mismo recorrido gira menos si la mano va despacio.
+	var qa := ctrl.recognizer.states["Right"]["pos"] as Vector2
+	_slide(ctrl, "pinch", qa, qa, 5)
+	var ya: float = cam.yaw
+	_slide(ctrl, "pinch", qa, qa + Vector2(60.0 / vp.x, 0.0), 60)
+	var slow_d: float = absf(cam.yaw - ya)
+	_slide(ctrl, "point", qa, qa, 30)
+	var qb0 := ctrl.recognizer.states["Right"]["pos"] as Vector2
+	_slide(ctrl, "pinch", qb0, qb0, 5)
+	var yb: float = cam.yaw
+	_slide(ctrl, "pinch", qb0, qb0 + Vector2(60.0 / vp.x, 0.0), 3)
+	var fast_d: float = absf(cam.yaw - yb)
+	_slide(ctrl, "point", qb0, qb0, 30)
+	check(slow_d < fast_d * 0.5 and absf(slow_d / fast_d - ctrl.slow_gain) < 0.12, "Pellizco con precisión adaptativa: despacio gira ×%.2f de lo que gira rápido (ganancia lenta %.2f)" % [slow_d / maxf(fast_d, 1e-9), ctrl.slow_gain])
+	# Deslizador: ajuste fino con pellizco (sin precisión adaptativa para medir el factor fijo).
+	ctrl.adaptive = false
 	var slider: HSlider = null
 	for c in lab.params_box.find_children("*", "HSlider", true, false):
 		if str(c.get_meta("lab_param", "")) == "Velocidad de onda c":
@@ -305,6 +396,7 @@ func _t_controller() -> void:
 	var hit: Control = VirtualLabController.control_at(lab.ui, center)
 	check(smode == "slider" and dv > expected * 0.6 and dv < expected * 1.4, "Controlador: pellizco sobre un deslizador = ajuste fino (Δ = %.3f; esperado %.3f con ×%.0f) [modo %s, bajo el centro: %s, cursor %s, centro %s]" % [dv, expected, ctrl.fine, smode, hit.get_class() if hit else "nada", str(ctrl.cursor), str(center)])
 	_slide(ctrl, "point", qn, qn, 6)
+	ctrl.adaptive = true
 	# Botón: el pellizco hace clic.
 	var btn: Button = null
 	for c in lab.params_box.find_children("*", "Button", true, false):
