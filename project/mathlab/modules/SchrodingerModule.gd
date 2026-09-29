@@ -23,6 +23,9 @@ var sigma: float = 1.0
 var x0: float = -5.0
 var action: int = 0            # 0 pintar barrera, 1 lanzar paquete aquí, 2 borrar potencial
 var paint_v: float = 6.0
+## Máximo de la probabilidad transmitida desde el último lanzamiento: el paquete
+## transmitido acaba absorbido en el borde, así que la lectura instantánea cae a 0.
+var trans_max: float = 0.0
 
 func title() -> String: return "Ecuación de Schrödinger"
 func formula() -> String: return "iħ ∂ψ/∂t = −(ħ²/2m) ∇²ψ + V ψ"
@@ -75,12 +78,15 @@ func _launch() -> void:
 		u0 = 0.5 - 0.1
 		kk = k0 * 0.5
 	sim.InitPacket(u0, 0.5, kk, 0.0, sigma)
+	trans_max = 0.0
 
 func reset() -> void:
 	_launch()
 
 func step(dt: float) -> void:
 	sim.Step(minf(dt, 0.05), 400)
+	if preset in [1, 2]:
+		trans_max = maxf(trans_max, float(sim.ProbabilityBeyond(0.5 + width / L)))
 
 func build_ui(p: VBoxContainer) -> void:
 	LabUI.option(p, "Potencial:", PRESET_NAMES, preset, func(i):
@@ -117,6 +123,10 @@ func hover_text(hit: Vector3) -> String:
 	var s: Vector4 = sim.Sample(uv.x, uv.y)
 	return "x = %.2f   y = %.2f\n|ψ|² = %.4f\narg ψ = %.2f rad\nV = %.2f" % [(uv.x - 0.5) * L, (0.5 - uv.y) * L, s.x, atan2(s.z, s.y), s.w * 10.0]
 
+## (x, y) en las unidades del dominio [−L/2, L/2], como el tooltip.
+func api_points(x: float, y: float) -> Array:
+	return [to_global(Vector3(x / L * SIZE, 0.0, -y / L * SIZE))]
+
 func perturb(hit: Vector3, first: bool) -> void:
 	var uv := _uv(hit)
 	match action:
@@ -146,5 +156,5 @@ func info() -> String:
 	var trans: float = sim.ProbabilityBeyond(0.5 + width / L)
 	var t := "t = %.2f · norma ∫|ψ|² = %.4f\n⟨x⟩ = %.2f · ⟨y⟩ = %.2f · E ≈ k₀²/2 = %.2f" % [float(sim.Time), float(sim.Norm()), ex.x, ex.y, k0 * k0 * 0.5]
 	if preset in [1, 2]:
-		t += "\nProbabilidad transmitida (x > barrera): [color=#ffcc55]%.1f %%[/color]" % (trans * 100.0)
+		t += "\nProbabilidad transmitida (x > barrera): %.1f %% · máx. tras el lanzamiento [color=#ffcc55]T = %.1f %%[/color]" % [trans * 100.0, trans_max * 100.0]
 	return t

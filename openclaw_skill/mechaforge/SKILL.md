@@ -52,6 +52,7 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `get_proposal_status` | `{"id"}` → `pending`, `applied` o `discarded` |
 | `get_circuit_state` | Circuito vivo: fuentes, LED (mA, encendido/quemado), cortocircuito, piezas insertadas en la protoboard y lectura del multímetro |
 | `measure_voltage` | `{"a":"uid:terminal","b":"uid:terminal"}` → tensión entre dos puntos (solo lectura) |
+| `lab_*` | Laboratorio matemático 3D (EDPs, métodos numéricos, análisis complejo, campos vectoriales): ver la skill **mechaforge-laboratorio** |
 
 ## Reglas importantes
 
@@ -63,6 +64,12 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 - Una pieza apoyada en el suelo tiene su centro a media altura (`y = alto/2`).
 - Para diagnosticar ("¿por qué se vuelca?"), llama primero a `analyze_design` y, si
   simula, a `get_telemetry`; justifica con los datos (centro de masa, margen, esfuerzos).
+- Si el humano tiene abierto el **Laboratorio matemático**, las herramientas de la
+  escena responden con un error que pide `lab_close`. No lo cierres por tu cuenta:
+  pregúntale si quiere volver a MechaForge.
+- Circuitos: `get_circuit_state` informa de cortocircuitos, LED quemados, fusibles del
+  multímetro y qué patas del integrado caen en cada agujero de la protoboard (los
+  DIP deben cruzar el canal central). Úsalo antes de proponer cambios eléctricos.
 
 ## Programa del microcontrolador
 

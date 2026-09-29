@@ -115,7 +115,11 @@ func hover_text(hit: Vector3) -> String:
 	for m in MATERIALS:
 		if absf(float(m[1]) - a) / float(m[1]) < 0.01:
 			name = m[0]
-	return "x = %.1f cm   y = %.1f cm\nT = %.1f °C\n%s (α = %.1e)" % [(uv.x - 0.5) * 20.0, (0.5 - uv.y) * 20.0, float(sim.ValueAt(uv.x, uv.y)), name, a]
+	return "x = %.1f cm   y = %.1f cm\nT = %.1f °C\n%s (α = %s m²/s)" % [(uv.x - 0.5) * 20.0, (0.5 - uv.y) * 20.0, float(sim.ValueAt(uv.x, uv.y)), name, LabUI.sci(a, 1)]
+
+## La placa mide 20 × 20 cm: (x, y) en cm desde el centro, como el tooltip.
+func api_points(x: float, y: float) -> Array:
+	return [to_global(Vector3(x / 20.0 * SIZE, 0.0, -y / 20.0 * SIZE))]
 
 func perturb(hit: Vector3, first: bool) -> void:
 	var uv := _uv(hit)

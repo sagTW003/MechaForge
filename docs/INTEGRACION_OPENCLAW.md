@@ -33,6 +33,8 @@ Paso 0, para diseñar el puente `ai_bridge` **sin inventar la API**.
    - `get_scene_state`, `get_telemetry`, `analyze_design`, `get_circuit_state`, `measure_voltage`
    - `add_part`, `connect_parts`, `set_property`, `remove_part`
    - `write_controller_script`, `run_simulation`, `stop_simulation`
+   - Laboratorio matemático: `lab_list_modules`, `lab_open`, `lab_close`, `lab_get_state`,
+     `lab_set_param`, `lab_control`, `lab_sample`, `lab_perturb`, `lab_capture`
 
 ## Seguridad
 - Conexión **solo local** (loopback).
@@ -63,8 +65,23 @@ La conexión se define en `project/ai_bridge/openclaw_config.json` (plantilla:
 - **Seguridad**: toda herramienta que modifica la escena devuelve
   `pending_confirmation` y muestra la propuesta como **piezas fantasma** con
   **Aplicar/Descartar** en el panel de IA; lo aplicado entra en deshacer/rehacer.
-- **Skill lista para instalar**: `openclaw_skill/mechaforge/SKILL.md`. Para usarla,
-  copia la carpeta `mechaforge` a `~/.openclaw/skills/` (no se instala sola: la
-  configuración de OpenClaw solo se cambia con tu permiso).
-- Pruebas: `-- mffinal` hace peticiones HTTP reales (health, 401 sin token, /tools,
-  propuesta → vista previa → aplicar, estado, análisis, simulación, telemetría).
+- **Skills** (instaladas con tu permiso en `~/.openclaw/skills/`; el original está en
+  `openclaw_skill/`, y no se reinstalan solas):
+  - **mechaforge**: escena, piezas, circuitos y multímetro.
+  - **mechaforge-laboratorio**: Laboratorio matemático, con catálogo de módulos,
+    controles, coordenadas y recetas.
+  Tras cambiarlas en el repositorio, vuelve a copiar la carpeta.
+- **Laboratorio matemático por API** (`mathlab/LabApi.gd`):
+  - Controles: cada control de los módulos (deslizador, opción, casilla, expresión,
+    botón) se maneja por su nombre o id, igual que si lo tocara el usuario.
+  - Coordenadas: `lab_sample` y `lab_perturb` usan las del tooltip de cada módulo.
+  - Seguridad: son cambios de visualización, no del proyecto, así que se aplican al
+    momento y se anuncian en la barra de estado («🤖 OpenClaw: …»).
+  - Con el laboratorio abierto, las herramientas de la escena piden `lab_close`.
+  - El servidor local se mueve a la raíz del árbol mientras el laboratorio ocupa la
+    ventana, así que la API sigue viva al entrar y al volver.
+- Pruebas:
+  - `-- mffinal` hace peticiones HTTP reales (health, 401 sin token, /tools,
+    propuesta → vista previa → aplicar, estado, análisis, simulación, telemetría).
+  - `-- mflabtest` prueba las herramientas `lab_*`, llama por HTTP con el laboratorio
+    abierto y comprueba que la API responde al volver.

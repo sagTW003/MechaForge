@@ -37,6 +37,11 @@ func perturb(_hit: Vector3, _first: bool) -> void: pass
 func critical_points() -> Array: return []
 ## Lecturas en vivo para el panel de información.
 func info() -> String: return ""
+## Puntos del mundo que corresponden a las coordenadas (x, y) que muestra el
+## tooltip del módulo (la API los usa en lab_sample y lab_perturb). Por defecto,
+## el espacio matemático del módulo; varios puntos = varias vistas a la vez.
+func api_points(x: float, y: float) -> Array:
+	return [to_global(to_world(x, y, 0.0))]
 ## Vista inicial: {target, dist, yaw, pitch} (grados).
 func view() -> Dictionary: return {"target": Vector3(0, 0, 0), "dist": 7.5, "yaw": -35.0, "pitch": -32.0}
 

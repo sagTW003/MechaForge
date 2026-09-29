@@ -161,6 +161,18 @@ func _c_of(is_j: bool, uv: Vector2) -> Vector2:
 	var s := span_j if is_j else span_m
 	return c + Vector2(uv.x - 0.5, 0.5 - uv.y) * s
 
+## (x, y) = x + iy: primero como c en Mandelbrot, después como z₀ en Julia.
+func api_points(x: float, y: float) -> Array:
+	var out := []
+	for spec in [[mand, false], [jul, true]]:
+		var is_j: bool = spec[1]
+		var c := center_j if is_j else center_m
+		var s := span_j if is_j else span_m
+		var u := (x - c.x) / s + 0.5
+		var v := 0.5 - (y - c.y) / s
+		out.append(to_global(Vector3((spec[0] as Node3D).position.x + (u - 0.5) * PSIZE, 0.0, (v - 0.5) * PSIZE)))
+	return out
+
 func escape_count(p: Vector2, is_j: bool) -> int:
 	var z := p if is_j else Vector2.ZERO
 	var c := cj if is_j else p

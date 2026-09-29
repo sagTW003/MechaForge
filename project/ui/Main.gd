@@ -5010,7 +5010,7 @@ var math_lab: Node = null
 
 ## Abre el Laboratorio matemático: MechaForge sale del árbol (conserva todo su
 ## estado: proyecto, cámara, paneles) y el laboratorio ocupa la ventana.
-func _open_math_lab() -> void:
+func _open_math_lab(start_module: String = "") -> void:
 	if math_lab != null:
 		return
 	if simulator.is_running():
@@ -5019,12 +5019,17 @@ func _open_math_lab() -> void:
 		_set_probe_mode(false)
 	math_lab = load("res://mathlab/MathLab.gd").new()
 	math_lab.main_scene = self
+	if start_module != "":
+		math_lab.start_module = start_module
 	math_lab.closed.connect(_close_math_lab)
 	call_deferred("_swap_to_lab")
 
 func _swap_to_lab() -> void:
 	var tree := get_tree()
 	var root := tree.root
+	# La API local sigue atendiendo a OpenClaw mientras el laboratorio está abierto.
+	remove_child(tool_server)
+	root.add_child(tool_server)
 	root.remove_child(self)
 	root.add_child(math_lab)
 	tree.current_scene = math_lab
@@ -5046,8 +5051,50 @@ func _swap_from_lab() -> void:
 		math_lab.queue_free()
 	math_lab = null
 	root.add_child(self)
+	if tool_server.get_parent() != self:
+		tool_server.get_parent().remove_child(tool_server)
+		add_child(tool_server)
 	tree.current_scene = self
 	camera.make_current()
 	Config.notify("De vuelta en MechaForge.", 3.0)
+
+## --- API del laboratorio (SimulatorApi → LabApi). No tocan el proyecto. ---
+
+func _lab_ready() -> bool:
+	return math_lab != null and math_lab.is_inside_tree() and math_lab.module != null
+
+func api_lab_open(id: String) -> Dictionary:
+	if id != "" and (MathLab.MODULES.filter(func(m): return m["id"] == id)).is_empty():
+		return {"error": "módulo desconocido: %s (usa lab_list_modules)" % id}
+	if math_lab == null:
+		_open_math_lab(id)
+		Config.notify("OpenClaw abrió el Laboratorio matemático (Esc para volver).", 4.0)
+		return {"status": "abriendo", "modulo": id if id != "" else "onda",
+			"nota": "El laboratorio se abre en el siguiente fotograma; consulta lab_get_state."}
+	if not _lab_ready():
+		return {"status": "abriendo", "nota": "El laboratorio se está abriendo; consulta lab_get_state."}
+	if id != "" and id != math_lab.module_id:
+		math_lab.open_module(id)
+		math_lab.notify_ai("abrió «%s»" % math_lab.module_info(id)["nombre"])
+	return LabApi.state(math_lab)
+
+func api_lab_close() -> Dictionary:
+	if math_lab == null:
+		return {"ok": true, "nota": "el laboratorio ya estaba cerrado"}
+	math_lab.go_back()
+	return {"ok": true, "nota": "de vuelta en MechaForge"}
+
+func api_lab_state() -> Dictionary:
+	if math_lab == null:
+		return {"abierto": false, "nota": "El laboratorio está cerrado; ábrelo con lab_open."}
+	if not _lab_ready():
+		return {"abierto": false, "nota": "El laboratorio se está abriendo."}
+	return LabApi.state(math_lab)
+
+## Ejecuta f(lab) si el laboratorio está abierto.
+func api_lab(f: Callable) -> Dictionary:
+	if not _lab_ready():
+		return {"error": "el laboratorio no está abierto (usa lab_open)"}
+	return f.call(math_lab)
 
 #endregion

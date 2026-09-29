@@ -175,7 +175,9 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       interpolación y ajuste, integración, EDP numérica · coloreado de dominio,
       mapeos conformes, fractales · campos vectoriales y teoremas de Gauss/Stokes.
 - [x] Herramienta Perturbar, tooltip 3D, planos de corte X/Y/Z.
-- [x] Pruebas `mflabtest` (69) que comprueban la matemática de cada módulo.
+- [x] Pruebas `mflabtest` que comprueban la matemática de cada módulo.
+- [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con
+      permiso). La API local sigue viva mientras el laboratorio está abierto.
 
 ## ✅ Multímetro digital, integrados DIP y cortocircuitos
 - [x] Solver de circuito **no lineal** (MNA + Newton-Raphson, `electronics/CircuitSolver.cs`):

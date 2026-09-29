@@ -30,6 +30,7 @@ func run() -> void:
 		if has_method(fn):
 			await call(fn)
 	_t_expr()
+	await _t_api()
 	# Volver a MechaForge: la escena del simulador se conserva intacta.
 	var tree := get_tree()
 	var main_node: Node = lab.main_scene
@@ -41,8 +42,96 @@ func run() -> void:
 	await tree.process_frame
 	check(tree.current_scene == main_node and main_node.is_inside_tree() and main_node.parts_root.get_child_count() == n_parts,
 		"«← MechaForge» vuelve al simulador con su escena intacta")
+	if _http_ok:
+		var back: Dictionary = await _rpc("get_scene_state", {})
+		check(back.has("result") and typeof(back["result"].get("piezas")) == TYPE_ARRAY,
+			"API HTTP: tras volver del laboratorio la API sigue atendiendo (get_scene_state)")
 	print("[TEST] Laboratorio: %d OK, %d FALLOS" % [ok, fail])
 	tree.quit(1 if fail > 0 else 0)
+
+# --- API del laboratorio para OpenClaw ------------------------------------------------
+
+var _http_ok := false
+var _ts: ToolServer
+
+## Llamada JSON-RPC real por HTTP a la API local (como haría OpenClaw).
+func _rpc(method: String, params: Dictionary) -> Dictionary:
+	var ts := _ts
+	var http := HTTPRequest.new()
+	http.timeout = 5.0
+	add_child(http)
+	var body := JSON.stringify({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+	http.request("http://127.0.0.1:%d/rpc" % ts.port, ["Authorization: Bearer " + ts.token, "Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+	var res: Array = await http.request_completed
+	http.queue_free()
+	if int(res[0]) != HTTPRequest.RESULT_SUCCESS:
+		return {"error": "http %d" % int(res[0])}
+	var d = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+	return d if typeof(d) == TYPE_DICTIONARY else {"error": "respuesta no JSON"}
+
+func _t_api() -> void:
+	var main_node: Node = lab.main_scene
+	var api := SimulatorApi.new(main_node)
+	var mods: Dictionary = api.call_tool("lab_list_modules", {})
+	check(mods["modulos"].size() == 14, "API: lab_list_modules devuelve los 14 módulos")
+	var r: Dictionary = api.call_tool("lab_open", {"modulo": "coloreado"})
+	check(not r.has("error") and lab.module_id == "coloreado", "API: lab_open cambia de módulo con el laboratorio abierto")
+	var st: Dictionary = api.call_tool("lab_get_state", {})
+	var js := JSON.stringify(st)
+	check(st["abierto"] and st["modulo"] == "coloreado" and st["parametros"].size() >= 4 and not js.contains("Object#") and str(st["info"]).contains("Ceros"),
+		"API: lab_get_state da fórmula, lecturas y %d controles (JSON limpio)" % st["parametros"].size())
+	r = api.call_tool("lab_set_param", {"nombre": "f(z) =", "valor": "z^3 - 1"})
+	check(r.get("ok", false) and lab.module.zeros.size() == 3, "API: lab_set_param cambia la función (z³ − 1 → 3 ceros)")
+	r = api.call_tool("lab_set_param", {"nombre": "f(z) =", "valor": "z^^2 +"})
+	check(r.has("error") and lab.module.zeros.size() == 3, "API: una expresión no válida se rechaza con su error")
+	r = api.call_tool("lab_set_param", {"nombre": "no_existe", "valor": 1})
+	check(r.has("error") and str(r["error"]).contains("disponibles"), "API: un control inexistente lista los disponibles")
+	var smp: Dictionary = api.call_tool("lab_sample", {"x": 0.5, "y": 0.5})
+	check(str(smp.get("lectura", "")).contains("f(z)"), "API: lab_sample lee f(z) en un punto")
+	var coords_ok := true
+	for id in ["calor", "schrodinger", "optimizacion", "integracion", "fractales", "edp1d"]:
+		api.call_tool("lab_open", {"modulo": id})
+		var q: Dictionary = api.call_tool("lab_sample", {"x": 0.5, "y": 0.25})
+		var lect := str(q.get("lectura", ""))
+		if not lect.contains("0.5") or lect.contains("%"):
+			coords_ok = false
+			print("        ", id, ": ", lect.replace("
+", " / "))
+	check(coords_ok, "API: lab_sample usa las mismas coordenadas que el tooltip de cada módulo")
+	api.call_tool("lab_open", {"modulo": "onda"})
+	r = api.call_tool("lab_set_param", {"nombre": "Frontera", "valor": "absorbente"})
+	var fr: Dictionary = {}
+	for q in LabApi.public_params(lab):
+		if q["nombre"] == "Frontera":
+			fr = q
+	check(r.get("ok", false) and int(fr.get("valor", -1)) == 2, "API: elige una opción por su texto (frontera absorbente)")
+	r = api.call_tool("lab_set_param", {"nombre": "Velocidad de onda c", "valor": 99})
+	check(r.get("ok", false) and absf(float(r["valor"]) - 2.5) < 1e-6, "API: los deslizadores se limitan a su rango (c = 99 → 2.5)")
+	lab.module.sim.Reset()
+	var m0: float = lab.module.sim.MaxValue()
+	r = api.call_tool("lab_perturb", {"x": 0.3, "y": -0.2})
+	check(r.get("ok", false) and float(lab.module.sim.MaxValue()) > m0 + 0.05, "API: lab_perturb crea un pulso en la membrana")
+	r = api.call_tool("lab_control", {"accion": "pausar"})
+	var paused := not lab.playing
+	api.call_tool("lab_control", {"accion": "reanudar"})
+	api.call_tool("lab_control", {"accion": "velocidad", "valor": 3})
+	check(paused and lab.playing and (lab.speed == 2.0 or lab.speed == 4.0), "API: lab_control pausa, reanuda y ajusta la velocidad")
+	api.call_tool("lab_control", {"accion": "velocidad", "valor": 1})
+	r = api.call_tool("get_scene_state", {})
+	check(r.has("error") and str(r["error"]).contains("lab_close"), "API: con el laboratorio abierto la escena pide cerrarlo primero")
+	# Servidor HTTP real: sigue vivo mientras el laboratorio ocupa la ventana.
+	var ts: ToolServer = main_node.tool_server
+	_ts = ts
+	check(ts.is_inside_tree(), "API: el servidor local sigue en el árbol con el laboratorio abierto")
+	if not ts.enabled:
+		print("  [--]   API HTTP desactivada en la configuración: se omite la prueba de red")
+		return
+	if not ts.is_listening() and not ts.start():
+		print("  [--]   Puerto %d ocupado (¿otra copia de MechaForge abierta?): se omite la prueba de red" % ts.port)
+		return
+	var h: Dictionary = await _rpc("lab_get_state", {})
+	_http_ok = h.has("result") and str(h["result"].get("modulo", "")) == "onda"
+	check(_http_ok, "API HTTP: lab_get_state responde por 127.0.0.1 con el laboratorio abierto")
 
 func _shot(ua: PackedStringArray) -> void:
 	var i := ua.find("mflabshot")
@@ -149,6 +238,16 @@ func _t_schrodinger() -> void:
 		m.sim.InitPacket(0.25, 0.5, 3.0, 0.0, 1.0)
 		m.sim.Step(3.5, 6000)
 		trans.append(float(m.sim.ProbabilityBeyond(0.5 + w / 20.0)))
+	# En vivo: el módulo guarda el máximo transmitido aunque el borde lo absorba.
+	m.preset = 1
+	m.v0 = 5.0
+	m.width = 0.4
+	m.k0 = 3.0
+	m._launch()
+	var ts0: float = m.sim.Time
+	while float(m.sim.Time) < ts0 + 10.0:
+		m.step(0.05)
+	check(m.trans_max > 0.3 and float(m.sim.ProbabilityBeyond(0.52)) < m.trans_max, "Schrödinger: el panel conserva T máx. = %.1f %% aunque el borde absorba el paquete" % (m.trans_max * 100.0))
 	check(trans[0] > 0.01 and trans[0] > trans[1] * 2.0, "Schrödinger: efecto túnel con E ≈ 4.5 < V₀ = 5 (T = %.1f %% con a = 0.4; %.1f %% con a = 1.0)" % [trans[0] * 100.0, trans[1] * 100.0])
 
 func _t_raices() -> void:

@@ -269,6 +269,7 @@ func build_ui(p: VBoxContainer) -> void:
 			s.step = 0.05
 			s.custom_minimum_size = Vector2(62, 0)
 			s.value = A[r][c] if c < 3 else b[r]
+			s.set_meta("lab_param", ("A%d%d" % [r + 1, c + 1]) if c < 3 else ("b%d" % (r + 1)))
 			var rr := r
 			var cc := c
 			s.value_changed.connect(func(v):

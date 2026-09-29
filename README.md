@@ -377,9 +377,19 @@ con las herramientas `get_scene_state`, `add_part`, `connect_parts`, `set_proper
 `get_telemetry`, `analyze_design`, `get_circuit_state` (fuentes, LED, cortocircuito,
 piezas insertadas y lectura del multímetro) y `measure_voltage` (medida de solo
 lectura entre dos terminales). Todo cambio llega como **vista previa** y lo
-confirmas tú. La *skill* **mechaforge** está instalada en OpenClaw (`~/.openclaw/skills/mechaforge`,
-copia de `openclaw_skill/mechaforge/`): pide a tu agente, con MechaForge abierto,
-cosas como *«usa mechaforge para analizar el diseño»*.
+confirmas tú.
+
+El **Laboratorio matemático** también se maneja por API: `lab_open`, `lab_get_state`,
+`lab_set_param`, `lab_control`, `lab_sample`, `lab_perturb`, `lab_capture` y
+`lab_close`. Sus cambios son solo de visualización y se anuncian en la barra de estado.
+
+Hay dos *skills* instaladas en OpenClaw (`~/.openclaw/skills/`, copias de
+`openclaw_skill/`):
+- **mechaforge**: escena, piezas, circuitos y multímetro.
+- **mechaforge-laboratorio**: el laboratorio.
+
+Con MechaForge abierto, pide a tu agente cosas como *«usa mechaforge para analizar el
+diseño»* o *«enséñame en el laboratorio el efecto túnel y explícame el resultado»*.
 
 ### Autoguardado
 

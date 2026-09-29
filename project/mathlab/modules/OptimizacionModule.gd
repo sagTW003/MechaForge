@@ -214,6 +214,12 @@ func pick(origin: Vector3, dir: Vector3):
 func _xy(hit: Vector3) -> Vector2:
 	return Vector2(lerpf(dmin.x, dmax.x, hit.x / SIZE + 0.5), lerpf(dmin.y, dmax.y, 0.5 - hit.z / SIZE))
 
+## (x, y) dentro de la región [dmin, dmax] del dominio, como el tooltip.
+func api_points(x: float, y: float) -> Array:
+	var u := (x - dmin.x) / (dmax.x - dmin.x) - 0.5
+	var v := 0.5 - (y - dmin.y) / (dmax.y - dmin.y)
+	return [to_global(Vector3(u * SIZE, 0.0, v * SIZE))]
+
 func hover_text(hit: Vector3) -> String:
 	var q := _xy(hit)
 	var g := grad(q.x, q.y)

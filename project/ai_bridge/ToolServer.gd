@@ -70,8 +70,11 @@ func stop() -> void:
 func is_listening() -> bool:
 	return _server.is_listening()
 
-func _exit_tree() -> void:
-	stop()
+## No se detiene al salir del árbol: MechaForge lo mueve a la raíz mientras el
+## Laboratorio matemático ocupa la ventana. Se cierra solo al liberarse.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		stop()
 
 func _process(_delta: float) -> void:
 	if not _server.is_listening():

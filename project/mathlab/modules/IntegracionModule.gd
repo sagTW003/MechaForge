@@ -182,6 +182,12 @@ func pick(origin: Vector3, dir: Vector3):
 		return _hnorm(F(x, y)) * HEIGHT
 	return ray_heightfield(origin, dir, hf, SIZE * 0.5)
 
+## (x, y) dentro de la región [dmin, dmax] del dominio, como el tooltip.
+func api_points(x: float, y: float) -> Array:
+	var u := (x - dmin.x) / (dmax.x - dmin.x) - 0.5
+	var v := 0.5 - (y - dmin.y) / (dmax.y - dmin.y)
+	return [to_global(Vector3(u * SIZE, 0.0, v * SIZE))]
+
 func hover_text(hit: Vector3) -> String:
 	var x := lerpf(dmin.x, dmax.x, hit.x / SIZE + 0.5)
 	var y := lerpf(dmin.y, dmax.y, 0.5 - hit.z / SIZE)

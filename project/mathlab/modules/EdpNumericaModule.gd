@@ -185,6 +185,16 @@ func build_ui(p: VBoxContainer) -> void:
 func pick(origin: Vector3, dir: Vector3):
 	return ray_plane_y(origin, dir, 0.0)
 
+## (x, t): la misma posición y el mismo instante en las tres superficies.
+func api_points(x: float, t: float) -> Array:
+	var dx := 1.0 / (NX - 1)
+	var dt := r * dx * dx / alpha
+	var z := ((t / dt + 0.5) / NT - 0.5) * D
+	var out := []
+	for s in range(3):
+		out.append(to_global(Vector3((s - 1) * (W + 0.45) + (clampf(x, 0.0, 1.0) - 0.5) * W, 0.0, z)))
+	return out
+
 func hover_text(hit: Vector3) -> String:
 	var s := clampi(int(round(hit.x / (W + 0.45))) + 1, 0, 2)
 	var ox := (s - 1) * (W + 0.45)

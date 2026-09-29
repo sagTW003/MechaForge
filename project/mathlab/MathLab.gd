@@ -50,6 +50,7 @@ const MODULES := [
 enum Tool { ORBITAR, PERTURBAR }
 
 var main_scene: Node
+var start_module: String = "onda"
 var stage: HoloStage
 var cam: LabCamera
 var module_root: Node3D
@@ -76,6 +77,7 @@ var status_label: Label
 var pillar_buttons: Array = []
 var tool_buttons: Array = []
 var play_button: Button
+var speed_option: OptionButton
 var view_buttons: Array = []
 var _info_accum: float = 0.0
 var _crit_index: int = -1
@@ -101,7 +103,7 @@ func _ready() -> void:
 	_build_tooltip()
 	_build_ui()
 	open_pillar(0)
-	open_module("onda")
+	open_module(start_module if module_info(start_module).size() > 0 else "onda")
 
 #region MÓDULOS --------------------------------------------------------------------
 
@@ -326,6 +328,17 @@ func toggle_play() -> void:
 	playing = not playing
 	play_button.text = "⏸" if playing else "▶"
 
+func set_speed(s: float) -> void:
+	var speeds := [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+	var i := speeds.find(s)
+	if i >= 0:
+		speed = s
+		speed_option.select(i)
+
+## Aviso en la barra de estado de lo que ha hecho OpenClaw a través de la API.
+func notify_ai(t: String) -> void:
+	_status("🤖 OpenClaw: " + t)
+
 func reset_module() -> void:
 	if module:
 		module.reset()
@@ -498,6 +511,7 @@ func _topbar() -> Control:
 	play_button = _tb(hb, "⏸", toggle_play, false, "Pausa / reanudar (Espacio)")
 	_tb(hb, "⟲", reset_module, false, "Reiniciar el módulo (R)")
 	var sp := OptionButton.new()
+	speed_option = sp
 	sp.focus_mode = Control.FOCUS_NONE
 	for s in [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]:
 		sp.add_item("%s×" % str(s))

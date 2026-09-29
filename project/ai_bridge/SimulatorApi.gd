@@ -7,6 +7,10 @@ extends RefCounted
 ##   get_circuit_state, measure_voltage (circuito vivo y multímetro)
 ## Control de la simulación (reversible, se ejecuta al momento):
 ##   run_simulation, stop_simulation
+## Laboratorio matemático (se ejecutan al momento; no tocan el proyecto, solo la
+## visualización, y cada acción se anuncia en la barra de estado del laboratorio):
+##   lab_list_modules, lab_open, lab_close, lab_get_state, lab_set_param,
+##   lab_control, lab_sample, lab_perturb, lab_capture
 ## Cambios en la escena (requieren confirmación del usuario — vista previa fantasma):
 ##   add_part, connect_parts, set_property, remove_part, write_controller_script
 ##
@@ -49,6 +53,26 @@ const TOOLS := [
 		"input_schema": {"type": "object", "properties": {}}},
 	{"name": "measure_voltage", "description": "Mide (solo lectura, sin mover las sondas) la tensión entre dos terminales 'uid:terminal' del circuito vivo, p. ej. 'p123:anodo' y 'p456:a14_0' (agujero de la protoboard).",
 		"input_schema": {"type": "object", "required": ["a", "b"], "properties": {"a": {"type": "string"}, "b": {"type": "string"}}}},
+	{"name": "lab_list_modules", "description": "Laboratorio matemático: los 14 módulos (id, pilar, nombre, descripción).",
+		"input_schema": {"type": "object", "properties": {}}},
+	{"name": "lab_open", "description": "Abre el Laboratorio matemático (la escena de MechaForge se conserva) en un módulo, o cambia de módulo si ya está abierto.",
+		"input_schema": {"type": "object", "properties": {"modulo": {"type": "string", "description": "id de lab_list_modules, p. ej. 'schrodinger'"}}}},
+	{"name": "lab_close", "description": "Cierra el laboratorio y vuelve a MechaForge.", "input_schema": {"type": "object", "properties": {}}},
+	{"name": "lab_get_state", "description": "Estado del laboratorio: módulo, fórmula, lecturas en vivo (ceros, polos, energía, error, flujo…), puntos críticos en coordenadas matemáticas y todos los controles con su valor, rango u opciones.",
+		"input_schema": {"type": "object", "properties": {}}},
+	{"name": "lab_set_param", "description": "Cambia un control del módulo (deslizador, número, opción, casilla, expresión) o pulsa un botón, por su nombre o id de lab_get_state.",
+		"input_schema": {"type": "object", "required": ["nombre"], "properties": {
+			"nombre": {"type": "string"}, "valor": {"description": "número, texto de la opción o su índice, true/false, o la expresión (p. ej. '(z^2-1)/(z^2+1)')"}}}},
+	{"name": "lab_control", "description": "Controles generales del laboratorio.",
+		"input_schema": {"type": "object", "required": ["accion"], "properties": {
+			"accion": {"type": "string", "enum": ["pausar", "reanudar", "reiniciar", "encuadrar", "vista_perspectiva", "vista_superior", "vista_isometrica", "velocidad"]},
+			"valor": {"type": "number", "description": "para 'velocidad': 0.25, 0.5, 1, 2, 4 u 8"}}}},
+	{"name": "lab_sample", "description": "Lectura (solo lectura) en el punto matemático (x, y) del módulo: el mismo texto que el tooltip flotante.",
+		"input_schema": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}},
+	{"name": "lab_perturb", "description": "Equivale a un clic con «✋ Perturbar» en (x, y): pulso de onda, fuente de calor, barrera, punto inicial… según el módulo.",
+		"input_schema": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}},
+	{"name": "lab_capture", "description": "Guarda una captura PNG de la ventana del laboratorio y devuelve la ruta del archivo.",
+		"input_schema": {"type": "object", "properties": {}}},
 ]
 
 static var TOOL_NAMES: Array = TOOLS.map(func(t): return t["name"])
@@ -58,7 +82,12 @@ var host: Node
 func _init(h: Node) -> void:
 	host = h
 
+## Herramientas de la escena que siguen disponibles con el laboratorio abierto.
+const LAB_SAFE := ["list_parts", "get_proposal_status"]
+
 func call_tool(name: String, p: Dictionary) -> Dictionary:
+	if host.get("math_lab") != null and not name.begins_with("lab_") and not name in LAB_SAFE and name in TOOL_NAMES:
+		return {"error": "El Laboratorio matemático está abierto: usa lab_close para volver a MechaForge antes de '%s'." % name}
 	match name:
 		"get_scene_state": return host.api_scene_state()
 		"list_parts": return _list_parts(str(p.get("categoria", "")))
@@ -74,6 +103,27 @@ func call_tool(name: String, p: Dictionary) -> Dictionary:
 		"set_property": return _set_property(p)
 		"remove_part": return _remove(p)
 		"write_controller_script": return _script(p)
+		"lab_list_modules": return LabApi.modules()
+		"lab_open": return host.api_lab_open(str(p.get("modulo", "")))
+		"lab_close": return host.api_lab_close()
+		"lab_get_state": return host.api_lab_state()
+		"lab_set_param":
+			var key := str(p.get("nombre", ""))
+			var val = p.get("valor", null)
+			return host.api_lab(func(lab): return LabApi.set_param(lab, key, val))
+		"lab_control":
+			var act := str(p.get("accion", ""))
+			var v = p.get("valor", null)
+			return host.api_lab(func(lab): return LabApi.control(lab, act, v))
+		"lab_sample", "lab_perturb":
+			if not (typeof(p.get("x")) in [TYPE_INT, TYPE_FLOAT] and typeof(p.get("y")) in [TYPE_INT, TYPE_FLOAT]):
+				return {"error": "x e y deben ser números (coordenadas matemáticas del módulo)"}
+			var x := float(p["x"])
+			var y := float(p["y"])
+			if name == "lab_sample":
+				return host.api_lab(func(lab): return LabApi.sample(lab, x, y))
+			return host.api_lab(func(lab): return LabApi.perturb(lab, x, y))
+		"lab_capture": return host.api_lab(func(lab): return LabApi.capture(lab))
 	return {"error": "herramienta desconocida: %s" % name}
 
 func _list_parts(cat: String) -> Dictionary:

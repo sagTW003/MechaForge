@@ -2,7 +2,8 @@ class_name LabUI
 extends RefCounted
 ## LabUI — Controles de parámetros del Laboratorio (estilo "Leva"): deslizadores
 ## con etiqueta y valor, desplegables, casillas, campos de expresión con
-## validación en vivo y botones. Todos devuelven el control creado.
+## validación en vivo y botones. Todos devuelven el control creado y lo marcan
+## con la meta "lab_param" (su etiqueta) para que LabApi pueda manejarlo.
 
 ## Notación científica legible: 1.11e-4 → "1.11×10⁻⁴" (GDScript no admite %e).
 static func sci(v: float, digits: int = 2) -> String:
@@ -23,6 +24,7 @@ static func section(parent: Control, text: String) -> Label:
 	l.text = text
 	l.add_theme_color_override("font_color", Color(0.35, 0.85, 1.0))
 	l.add_theme_font_size_override("font_size", 15)
+	l.set_meta("lab_section", true)
 	parent.add_child(l)
 	return l
 
@@ -59,6 +61,7 @@ static func slider(parent: Control, label: String, lo: float, hi: float, step: f
 	s.value = value
 	s.focus_mode = Control.FOCUS_NONE
 	s.custom_minimum_size = Vector2(240, 16)
+	s.set_meta("lab_param", label)
 	s.value_changed.connect(func(x):
 		v.text = fmt % x
 		cb.call(x))
@@ -78,6 +81,7 @@ static func option(parent: Control, label: String, items: Array, selected: int, 
 	for it in items:
 		o.add_item(str(it))
 	o.select(clampi(selected, 0, items.size() - 1))
+	o.set_meta("lab_param", label)
 	o.item_selected.connect(func(i): cb.call(i))
 	row.add_child(o)
 	parent.add_child(row)
@@ -88,6 +92,7 @@ static func check(parent: Control, label: String, value: bool, cb: Callable) -> 
 	c.text = label
 	c.button_pressed = value
 	c.focus_mode = Control.FOCUS_NONE
+	c.set_meta("lab_param", label)
 	c.toggled.connect(func(v): cb.call(v))
 	parent.add_child(c)
 	return c
@@ -96,6 +101,7 @@ static func button(parent: Control, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE
+	b.set_meta("lab_param", text)
 	b.pressed.connect(cb)
 	parent.add_child(b)
 	return b
@@ -118,6 +124,9 @@ static func expr_field(parent: Control, label: String, text: String, vars: Array
 	e.text = text
 	e.custom_minimum_size = Vector2(250, 0)
 	e.add_theme_font_size_override("font_size", 14)
+	e.set_meta("lab_param", label)
+	e.set_meta("lab_vars", vars)
+	e.set_meta("lab_complex", complex)
 	box.add_child(e)
 	var err := Label.new()
 	err.add_theme_font_size_override("font_size", 11)
@@ -150,6 +159,7 @@ static func spin(parent: Control, label: String, lo: float, hi: float, step: flo
 	s.step = step
 	s.value = value
 	s.custom_minimum_size = Vector2(70, 0)
+	s.set_meta("lab_param", label)
 	s.value_changed.connect(func(v): cb.call(v))
 	r.add_child(s)
 	parent.add_child(r)
