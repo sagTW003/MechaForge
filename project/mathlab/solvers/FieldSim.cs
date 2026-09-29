@@ -34,8 +34,8 @@ public partial class FieldSim : RefCounted
     private byte[] _mask = System.Array.Empty<byte>();
     private float[] _rgba = System.Array.Empty<float>();
     private byte[] _bytes = System.Array.Empty<byte>();
-    private Image _img;
-    private ImageTexture _tex;
+    private Image _img = null!;           // se crean en Setup() antes de usarse
+    private ImageTexture _tex = null!;
     private double _time;
     private readonly List<double[]> _sources = new();     // [u, v, frecuencia, amplitud]
 

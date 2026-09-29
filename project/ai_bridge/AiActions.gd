@@ -9,7 +9,15 @@ extends RefCounted
 
 static func parse(text: String) -> Array:
 	for c in _candidates(text):
-		var d = JSON.parse_string(c)
+		# JSON.new().parse devuelve el error en lugar de escribirlo en la consola: una
+		# respuesta en prosa (lo normal) no deja «ERROR: Parse JSON failed» en el registro.
+		var s := str(c).strip_edges()
+		if not (s.begins_with("{") or s.begins_with("[")):
+			continue
+		var j := JSON.new()
+		if j.parse(s) != OK:
+			continue
+		var d = j.data
 		if typeof(d) == TYPE_DICTIONARY and d.has("acciones") and typeof(d["acciones"]) == TYPE_ARRAY:
 			return d["acciones"]
 	return []

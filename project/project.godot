@@ -52,6 +52,8 @@ common/physics_ticks_per_second=120
 
 [rendering]
 
+rendering_device/fallback_to_d3d12=true
+rendering_device/fallback_to_opengl3=true
 renderer/rendering_method.mobile="forward_plus"
 textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3

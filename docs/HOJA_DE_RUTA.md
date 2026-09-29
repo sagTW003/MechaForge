@@ -210,6 +210,10 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] Fórmulas como en papel: funciones sin paréntesis, nombres en español,
       superíndices, √, palabras pegadas, coma decimal y cierre de paréntesis. Vista
       previa en notación matemática, sugerencias y teclado de símbolos.
+- [x] Reproducible en cualquier PC: `tools\preparar_godot.ps1` descarga Godot 4.7.2 .NET
+      oficial (SHA-512) y sus plantillas; NuGet solo desde nuget.org; un clon limpio
+      compila y pasa todas las pruebas. Ejecutable autónomo con respaldo a D3D12/OpenGL
+      y lanzador de modo compatible; barra superior en varias filas.
 - [x] Herramienta Perturbar, tooltip 3D, planos de corte X/Y/Z.
 - [x] Pruebas `mflabtest` que comprueban la matemática de cada módulo.
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con

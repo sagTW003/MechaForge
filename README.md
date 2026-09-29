@@ -12,6 +12,16 @@ realista y gráficos de alta calidad.
 > plantillas (brazo 4 GDL, seguidor de línea) y versión portable.
 > Ver [docs/HOJA_DE_RUTA.md](docs/HOJA_DE_RUTA.md).
 
+## Descargar y usar (sin instalar nada)
+
+1. Descarga **`MechaForge_windows.zip`** de la última
+   [release](https://github.com/sagTW003/MechaForge/releases/latest).
+2. Descomprímelo en cualquier carpeta y abre `MechaForge\MechaForge.exe`.
+
+No hace falta instalar .NET ni OpenClaw: el runtime va incluido y el asistente de IA
+se activa solo si OpenClaw está instalado en el equipo. Más detalles y solución de
+problemas en [Ejecutable para Windows](#ejecutable-para-windows).
+
 ![Refactor](docs/demo_refactor.png)
 *Estudio (HDRI procedural): bastidor de perfiles 2020 con ranura en T sobre placa perforada, tren de engranajes Z20/Z40, PCB y gizmo 3D.*
 
@@ -37,16 +47,47 @@ realista y gráficos de alta calidad.
 
 ## Requisitos
 
-- **Windows 10/11** (probado en Windows 11 Pro).
-- **GPU con Vulkan** (Forward+). Probado en NVIDIA GeForce RTX 5060 (8 GB).
-- **Godot 4.7.2 — edición .NET/Mono** (incluida en `tools/godot/`).
-- **.NET SDK 8** (para los módulos en C#). Verifica con `dotnet --version`.
+**Para usar el ejecutable:**
+- Windows 10/11 de 64 bits.
+- Una tarjeta gráfica con Vulkan o Direct3D 12. Si no tiene ninguno, pasa sola a
+  OpenGL 3.3; también se puede forzar con `MechaForge (modo compatible).bat`.
+- Probado en NVIDIA GeForce RTX 5060 con Vulkan, Direct3D 12 y OpenGL.
+
+**Para compilar desde el código:**
+- Windows 10/11 de 64 bits, [Git](https://git-scm.com/) y el
+  **[.NET SDK 8](https://dotnet.microsoft.com/download/dotnet/8.0) o superior**
+  (compruébalo con `dotnet --list-sdks`).
+- **Godot 4.7.2 — edición .NET**. No está en el repositorio: lo descarga
+  `tools\preparar_godot.ps1` desde las releases oficiales de Godot y comprueba su
+  SHA-512.
+- Conexión a internet la primera vez: descarga Godot (116 MB) y los paquetes NuGet de
+  Godot desde nuget.org. Con `-Plantillas` descarga además las plantillas de
+  exportación (1,2 GB).
 
 El proyecto se ejecuta también en GPUs más modestas: los **perfiles gráficos
 automáticos** (Bajo/Medio/Alto/Ultra) y el **escalado dinámico de resolución**
 ajustan la calidad para mantener los FPS estables.
 
 ## Cómo ejecutar
+
+### Compilar desde el código (cualquier PC)
+
+```bat
+git clone https://github.com/sagTW003/MechaForge.git
+cd MechaForge
+powershell -ExecutionPolicy Bypass -File tools\preparar_godot.ps1
+dotnet build project\MechaForge.sln
+tools\godot\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64_console.exe --headless --path project --import
+tools\godot\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64.exe --path project
+```
+
+Para comprobar que todo está bien, pasa las pruebas (ver [Pruebas](#pruebas)); en un
+clon limpio pasan todas. Para generar el ejecutable y el zip de la release:
+
+```bat
+powershell -ExecutionPolicy Bypass -File tools\preparar_godot.ps1 -Plantillas
+powershell -ExecutionPolicy Bypass -File tools\empaquetar.ps1 -Zip -Exe
+```
 
 ### Opción A — Con el editor de Godot (recomendado para desarrollo)
 
@@ -473,8 +514,22 @@ Genera dos distribuciones en `dist\`:
 - **`MechaForge_portable\`** (+ `.zip`): alternativa que ejecuta el proyecto con el
   runtime de Godot incluido (doble clic en `MechaForge.vbs`).
 
-Ambas requieren el runtime de **.NET 8** y una GPU con Vulkan. El script verifica
-cada copia ejecutando las pruebas dentro de ella.
+El ejecutable es autónomo: lleva el runtime de .NET 8 en `data_MechaForge_windows_x86_64`
+y funciona desde cualquier carpeta, incluso con tildes o espacios en la ruta o en una
+carpeta de solo lectura, porque no escribe nada junto al `.exe`. La versión portable
+usa el editor de Godot y sí necesita el runtime de .NET 8 instalado. El script
+verifica cada copia ejecutando las pruebas dentro de ella. Requiere las plantillas de
+exportación (`tools\preparar_godot.ps1 -Plantillas`).
+
+**Si el ejecutable no arranca en otro PC:**
+- **El primer arranque tarda más:** prepara los shaders de la tarjeta gráfica. Los
+  siguientes son rápidos.
+- **SmartScreen avisa de «aplicación no reconocida»:** el ejecutable no está firmado.
+  Pulsa *Más información → Ejecutar de todas formas*.
+- **Pantalla negra o cierre al abrir:** actualiza el controlador de la gráfica o usa
+  `MechaForge (modo compatible).bat`, que usa OpenGL 3.3 con menos efectos.
+- **Para ver el motivo:** `MechaForge.console.exe` muestra el registro. También queda
+  en `%APPDATA%\Godot\app_userdata\MechaForge\logs`.
 
 ## Pruebas
 

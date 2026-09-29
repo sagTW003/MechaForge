@@ -145,6 +145,7 @@ const MAX_HISTORY := 200
 
 # --- Referencias UI ---
 var ui_layer: CanvasLayer
+var topbar_panel: Control
 var fps_label: Label
 var status_label: Label
 var counts_label: Label
@@ -1853,16 +1854,28 @@ func _panel(min_size: Vector2) -> PanelContainer:
 	p.add_theme_stylebox_override("panel", sb)
 	return p
 
+## Borde inferior de la barra superior: los paneles flotantes empiezan debajo.
+func topbar_bottom() -> float:
+	return topbar_panel.get_global_rect().end.y + 6.0 if is_instance_valid(topbar_panel) else 52.0
+
+## Si la barra pasa a dos filas (ventana estrecha), baja los paneles que quedarían debajo.
+func _on_topbar_resized() -> void:
+	var b := topbar_bottom()
+	for p in [biblioteca_panel, propiedades_panel]:
+		if p and p.position.y < b:
+			p.position.y = b
+
 func _build_topbar() -> Control:
 	var panel := _panel(Vector2(0, 46))
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_child(scroll)
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 8)
-	scroll.add_child(hb)
+	topbar_panel = panel
+	# Se parte en filas si no cabe (antes se desplazaba en horizontal y ocultaba
+	# Plantillas, Ejemplos, Laboratorio, IA…): todo queda a la vista con cualquier ventana.
+	var hb := HFlowContainer.new()
+	hb.add_theme_constant_override("h_separation", 8)
+	hb.add_theme_constant_override("v_separation", 4)
+	hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_child(hb)
+	panel.resized.connect(_on_topbar_resized)
 
 	hb.add_child(_button("Nuevo", _on_new))
 	hb.add_child(_button("Abrir…", _on_open))
@@ -2278,7 +2291,7 @@ func _delete_all_connections() -> void:
 func _layout_panels() -> void:
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	if propiedades_panel:
-		propiedades_panel.position = Vector2(vp.x - propiedades_panel.size.x - 8, 52)
+		propiedades_panel.position = Vector2(vp.x - propiedades_panel.size.x - 8, topbar_bottom())
 	if ai_panel:
 		ai_panel.position = Vector2(vp.x - ai_panel.size.x - 8, 300)
 	if music_panel:
@@ -2299,7 +2312,8 @@ func _clamp_panels() -> void:
 			continue
 		var pos: Vector2 = p.position
 		pos.x = clampf(pos.x, 0.0, maxf(0.0, vp.x - p.size.x))
-		pos.y = clampf(pos.y, 44.0, maxf(44.0, vp.y - 40.0))
+		var top := topbar_bottom() - 8.0
+		pos.y = clampf(pos.y, top, maxf(top, vp.y - 40.0))
 		p.position = pos
 
 func _build_statusbar() -> Control:
@@ -5000,7 +5014,7 @@ func _update_dmm_ui() -> void:
 		if txt != "":
 			short_banner_label.text = txt
 			var vp: Vector2 = get_viewport().get_visible_rect().size
-			short_banner.position = Vector2((vp.x - short_banner.size.x) * 0.5, 54)
+			short_banner.position = Vector2((vp.x - short_banner.size.x) * 0.5, topbar_bottom())
 
 #endregion
 

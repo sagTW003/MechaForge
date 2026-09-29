@@ -90,14 +90,24 @@ if ($Exe) {
     Write-Host "[Exe] Exportando con el preset 'Windows Desktop'..."
     & $godotCon --headless --path $proj --export-release "Windows Desktop" (Join-Path $exeDir "MechaForge.exe") 2>&1 | Select-String -Pattern "ERROR" | Out-Host
     robocopy $hands (Join-Path $exeDir "handtracking") /E /NFL /NDL /NJH /NJS /NP /XD "__pycache__" | Out-Null
+    # Lanzador de respaldo para tarjetas sin Vulkan ni Direct3D 12 (OpenGL 3.3).
+    Set-Content -Encoding ASCII (Join-Path $exeDir "MechaForge (modo compatible).bat") @"
+@echo off
+rem MechaForge con el renderizador de compatibilidad (OpenGL 3.3), para graficas antiguas
+start "" "%~dp0MechaForge.exe" --rendering-method gl_compatibility --rendering-driver opengl3 %*
+"@
     Set-Content -Encoding UTF8 (Join-Path $exeDir "LEEME.txt") @"
 MechaForge - ejecutable para Windows
 ====================================
 Doble clic en MechaForge.exe (MechaForge.console.exe muestra el registro).
 No hay que instalar nada: el runtime de .NET 8 va incluido en la carpeta data_*.
-Requisitos: Windows 10/11 de 64 bits y una tarjeta grafica con Vulkan (casi todas
-las de los ultimos 10 anos; actualiza el controlador si no arranca).
+Requisitos: Windows 10/11 de 64 bits y una tarjeta grafica con Vulkan o Direct3D 12
+(si no hay ninguno, usa OpenGL 3.3 automaticamente).
+Si no arranca o se ve mal: actualiza el controlador de la grafica o abre
+"MechaForge (modo compatible).bat" (renderizador OpenGL, menos efectos).
+El primer arranque tarda mas: prepara los shaders de tu grafica.
 Conserva juntos MechaForge.exe, MechaForge.pck y la carpeta data_MechaForge_windows_x86_64.
+Puedes ponerla en cualquier carpeta (tambien de solo lectura): no escribe nada junto al exe.
 
 Opcional:
 - Asistente de IA (OpenClaw): si OpenClaw esta instalado en este equipo, MechaForge lo
