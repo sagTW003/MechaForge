@@ -162,7 +162,7 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `optimizacion` | Gradiente con momento y Newton sobre z = f(x, y) | Función (Rosenbrock, Himmelblau…), f(x, y) =, Paso α, Momento β, Iteraciones máx. | región del dominio · punto inicial |
 | `interpolacion` | Spline 3D, Catmull-Rom, B-spline, Bézier; mínimos cuadrados con R²; superficies por datos dispersos (IDW, RBF, Delaunay) | Modo, casillas de curvas, Punto (añadir/quitar), Modelo, Ruido σ, Método, Número de puntos, Potencia p, Forma ε | espacio 3D · añade un dato |
 | `interp1d` | 13 métodos de interpolación sobre la misma función y nodos; error ‖f − p‖∞, constante de Lebesgue | Función (Runge, |x|, eˣ… o Datos libres), f(x) =, intervalo a/b, Nodos (equiespaciados, Chebyshev…), Número de nodos n, x*, casillas de cada método, Grado m | (x, y) de la gráfica · x* o arrastra un nodo |
-| `integracion` | ∬ f dA con punto medio, trapecio, Simpson, Gauss–Legendre 3 × 3, Monte Carlo y Halton; orden observado y σ | Función, f(x, y) =, Prismas de la regla, Celdas por lado n | [−2, 2]² |
+| `integracion` | **Integración y derivación 2D.** Modo integración: ∬_R f dA en R: a ≤ x ≤ b, c(x) ≤ y ≤ d(x) con 19 métodos (producto compuestas, Romberg, Gauss–Legendre/Lobatto p × p, Clenshaw–Curtis, cubatura de 7 puntos, iteradas adaptativas Gauss–Kronrod/Simpson/tanh-sinh, Genz–Malik, Monte Carlo, estratificado, Halton, Fibonacci); `info` da valor, error, evaluaciones y orden observado. Modo derivación: ∂f/∂x, ∂f/∂y, ∂²f/∂x², ∂²f/∂y², ∂²f/∂x∂y, laplaciano, \|∇f\| y D_u f en P con 11 métodos, error frente a h y hessiana | Modo, Ejemplo, f(x, y) =, a =, b =, c(x) =, d(x) = (expresiones en x), Método, n (subintervalos por lado), Nodos de Gauss p, Tolerancia 10ᵏ, Muestras N = 10ᵏ · Derivada, x₀ =, y₀ =, Dirección θ de D_u f (°), Paso h = 10ᵏ, Niveles de Richardson, Ruido en f, x mín. =, x máx. =, y mín. =, y máx. = · Comparar todos los métodos | (x, y) de la región o de la ventana · integración: sube n; derivación: elige P |
 | `calculo` | Integración 1D con 18 cuadraturas o derivación con 14 métodos (1.ª y 2.ª derivada) sobre la misma f(x); tabla con valor, error, evaluaciones y orden observado; gráfica del error (frente a evaluaciones o frente a h) | Modo (Integración / Derivación), Ejemplo, f(x) =, a =, b = (admiten `pi`, `inf`, `-inf`), Método, n, Tolerancia 10ᵏ, Muestras N = 10ᵏ · Derivada, x₀ =, Paso h = 10ᵏ, Ruido en f, N de Chebyshev · Comparar todos los métodos | x de la gráfica · mueve a o b (integración) o x₀ (derivación) |
 | `edp1d` | Calor 1D en espacio-tiempo: FTCS, implícito, Crank-Nicolson | r = αΔt/Δx², Condición inicial | (x, t); `lab_sample` lee los 3 métodos a la vez |
 | `coloreado` | \|f(z)\| como altura, arg f como color; ceros y polos con su orden | Función, f(z) =, Altura, Región R, curvas de módulo y fase | z = x + iy |
@@ -172,6 +172,18 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `teoremas` | Gauss (flujo frente a ∭∇·F) y Stokes (circulación frente a ∬∇×F·n) | Teorema, Campo F, Radio, Centro x/y/z, Inclinación θ, Azimut φ | (x, y, 0) |
 
 ## Recetas
+
+**Integral doble en una región curva y derivadas parciales:**
+
+```bash
+mf lab_open '{"modulo":"integracion"}'
+mf lab_set_param '{"nombre":"Ejemplo","valor":"disco"}'          # o a, b, c(x), d(x) a mano
+mf lab_set_param '{"nombre":"Método","valor":"Genz"}'
+mf lab_set_param '{"nombre":"Comparar todos","valor":true}'      # info: tabla de los 19 métodos
+mf lab_set_param '{"nombre":"Modo","valor":"Derivación"}'
+mf lab_set_param '{"nombre":"Derivada","valor":"mixta"}'         # ∂²f/∂x∂y
+mf lab_perturb '{"x":0.5,"y":0.3}'                              # mueve P
+```
 
 **Graficar (también lo que pida una imagen o un PDF):** `lab_plot` lo hace en una
 sola llamada. Si el humano adjuntó un archivo en el chat de MechaForge, su texto te

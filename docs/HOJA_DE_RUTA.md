@@ -219,6 +219,25 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con
       permiso). La API local sigue viva mientras el laboratorio está abierto.
 
+## ✅ Integración y derivación numéricas en 2D
+- [x] El módulo `integracion` pasa a **Integración y derivación (2D)** (mismo id para
+      la API), con dos modos.
+- [x] **Región** a ≤ x ≤ b, c(x) ≤ y ≤ d(x) con límites que pueden depender de x
+      (triángulo, disco, entre curvas). Se lleva al cuadrado unidad con su jacobiano,
+      así todos los métodos sirven para cualquier región.
+- [x] **19 métodos de integración**: rectángulo, punto medio, trapecio, Simpson 1/3
+      y 3/8, Boole, Romberg iterada, Gauss–Legendre y Gauss–Lobatto p × p,
+      Clenshaw–Curtis, cubatura de 7 puntos de grado 5, Gauss–Kronrod, Simpson y
+      tanh-sinh iteradas, Genz–Malik adaptativa, Monte Carlo, estratificado, Halton y
+      retícula de Fibonacci. Prismas por celda o subregión, nodos de evaluación y error
+      frente a evaluaciones.
+- [x] **Derivación parcial**: ∂f/∂x, ∂f/∂y, ∂²f/∂x², ∂²f/∂y², ∂²f/∂x∂y, laplaciano,
+      |∇f| y derivada direccional con 11 métodos (diferencias de 2 a 7 puntos,
+      Richardson, paso complejo, automática, simbólica, 9 puntos y mínimos cuadrados).
+      Plano tangente, ∇f, cortes por P, hessiana, ruido y error frente a h.
+- [x] 27 pruebas nuevas en `mflabtest` (órdenes observados, regiones curvas,
+      singularidad, pesos de Genz–Malik, órdenes de las derivadas, ruido).
+
 ## ✅ Elección de la cámara del seguimiento de manos
 - [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»
       y **↻ Buscar cámaras**. `handtracking/CameraList.cs` enumera DirectShow (mismo

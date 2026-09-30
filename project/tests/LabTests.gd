@@ -693,14 +693,116 @@ func _t_interp1d() -> void:
 
 func _t_integracion() -> void:
 	var m = lab.module
-	var exact := PI * pow(0.9953222650189527, 2.0)
-	check(absf(m.reference - exact) < 1e-6, "Integración: referencia ∬ e^(−x²−y²) = π·erf(2)² = %.8f" % exact)
-	m.n = 8
-	m._compute()
-	check(absf(float(m.results[0]["orden"]) - 2.0) < 0.3 and absf(float(m.results[1]["orden"]) - 2.0) < 0.3, "Integración: punto medio y trapecio de orden 2")
-	check(float(m.results[2]["orden"]) > 3.3, "Integración: Simpson de orden 4 (%.2f)" % float(m.results[2]["orden"]))
-	check(float(m.results[3]["orden"]) > 5.3, "Integración doble: Gauss–Legendre 3 × 3 de orden 6 (%.2f)" % float(m.results[3]["orden"]))
-	check(float(m.results[4]["error"]) < 4.0 * float(m.results[4]["sigma"]) and float(m.results[5]["error"]) < 0.05, "Integración doble: Monte Carlo dentro de 4σ (%s < 4·%s) y Halton cerca (%s)" % [LabUI.sci(float(m.results[4]["error"]), 2), LabUI.sci(float(m.results[4]["sigma"]), 2), LabUI.sci(float(m.results[5]["error"]), 2)])
+	var t0 := Time.get_ticks_msec()
+	m._load_int(0)
+	var t_load := Time.get_ticks_msec() - t0
+	var exact := 3.112270319717472
+	check(absf(m.reference - exact) < 1e-12 and m.ref_src == "exacto", "Integración 2D: referencia exacta ∬ e^(−x²−y²) = π·erf(2)²")
+	var err := func(k: int, nn: int) -> float:
+		var r: Dictionary = m.run_int(k, nn)
+		return float(r.get("error", INF))
+	var ord := func(k: int, nn: int) -> float:
+		return log(float(err.call(k, nn)) / float(err.call(k, nn * 2))) / log(2.0)
+	check(absf(ord.call(1, 8) - 2.0) < 0.3 and absf(ord.call(2, 8) - 2.0) < 0.3, "Integración 2D: punto medio y trapecio de orden 2")
+	check(ord.call(3, 8) > 3.5 and ord.call(4, 6) > 3.5, "Integración 2D: Simpson 1/3 y 3/8 de orden 4 (%.2f, %.2f)" % [ord.call(3, 8), ord.call(4, 6)])
+	check(ord.call(5, 8) > 5.3, "Integración 2D: Boole de orden 6 (%.2f)" % ord.call(5, 8))
+	m.gp = 3
+	check(ord.call(7, 4) > 5.3, "Integración 2D: Gauss–Legendre 3 × 3 de orden 6 (%.2f)" % ord.call(7, 4))
+	check(ord.call(10, 4) > 5.3 and int(m.run_int(10, 4)["evals"]) == 7 * 16, "Integración 2D: cubatura de 7 puntos de grado 5 (orden %.2f con 7 nodos por celda)" % ord.call(10, 4))
+	m.gp = 6
+	check(float(err.call(7, 8)) < 1e-12, "Integración 2D: Gauss–Legendre 6 × 6 con 8 celdas por lado, error %s" % LabUI.sci(float(err.call(7, 8)), 1))
+	check(float(err.call(8, 8)) < 1e-9, "Integración 2D: Gauss–Lobatto 6 × 6, error %s" % LabUI.sci(float(err.call(8, 8)), 1))
+	m.gp = 3
+	check(float(err.call(6, 40)) < 1e-9 and float(err.call(6, 40)) < float(err.call(6, 16)), "Integración 2D: Romberg iterada con 7 niveles, error %s" % LabUI.sci(float(err.call(6, 40)), 1))
+	check(float(err.call(9, 12)) < 1e-11, "Integración 2D: Clenshaw–Curtis producto (25 × 25 nodos), error %s" % LabUI.sci(float(err.call(9, 12)), 1))
+	var gk: Dictionary = m.run_int(11, 8, 1e-10)
+	var gm: Dictionary = m.run_int(14, 8, 1e-8)
+	check(float(gk["error"]) < 1e-9 and float(gm["error"]) < 1e-7 and int(gm["regiones"]) > 1,
+		"Integración 2D: Gauss–Kronrod iterada (%s) y Genz–Malik adaptativa (%s, %d subregiones)" % [LabUI.sci(float(gk["error"]), 1), LabUI.sci(float(gm["error"]), 1), int(gm["regiones"])])
+	var mc: Dictionary = m.run_int(15, 8, -1.0, 4000)
+	var st: Dictionary = m.run_int(16, 8, -1.0, 4000)
+	var ha: Dictionary = m.run_int(17, 8, -1.0, 4000)
+	var fb: Dictionary = m.run_int(18, 8, -1.0, 4000)
+	check(float(mc["error"]) < 4.0 * float(mc["sigma"]) and float(st["error"]) < 0.02 and float(ha["error"]) < 0.01 and float(fb["error"]) < 0.01,
+		"Integración 2D: Monte Carlo dentro de 4σ; estratificado (%s), Halton (%s) y Fibonacci (%s, %d puntos) mucho más precisos" % [LabUI.sci(float(st["error"]), 1), LabUI.sci(float(ha["error"]), 1), LabUI.sci(float(fb["error"]), 1), int(fb["N"])])
+	# Regiones con límites que dependen de x.
+	m._load_int(5)
+	check(absf(ord.call(0, 8) - 1.0) < 0.2, "Integración 2D: rectángulo de orden 1 (%.2f)" % ord.call(0, 8))
+	m.gp = 2
+	check(float(err.call(7, 1)) < 1e-14, "Región triangular 0 ≤ y ≤ x: Gauss 2 × 2 exacta para x·y (%s)" % LabUI.sci(float(err.call(7, 1)), 1))
+	m.gp = 3
+	m._load_int(6)
+	check(absf(m.region_area - PI) < 1e-9, "Disco unidad: el área de la región es π (%.10f)" % m.region_area)
+	var dg: Dictionary = m.run_int(11, 8, 1e-10)
+	var dz: Dictionary = m.run_int(14, 8, 1e-7)
+	check(float(dg["error"]) < 1e-8 and float(dz["error"]) < 1e-5, "Disco unidad: Gauss–Kronrod iterada (%s) y Genz–Malik (%s) siguen el borde curvo" % [LabUI.sci(float(dg["error"]), 1), LabUI.sci(float(dz["error"]), 1)])
+	m._load_int(7)
+	check(float(m.run_int(11, 8, 1e-10)["error"]) < 1e-8 and float(err.call(7, 8)) < 1e-4, "Entre y = x² e y = √x: ∬ (x + y) = 0.3")
+	m._load_int(9)
+	var tz: Dictionary = m.run_int(2, 8)
+	var th: Dictionary = m.run_int(13, 8, 1e-8)
+	check(str(tz["estado"]).contains("no es finita") and float(th.get("error", 1.0)) < 1e-6, "Singular 1/√(x² + y²): el trapecio evalúa la singularidad y tanh-sinh iterada acierta (%s)" % LabUI.sci(float(th.get("error", NAN)), 1))
+	# La región se cambia con los controles (API).
+	m._load_int(0)
+	await get_tree().process_frame
+	LabApi.set_param(lab, "c(x) =", "0")
+	LabApi.set_param(lab, "d(x) =", "x + 2")
+	LabApi.set_param(lab, "a =", "0")
+	await get_tree().process_frame
+	check(m.c_text == "0" and m.d_text == "x + 2" and absf(m.a) < 1e-12 and absf(m.region_area - 6.0) < 1e-9 and m.ref_src.begins_with("Gauss–Kronrod"),
+		"Región desde la API: 0 ≤ x ≤ 2, 0 ≤ y ≤ x + 2 (área %s, referencia %s)" % [m._short(m.region_area), m.ref_src])
+	check(t_load < 3000, "Integración 2D: cargar un ejemplo tarda %d ms" % t_load)
+	# --- Derivación ---
+	m.set_mode(1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	m.h_exp = -3.0
+	var ex := func(tg: int) -> float: return m.exact_target(tg)
+	check(absf(ex.call(0) - 2.0) < 1e-12 and absf(ex.call(1) + 1.0) < 1e-12 and absf(ex.call(2) - 2.0) < 1e-12 and absf(ex.call(3) + 2.0) < 1e-12
+		and absf(ex.call(4)) < 1e-12 and absf(ex.call(5)) < 1e-12, "Derivación 2D: silla x² − y² en (1, 0.5): ∂x = 2, ∂y = −1, ∂xx = 2, ∂yy = −2, ∂xy = 0, ∇² = 0")
+	m._load_diff(2)
+	var dord := func(meth: int, tg: int, h: float) -> float:
+		var e1 := absf(float(m.run_diff(meth, tg, h)["valor"]) - m.exact_target(tg))
+		var e2 := absf(float(m.run_diff(meth, tg, h * 0.5)["valor"]) - m.exact_target(tg))
+		return log(e1 / e2) / log(2.0)
+	check(absf(dord.call(0, 0, 1e-3) - 1.0) < 0.1 and absf(dord.call(2, 0, 1e-2) - 2.0) < 0.1 and absf(dord.call(3, 1, 5e-2) - 4.0) < 0.2 and absf(dord.call(4, 0, 0.1) - 6.0) < 0.3,
+		"Derivación 2D: órdenes observados 1, 2, 4 y 6 (adelante, centrada, 5 y 7 puntos) en sin x cos y")
+	check(absf(dord.call(2, 4, 1e-2) - 2.0) < 0.1 and absf(dord.call(2, 5, 1e-2) - 2.0) < 0.1 and absf(dord.call(9, 5, 1e-2) - 2.0) < 0.15,
+		"Derivación 2D: mixta y laplaciano centrados de orden 2; laplaciano isótropo de 9 puntos también")
+	m.levels = 3
+	var rich := absf(float(m.run_diff(5, 0, 0.1)["valor"]) - m.exact_target(0))
+	var cs := absf(float(m.run_diff(6, 0, 1e-16)["valor"]) - m.exact_target(0))
+	check(rich < 1e-8 and cs < 1e-14, "Derivación 2D: Richardson con 3 niveles (%s) y paso complejo con h = 10⁻¹⁶ (%s)" % [LabUI.sci(rich, 1), LabUI.sci(maxf(cs, 1e-18), 1)])
+	m._load_diff(3)
+	var mixed5 := absf(float(m.run_diff(3, 4, 1e-2)["valor"]) - 3.0)
+	var mixcs := absf(float(m.run_diff(6, 4, 1e-5)["valor"]) - 3.0)
+	check(absf(m.exact_target(4) - 3.0) < 1e-12 and mixed5 < 1e-8 and mixcs < 1e-6, "Derivación 2D: ∂²(x³y + y²)/∂x∂y = 3x² = 3 (5 puntos %s, paso complejo %s)" % [LabUI.sci(mixed5, 1), LabUI.sci(mixcs, 1)])
+	check(m.dxy_e.to_pretty().replace(" ", "").begins_with("3x²") or m.dxy_e.to_pretty().replace(" ", "").contains("3x²"), "Derivación 2D: derivada simbólica mixta = %s" % m.dxy_e.to_pretty())
+	m._load_diff(6)
+	check(absf(float(m.run_diff(7, 5, 1e-3)["valor"])) < 1e-12 and absf(float(m.run_diff(8, 5, 1e-3)["valor"])) < 1e-12, "Derivación 2D: e^x sin y es armónica: ∇²f = 0 exacto (automática y simbólica)")
+	m._load_diff(1)
+	m.theta_deg = 30.0
+	var du: float = m.exact_target(7)
+	var e0: Dictionary = m.exact_all()
+	check(absf(du - (float(e0["fx"]) * cos(PI / 6.0) + float(e0["fy"]) * sin(PI / 6.0))) < 1e-12 and absf(float(m.run_diff(2, 7, 1e-4)["valor"]) - du) < 1e-7,
+		"Derivación 2D: derivada direccional D_u f = ∇f · u con θ = 30°")
+	m.noise_exp = -4.0
+	var ecen := absf(float(m.run_diff(2, 0, 1e-2)["valor"]) - m.exact_target(0))
+	var els := absf(float(m.run_diff(10, 0, 1e-2)["valor"]) - m.exact_target(0))
+	check(els < ecen, "Derivación 2D: con ruido 10⁻⁴ el ajuste por mínimos cuadrados (%s) supera a la centrada (%s)" % [LabUI.sci(els, 1), LabUI.sci(ecen, 1)])
+	m.noise_exp = -17.0
+	m.target = 0
+	m.dmethod = 2
+	m.compare = true
+	m._changed()
+	check(m.rows.size() == m.DIFF_METHODS.size() and m.conv.size() == m.DIFF_METHODS.size() and is_finite(m.h_opt), "Derivación 2D: comparación de los 11 métodos y h óptimo ≈ %s" % LabUI.sci(m.h_opt, 1))
+	m.compare = false
+	var hit: Vector3 = m.api_points(0.5, 0.3)[0]
+	check(m.hover_text(hit).contains("∂f/∂x"), "Derivación 2D: la lectura flotante da las derivadas parciales")
+	m.perturb(m.api_points(-0.4, 0.8)[0], true)
+	check(absf(m.x0 + 0.4) < 0.01 and absf(m.y0 - 0.8) < 0.01, "Derivación 2D: clic con «Perturbar» mueve P a (%s, %s)" % [m._short(m.x0), m._short(m.y0)])
+	m.set_mode(0)
+	await get_tree().process_frame
 
 func _t_calculo() -> void:
 	var m = lab.module
