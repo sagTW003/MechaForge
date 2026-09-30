@@ -3,7 +3,8 @@ extends Node
 ## OpenClawBridge — Puente desacoplado con OpenClaw (Fase 4).
 ##
 ## Se conecta al gateway local de OpenClaw (endpoint compatible con OpenAI,
-## descubierto en el Paso 0) para el chat y el diagnóstico. La dirección, el
+## descubierto en el Paso 0) para el chat y el diagnóstico. Los mensajes pueden
+## llevar partes de imagen («image_url»): así viajan los adjuntos del chat. La dirección, el
 ## puerto y el token viven en un archivo de configuración (user://), nunca en el
 ## código. Si no hay configuración, el puente queda inactivo y la app funciona
 ## igual sin IA.
@@ -19,6 +20,7 @@ var model: String = "openclaw/cerebro"
 var path: String = "/v1/chat/completions"
 var configured: bool = false
 var busy: bool = false
+var last_code: int = 0          # código HTTP de la última respuesta del chat (0 = sin respuesta)
 
 var _chat: HTTPRequest
 var _health: HTTPRequest
@@ -125,8 +127,9 @@ func send_chat(messages: Array) -> void:
 		failed.emit("Espera la respuesta anterior…")
 		return
 	busy = true
+	last_code = 0
 	var body := JSON.stringify({
-		"model": model, "messages": messages, "max_tokens": 1000, "stream": false,
+		"model": model, "messages": messages, "max_tokens": 2000, "stream": false,
 	})
 	var err := _chat.request(base_url() + path, _headers(), HTTPClient.METHOD_POST, body)
 	if err != OK:
@@ -136,11 +139,20 @@ func send_chat(messages: Array) -> void:
 func _on_chat_done(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 	busy = false
 	if result != HTTPRequest.RESULT_SUCCESS:
+		last_code = 0
 		failed.emit("Fallo de red (%d). ¿Está encendido el gateway de OpenClaw?" % result)
 		return
-	var data = JSON.parse_string(body.get_string_from_utf8())
+	last_code = code
+	var j := JSON.new()
+	var data = j.data if j.parse(body.get_string_from_utf8()) == OK else null
 	if typeof(data) != TYPE_DICTIONARY or not data.has("choices"):
-		failed.emit("Respuesta inesperada de OpenClaw (código %d)." % code)
+		var msg := ""
+		if typeof(data) == TYPE_DICTIONARY and typeof(data.get("error")) == TYPE_DICTIONARY:
+			msg = str(data["error"].get("message", ""))
+		failed.emit(("OpenClaw: %s (código %d)." % [msg, code]) if msg != "" else "Respuesta inesperada de OpenClaw (código %d)." % code)
+		return
+	if code >= 400:
+		failed.emit("OpenClaw respondió con el código %d." % code)
 		return
 	var choices: Array = data["choices"]
 	if choices.is_empty():

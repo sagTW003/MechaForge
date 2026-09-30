@@ -10,9 +10,10 @@ extends RefCounted
 ## Laboratorio matemático (se ejecutan al momento; no tocan el proyecto, solo la
 ## visualización, y cada acción se anuncia en la barra de estado del laboratorio):
 ##   lab_list_modules, lab_open, lab_close, lab_get_state, lab_set_param,
-##   lab_control, lab_sample, lab_perturb, lab_capture
+##   lab_control, lab_sample, lab_perturb, lab_capture, lab_plot
 ## Cambios en la escena (requieren confirmación del usuario — vista previa fantasma):
-##   add_part, connect_parts, set_property, remove_part, write_controller_script
+##   add_part, connect_parts, set_property, remove_part, write_controller_script,
+##   write_note (notas del proyecto; get_notes las lee)
 ##
 ## "host" es el controlador principal (ui/Main.gd); aquí solo se valida y traduce.
 
@@ -73,6 +74,19 @@ const TOOLS := [
 		"input_schema": {"type": "object", "required": ["x", "y"], "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}},
 	{"name": "lab_capture", "description": "Guarda una captura PNG de la ventana del laboratorio y devuelve la ruta del archivo.",
 		"input_schema": {"type": "object", "properties": {}}},
+	{"name": "lab_plot", "description": "Dibuja en el módulo «Gráficas» del laboratorio (lo abre si hace falta): hasta 4 funciones y = f(x) con sus raíces, extremos y cortes, o una curva paramétrica, una polar o una superficie, más puntos de datos. Fórmulas en notación normal (2x, sin x, x^2, e^(-x), sqrt(x), ln x, pi).",
+		"input_schema": {"type": "object", "properties": {
+			"funciones": {"type": "array", "items": {"type": "string"}, "description": "p. ej. [\"x^2 - 2\", \"sin x\"]"},
+			"x": {"type": "array", "description": "intervalo [mín, máx] (números o expresiones como \"-2pi\"); dominio de x en superficies"},
+			"y": {"type": "array", "description": "intervalo [mín, máx] (opcional: automático)"},
+			"parametrica": {"type": "object", "description": "{\"x\": \"cos t\", \"y\": \"sin t\", \"t\": [0, \"2pi\"]}"},
+			"polar": {"type": "object", "description": "{\"r\": \"1 + cos θ\", \"t\": [0, \"2pi\"]}"},
+			"superficie": {"type": "string", "description": "z = f(x, y), p. ej. \"sin x cos y\""},
+			"puntos": {"type": "array", "description": "[[x, y], …]"},
+			"titulo": {"type": "string"}, "marcar": {"type": "boolean"}}}},
+	{"name": "write_note", "description": "Propone escribir en las notas del proyecto (resumen de un documento, datos de un enunciado, pasos de una solución). El usuario confirma.",
+		"input_schema": {"type": "object", "required": ["texto"], "properties": {"titulo": {"type": "string"}, "texto": {"type": "string"}}}},
+	{"name": "get_notes", "description": "Lee las notas del proyecto.", "input_schema": {"type": "object", "properties": {}}},
 ]
 
 static var TOOL_NAMES: Array = TOOLS.map(func(t): return t["name"])
@@ -83,7 +97,7 @@ func _init(h: Node) -> void:
 	host = h
 
 ## Herramientas de la escena que siguen disponibles con el laboratorio abierto.
-const LAB_SAFE := ["list_parts", "get_proposal_status"]
+const LAB_SAFE := ["list_parts", "get_proposal_status", "get_notes"]
 
 func call_tool(name: String, p: Dictionary) -> Dictionary:
 	if host.get("math_lab") != null and not name.begins_with("lab_") and not name in LAB_SAFE and name in TOOL_NAMES:
@@ -124,6 +138,13 @@ func call_tool(name: String, p: Dictionary) -> Dictionary:
 				return host.api_lab(func(lab): return LabApi.sample(lab, x, y))
 			return host.api_lab(func(lab): return LabApi.perturb(lab, x, y))
 		"lab_capture": return host.api_lab(func(lab): return LabApi.capture(lab))
+		"lab_plot": return host.api_lab_plot(p)
+		"write_note":
+			var txt := str(p.get("texto", ""))
+			if txt.strip_edges() == "":
+				return {"error": "texto vacío"}
+			return host.api_propose([{"tipo": "nota", "titulo": str(p.get("titulo", "")), "texto": txt}])
+		"get_notes": return host.api_notes()
 	return {"error": "herramienta desconocida: %s" % name}
 
 func _list_parts(cat: String) -> Dictionary:

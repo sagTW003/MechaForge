@@ -92,6 +92,8 @@ static func _describe(c: Node) -> Dictionary:
 		return {"tipo": "opcion", "valor": o.selected, "texto": o.get_item_text(o.selected) if o.selected >= 0 else "", "opciones": items, "_c": c}
 	if c is CheckBox:
 		return {"tipo": "casilla", "valor": (c as CheckBox).button_pressed, "_c": c}
+	if c is LineEdit and str(c.get_meta("lab_kind", "")) == "texto":
+		return {"tipo": "texto", "valor": (c as LineEdit).text, "_c": c}
 	if c is LineEdit:
 		return {"tipo": "expresion", "valor": (c as LineEdit).text, "variables": c.get_meta("lab_vars", []), "compleja": c.get_meta("lab_complex", false), "_c": c}
 	if c is Button:
@@ -177,13 +179,23 @@ static func set_param(lab: MathLab, key: String, value) -> Dictionary:
 			shown = on
 		"expresion":
 			var e := c as LineEdit
-			var t := str(value)
-			var m := MathExpr.parse(t, e.get_meta("lab_vars", []), e.get_meta("lab_complex", false))
-			if not m.ok():
-				return {"error": "expresión no válida: %s" % m.error}
-			e.text = t
-			e.text_submitted.emit(t)
-			shown = t
+			var t := str(value) if value != null else ""
+			if t.strip_edges() == "" and e.get_meta("lab_optional", false):
+				e.text = ""
+				e.text_submitted.emit("")
+				shown = "(vacío)"
+			else:
+				var m := MathExpr.parse(t, e.get_meta("lab_vars", []), e.get_meta("lab_complex", false))
+				if not m.ok():
+					return {"error": "expresión no válida: %s" % m.error}
+				e.text = t
+				e.text_submitted.emit(t)
+				shown = t
+		"texto":
+			var te := c as LineEdit
+			te.text = str(value) if value != null else ""
+			te.text_submitted.emit(te.text)
+			shown = te.text
 		"boton":
 			(c as Button).pressed.emit()
 			shown = "pulsado"

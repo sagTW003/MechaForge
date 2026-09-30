@@ -111,13 +111,16 @@ Puedes ponerla en cualquier carpeta (tambien de solo lectura): no escribe nada j
 
 Opcional:
 - Asistente de IA (OpenClaw): si OpenClaw esta instalado en este equipo, MechaForge lo
-  detecta solo. Sin OpenClaw todo lo demas funciona igual.
+  detecta solo. En su chat puedes adjuntar imagenes o PDF (boton, arrastrar o Ctrl+V)
+  y el agente puede graficarlos, construir o escribir notas. Sin OpenClaw todo lo
+  demas funciona igual.
 - Seguimiento de manos (boton Manos del Laboratorio): carpeta handtracking; requiere
   Python 3 con: python -m pip install -r handtracking\requirements.txt y una webcam.
 
 Los datos del usuario (proyectos, autoguardado, ajustes, API local) estan en:
   %APPDATA%\Godot\app_userdata\MechaForge
 "@
+    Copy-Item -Force (Join-Path $root "docs\LICENCIAS_TERCEROS.md") (Join-Path $exeDir "LICENCIAS_TERCEROS.md")
     $t2 = & (Join-Path $exeDir "MechaForge.console.exe") --headless -- mftest 2>&1
     Write-Host ("      Ejecutable: " + (($t2 | Select-String "\[TEST\] Resultado").ToString()))
     if ($Zip) {

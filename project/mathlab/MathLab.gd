@@ -4,7 +4,7 @@ extends Node3D
 ##
 ## Visualiza e interactúa con funciones y ecuaciones en cuatro pilares:
 ##   1. EDPs y física matemática: onda, calor y Schrödinger (en tiempo real).
-##   2. Métodos numéricos: raíces, sistemas, optimización, interpolación y
+##   2. Métodos numéricos: gráficas de funciones, raíces, sistemas, optimización, interpolación y
 ##      ajuste, integración numérica y solución numérica de EDPs.
 ##   3. Análisis complejo: coloreado de dominio 3D, mapeos conformes y fractales.
 ##   4. Campos vectoriales: flechas, líneas de corriente y partículas, divergencia
@@ -24,6 +24,8 @@ const MODULES := [
 		"desc": "Conducción térmica en una placa con materiales, fuentes y disipación."},
 	{"id": "schrodinger", "pilar": 0, "nombre": "Schrödinger (efecto túnel)", "ruta": "res://mathlab/modules/SchrodingerModule.gd",
 		"desc": "Paquete de ondas cuántico: |ψ|² como altura y la fase como color; barreras y pozos."},
+	{"id": "graficas", "pilar": 1, "nombre": "Gráficas", "ruta": "res://mathlab/modules/GraficasModule.gd",
+		"desc": "Calculadora gráfica: hasta 4 funciones con raíces, extremos y cortes; paramétricas, polares, superficies z = f(x, y) y puntos."},
 	{"id": "raices", "pilar": 1, "nombre": "Ecuaciones no lineales", "ruta": "res://mathlab/modules/RaicesModule.gd",
 		"desc": "15 métodos: bisección, regula falsi, Illinois, Ridders, Brent, Newton, Halley, secante, Steffensen, Müller, punto fijo… y su comparación."},
 	{"id": "sistemas", "pilar": 1, "nombre": "Sistemas de ecuaciones", "ruta": "res://mathlab/modules/SistemasModule.gd",

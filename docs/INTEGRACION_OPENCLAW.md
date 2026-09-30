@@ -51,6 +51,25 @@ La conexión se define en `project/ai_bridge/openclaw_config.json` (plantilla:
 
 ## Estado implementado (API de herramientas)
 
+- **Adjuntos en el chat** (`ai_bridge/AiAttachments.gd`, `ai_bridge/PdfDoc.cs`):
+  - El endpoint `/v1/chat/completions` del gateway acepta partes `image_url` (data
+    URI en base64) solo en el último mensaje del usuario: como mucho 8, 10 MB cada una
+    y 20 MB en total. No acepta partes de archivo; por eso MechaForge extrae el texto
+    de los PDF con PDFium y renderiza sus primeras páginas como imágenes.
+  - Si el modelo del agente es solo de texto, OpenClaw guarda las imágenes como
+    referencias `media://inbound/*` para sus herramientas. Si aun así el gateway
+    responde con un error, MechaForge reenvía el mensaje una vez sin imágenes.
+  - Cada archivo se copia a `user://adjuntos` (se conservan los 40 más recientes) y
+    su ruta va en el mensaje, para agentes con la herramienta `pdf` o `image`.
+  - El historial que se reenvía en cada turno guarda la versión en texto (con el
+    texto del PDF recortado a 6000 caracteres).
+  - Acciones que el agente puede devolver: `grafica` (módulo Gráficas), `lab`
+    (cualquier módulo y sus controles) y `nota` (notas del proyecto), además de las
+    de construcción. Todas pasan por Aplicar/Descartar.
+  - Alternativa por API: `lab_plot`, `write_note` y `get_notes`.
+  - El endpoint `/v1/responses` sí admite PDF (`input_file`), pero está desactivado
+    en la configuración de OpenClaw y activarlo cambiaría esa configuración: no se usa.
+
 - **MechaForge → OpenClaw**: panel de chat (`ai_bridge/OpenClawBridge.gd`) contra el
   endpoint compatible con OpenAI del gateway, con el estado de la escena como contexto.
 - **OpenClaw → MechaForge**: `ai_bridge/ToolServer.gd` expone una **API JSON-RPC 2.0

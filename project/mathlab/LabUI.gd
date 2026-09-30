@@ -126,7 +126,8 @@ const SYNTAX_HELP := "Se escribe como en papel: 2x, 3(x+1), sin x, sen 2x, x², 
 ## Campo de expresión con notación cómoda: mientras se escribe muestra la fórmula
 ## en notación matemática (o el error), los avisos de la lectura y, con ⌨, un
 ## teclado de símbolos. Al confirmar (Intro o al salir del campo) llama cb(expr).
-static func expr_field(parent: Control, label: String, text: String, vars: Array, complex: bool, cb: Callable) -> LineEdit:
+## optional = true: el campo puede quedar vacío y entonces llama cb(null).
+static func expr_field(parent: Control, label: String, text: String, vars: Array, complex: bool, cb: Callable, optional := false) -> LineEdit:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 1)
 	var head := HBoxContainer.new()
@@ -152,6 +153,7 @@ static func expr_field(parent: Control, label: String, text: String, vars: Array
 	e.set_meta("lab_param", label)
 	e.set_meta("lab_vars", vars)
 	e.set_meta("lab_complex", complex)
+	e.set_meta("lab_optional", optional)
 	box.add_child(e)
 	var kb := GridContainer.new()
 	kb.columns = 9
@@ -165,6 +167,10 @@ static func expr_field(parent: Control, label: String, text: String, vars: Array
 	err.custom_minimum_size = Vector2(250, 0)
 	box.add_child(err)
 	var show := func(t: String, final: bool) -> MathExpr:
+		if optional and t.strip_edges() == "":
+			err.text = "(vacío: no se dibuja)"
+			err.add_theme_color_override("font_color", Color(0.55, 0.6, 0.66))
+			return null
 		var m := MathExpr.parse(t, vars, complex)
 		if m.ok():
 			var txt := "= " + m.to_pretty()
@@ -178,7 +184,9 @@ static func expr_field(parent: Control, label: String, text: String, vars: Array
 		return m
 	var apply := func(t: String):
 		var m: MathExpr = show.call(t, true)
-		if m.ok():
+		if m == null:
+			cb.call(null)
+		elif m.ok():
 			cb.call(m)
 	var keys: Array = KEYS.duplicate()
 	for v in vars:
@@ -203,6 +211,27 @@ static func expr_field(parent: Control, label: String, text: String, vars: Array
 	e.focus_exited.connect(func(): apply.call(e.text))
 	kb_btn.toggled.connect(func(on): kb.visible = on)
 	show.call(text, true)
+	parent.add_child(box)
+	return e
+
+## Campo de texto libre (datos, listas de puntos…). cb(texto) al confirmar.
+static func text_field(parent: Control, label: String, text: String, placeholder: String, cb: Callable) -> LineEdit:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	var l := Label.new()
+	l.text = label
+	l.add_theme_font_size_override("font_size", 13)
+	box.add_child(l)
+	var e := LineEdit.new()
+	e.text = text
+	e.placeholder_text = placeholder
+	e.custom_minimum_size = Vector2(250, 0)
+	e.add_theme_font_size_override("font_size", 13)
+	e.set_meta("lab_param", label)
+	e.set_meta("lab_kind", "texto")
+	box.add_child(e)
+	e.text_submitted.connect(func(t): cb.call(t))
+	e.focus_exited.connect(func(): cb.call(e.text))
 	parent.add_child(box)
 	return e
 

@@ -1,6 +1,6 @@
 ---
 name: mechaforge-laboratorio
-description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración y derivación numéricas (18 cuadraturas y 14 derivadas), integral doble, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
+description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — graficar funciones, curvas, superficies y datos (lab_plot, también lo que venga en una imagen o un PDF), abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración y derivación numéricas (18 cuadraturas y 14 derivadas), integral doble, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
 ---
 
 # MechaForge — Laboratorio matemático 3D
@@ -45,7 +45,8 @@ mf lab_open @{modulo="schrodinger"}
 
 | Método | Parámetros | Para qué |
 |---|---|---|
-| `lab_list_modules` | — | Los 17 módulos: `id`, pilar, nombre y descripción |
+| `lab_list_modules` | — | Los 18 módulos: `id`, pilar, nombre y descripción |
+| `lab_plot` | ver abajo | Dibuja en el módulo `graficas` (lo abre si hace falta) y devuelve `marcas` (raíces, extremos, cortes) e `info`. Es lo más rápido para «grafica esto» |
 | `lab_open` | `{"modulo":"id"}` | Abre el laboratorio en ese módulo, o cambia de módulo si ya está abierto. Si estaba cerrado responde `"status":"abriendo"`: espera 1 s y llama a `lab_get_state` |
 | `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`) y `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) |
 | `lab_set_param` | `{"nombre":"…","valor":…}` | Mueve un control igual que el humano (ver abajo) |
@@ -67,7 +68,8 @@ Detalles de `lab_set_param`:
 | `deslizador` / `numero` | Número; se limita al rango |
 | `opcion` | Texto de la opción (basta una parte: `"barrera"`) o su índice |
 | `casilla` | `true` o `false` |
-| `expresion` | La fórmula; si no es válida devuelve el error del analizador |
+| `expresion` | La fórmula; si no es válida devuelve el error del analizador. Los campos opcionales (f₂…f₄ de Gráficas) aceptan `""` para vaciarlos |
+| `texto` | Texto libre, p. ej. los puntos `"(0, 1); (2, 3.5)"` |
 | `boton` | Se ignora: lo pulsa |
 
 Acciones de `lab_control`:
@@ -153,6 +155,7 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `onda` | Membrana ∂²u/∂t² = c²∇²u (FDTD), energía, modos normales | Membrana, Frontera (fija/libre/absorbente), Velocidad de onda c, Amortiguamiento, Interferencia (2 fuentes), m, n, Excitar el modo | [−1, 1]² · pulso gaussiano |
 | `calor` | Placa de 20 cm con materiales reales, isotermas | Placa de (madera…cobre), Aceleración temporal, Bordes, Clic (inyectar, enfriar, fuente, pintar material) | cm desde el centro, ±10 · inyecta calor |
 | `schrodinger` | Paquete gaussiano: \|ψ\|² como altura y fase como color; túnel | Potencial (libre, barrera, doble rendija, pozo, oscilador), Altura V₀, Anchura de la barrera, Momento k₀, Anchura σ, Posición inicial x₀, Lanzar paquete | ±10 · pinta barrera |
+| `graficas` | Calculadora gráfica: hasta 4 funciones y = f(x) con raíces, extremos y cortes marcados; paramétricas, polares r(θ), superficies z = f(x, y) y puntos de datos | Tipo, Ejemplo, f₁(x) = … f₄(x) =, x mín./máx., y automática, y mín./máx., Marcar raíces…, x(t) =, y(t) =, r(t) = (t es θ), f(x, y) =, Puntos (x, y) | (x, y) del tablero · añade un punto |
 | `raices` | 15 métodos para f(x) = 0 (intervalo, con derivadas, sin derivadas, punto fijo) con tabla, orden observado y comparación | Ejemplo (9 funciones), Método, f(x) =, g(x) =, a, b, x₀, x₁, Tolerancia 10ᵏ, Paso, Resolver, Comparar todos los métodos | x (eje de la gráfica) |
 | `sistemas` | 3 planos: Jacobi, Gauss-Seidel, SOR, Richardson, descenso, gradiente conjugado; eliminación geométrica, LU, Cholesky, QR, Cramer | Ejemplo, A11…A33, b1…b3, Iteraciones, casillas de cada método, ω de SOR, ω óptimo, Método directo, Paso de eliminación (0–5) | (x, y) del plano z = 0 · punto de partida |
 | `nolineal` | F(x, y) = 0: curvas f₁ = 0 y f₂ = 0, 7 métodos y cuencas de atracción de Newton | Ejemplo, f₁, f₂, g₁, g₂ (x, y) =, Región R, x₀, y₀, Iteraciones máx., casillas de cada método, Cuencas | (x, y) del plano · punto de partida |
@@ -169,6 +172,25 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `teoremas` | Gauss (flujo frente a ∭∇·F) y Stokes (circulación frente a ∬∇×F·n) | Teorema, Campo F, Radio, Centro x/y/z, Inclinación θ, Azimut φ | (x, y, 0) |
 
 ## Recetas
+
+**Graficar (también lo que pida una imagen o un PDF):** `lab_plot` lo hace en una
+sola llamada. Si el humano adjuntó un archivo en el chat de MechaForge, su texto te
+llega entre `<<<DOCUMENTO …>>>` y, si tu modelo tiene visión, las imágenes y las
+primeras páginas; la ruta de una copia local también va en el mensaje (útil con tu
+herramienta `pdf` o `image`).
+
+```bash
+mf lab_plot '{"funciones":["x^2 - 2","sin x"],"x":[-3,3],"titulo":"Ejercicio 3"}'
+mf lab_plot '{"parametrica":{"x":"cos(3t)","y":"sin(2t)","t":[0,"2pi"]}}'
+mf lab_plot '{"polar":{"r":"1 + cos θ","t":[0,"2pi"]}}'
+mf lab_plot '{"superficie":"sin x cos y","x":[-3,3],"y":[-3,3]}'
+mf lab_plot '{"funciones":["0.5x + 1"],"x":[0,6],"puntos":[[1,1.4],[2,2.1],[3,2.4]]}'
+```
+
+La respuesta trae `marcas` («Raíz de f₁: x = 1.4142», «Mínimo de f₁: (0, -2)»,
+«Corte f₁ = f₂: …»): úsalas para contestar con números. `"y"` es opcional (escala
+automática que ignora las asíntotas); lo que no se entiende se omite y llega en
+`errores`.
 
 **Efecto túnel** (E ≈ k₀²/2 = 4.5 < V₀ = 5):
 

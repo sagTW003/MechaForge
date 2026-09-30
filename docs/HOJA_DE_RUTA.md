@@ -219,6 +219,27 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con
       permiso). La API local sigue viva mientras el laboratorio está abierto.
 
+## ✅ Imágenes y PDF en el chat de OpenClaw
+- [x] **Adjuntos** en el panel de IA (📎, arrastrar a la ventana o Ctrl+V; hasta 6
+      por mensaje). `ai_bridge/AiAttachments.gd` los prepara para cualquier agente:
+      imágenes como `image_url` (reducidas a 1600 px), el texto de los PDF marcado como
+      contenido del documento, las primeras 4 páginas como imagen y la ruta de una
+      copia local para las herramientas del agente (`pdf`, `image`, `read`).
+- [x] **Lectura de PDF con PDFium** (`ai_bridge/PdfDoc.cs`, `bblanchon.PDFium.Win32`
+      desde nuget.org): texto por página y render de páginas; PDF dañados o con
+      contraseña dan un error claro.
+- [x] **Modelos sin visión**: si el gateway rechaza las imágenes, se reenvía una vez
+      solo con el texto. Probado con el agente real `cerebro` (modelo de texto): leyó
+      el PDF de ejemplo y propuso la gráfica y la nota correctas.
+- [x] **Módulo «Gráficas»** del laboratorio (18.º módulo): hasta 4 funciones con
+      raíces, extremos y cortes; paramétricas, polares, superficies y puntos.
+      `load_spec` lo configura de una vez.
+- [x] **Acciones nuevas** del chat: `grafica`, `lab` y `nota`; **📝 Notas del
+      proyecto** guardadas en el `.mforge`. API: `lab_plot`, `write_note`
+      (propuesta) y `get_notes`.
+- [x] Pruebas: `mfadjuntos` (39, con un gateway falso que comprueba el JSON enviado
+      y el reenvío) y 20 más de Gráficas en `mflabtest`.
+
 ## ✅ Multímetro digital, integrados DIP y cortocircuitos
 - [x] Solver de circuito **no lineal** (MNA + Newton-Raphson, `electronics/CircuitSolver.cs`):
       LED como diodo de Shockley con resistencia serie, baterías con resistencia

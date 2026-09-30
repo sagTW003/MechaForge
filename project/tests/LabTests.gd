@@ -99,8 +99,7 @@ func _t_api() -> void:
 		var lect := str(q.get("lectura", ""))
 		if not lect.contains("0.5") or lect.contains("%"):
 			coords_ok = false
-			print("        ", id, ": ", lect.replace("
-", " / "))
+			print("        ", id, ": ", lect.replace("\n", " / "))
 	check(coords_ok, "API: lab_sample usa las mismas coordenadas que el tooltip de cada módulo")
 	api.call_tool("lab_open", {"modulo": "onda"})
 	r = api.call_tool("lab_set_param", {"nombre": "Frontera", "valor": "absorbente"})
@@ -356,6 +355,77 @@ func _t_schrodinger() -> void:
 		m.step(0.05)
 	check(m.trans_max > 0.3 and float(m.sim.ProbabilityBeyond(0.52)) < m.trans_max, "Schrödinger: el panel conserva T máx. = %.1f %% aunque el borde absorba el paquete" % (m.trans_max * 100.0))
 	check(trans[0] > 0.01 and trans[0] > trans[1] * 2.0, "Schrödinger: efecto túnel con E ≈ 4.5 < V₀ = 5 (T = %.1f %% con a = 0.4; %.1f %% con a = 1.0)" % [trans[0] * 100.0, trans[1] * 100.0])
+
+func _t_graficas() -> void:
+	var m = lab.module
+	var r: Dictionary = m.load_spec({"funciones": ["x^2 - 2", "y = sin x"], "x": [-3, 3], "titulo": "Prueba"})
+	check(r["ok"] and m.tipo == 0 and m.f_text[1] == "sin x" and m.planar(), "Gráficas: dos funciones con load_spec («y =» se quita)")
+	var roots := []
+	var mins := []
+	var cuts := []
+	for mk in m.marks:
+		if int(mk["f"]) == 0 and mk["tipo"] == "raíz":
+			roots.append(float(mk["x"]))
+		elif int(mk["f"]) == 0 and mk["tipo"] == "mínimo":
+			mins.append(Vector2(mk["x"], mk["y"]))
+		elif mk["tipo"] == "corte":
+			cuts.append(float(mk["x"]))
+	roots.sort()
+	check(roots.size() == 2 and absf(roots[0] + sqrt(2.0)) < 1e-9 and absf(roots[1] - sqrt(2.0)) < 1e-9, "Gráficas: raíces de x² − 2 en ±√2")
+	check(mins.size() == 1 and (mins[0] as Vector2).distance_to(Vector2(0, -2)) < 1e-6, "Gráficas: mínimo de x² − 2 en (0, −2)")
+	var cuts_ok := cuts.size() == 2
+	for x in cuts:
+		cuts_ok = cuts_ok and absf(x * x - 2.0 - sin(x)) < 1e-9
+	check(cuts_ok, "Gráficas: los dos cortes de x² − 2 con sin x")
+	check("raíces x = -1.4142, 1.4142" in LabApi.plain(m.info()) and m.critical_points().size() == m.marks.size(),
+		"Gráficas: raíces en el panel de información y como puntos críticos")
+	var hit: Vector3 = m.api_points(1.0, 0.5)[0]
+	var ht: String = m.hover_text(hit)
+	check("x = 1.0000" in ht and "f₁(x) = -1.000000" in ht and "f₂(x) = 0.841471" in ht, "Gráficas: lectura flotante con f₁ y f₂ en x")
+	m.load_preset(3)
+	var tan_ok := true
+	var n_tan := 0
+	for mk in m.marks:
+		if mk["tipo"] == "raíz":
+			n_tan += 1
+			tan_ok = tan_ok and absf(tan(float(mk["x"]))) < 1e-9
+	check(tan_ok and n_tan == 5, "Gráficas: tan x en [−2π, 2π] tiene 5 raíces y las asíntotas no cuentan como raíces")
+	var fake_ext: int = m.marks.filter(func(mk): return mk["tipo"] in ["máximo", "mínimo"]).size()
+	check(fake_ext == 0, "Gráficas: las asíntotas de tan x tampoco cuentan como máximos o mínimos")
+	r = m.load_spec({"parametrica": {"x": "cos t", "y": "sin t", "t": [0, "2pi"]}})
+	var aspect: float = (m.win["x1"] - m.win["x0"]) / (m.win["y1"] - m.win["y0"])
+	check(r["ok"] and m.tipo == 1 and absf(aspect - 3.2 / 1.9) < 1e-6, "Gráficas: paramétrica con la misma escala en los dos ejes")
+	r = m.load_spec({"polar": {"r": "1 + cos θ", "t": [0, "2pi"]}})
+	check(r["ok"] and m.tipo == 2 and m.r_text == "1 + cos t" and m.win["x0"] < 0.0, "Gráficas: polar r(θ) (θ se escribe como t)")
+	m.load_spec({"polar": {"r": "t + tan(t/8)", "t": [0, 4]}})
+	check("θ + tan(θ/8)" in m.formula().replace(" ", " "), "Gráficas: la fórmula polar muestra θ sin tocar «tan» (%s)" % m.formula())
+	r = m.load_spec({"superficie": "z = x^2 - y^2", "x": [-2, 2], "y": [-2, 2]})
+	await get_tree().process_frame
+	check(r["ok"] and m.tipo == 3 and not m.planar() and m.surf_mesh.visible and absf(m.zr.x + 4.0) < 1e-6 and absf(m.zr.y - 4.0) < 1e-6,
+		"Gráficas: superficie z = x² − y² con rango z ∈ [−4, 4]")
+	r = m.load_spec({"funciones": ["x^^2", "cos x"], "x": ["-pi", "pi"]})
+	check(not r["ok"] and r["errores"].size() == 1 and m.f_text[0] == "cos x" and absf(m.xr.x + PI) < 1e-6,
+		"Gráficas: una fórmula mal escrita se omite y se avisa; intervalo con «-pi»")
+	var pts: Array = m.parse_points("(1, 2); (3, 4.5)\n5 6")
+	check(pts == [Vector2(1, 2), Vector2(3, 4.5), Vector2(5, 6)], "Gráficas: puntos «(x, y); …» o uno por línea")
+	r = m.load_spec({"puntos": [[0, 1], [2, 3], {"x": 4, "y": -1}]})
+	check(m.puntos.size() == 3 and m.xr.x < 0.0 and m.xr.y > 4.0, "Gráficas: solo datos, la ventana abarca los puntos")
+	# Controles como los usa la API (lab_set_param).
+	m.load_preset(0)
+	await get_tree().process_frame
+	var s1 := LabApi.set_param(lab, "f₂(x) =", "")
+	await get_tree().process_frame
+	check(s1.get("ok", false) and m.f_expr[1] == null, "Gráficas: un campo de función opcional se puede vaciar")
+	var s2 := LabApi.set_param(lab, "Puntos (x, y)", "(0, 0); (1, 1)")
+	await get_tree().process_frame
+	check(s2.get("ok", false) and m.puntos.size() == 2, "Gráficas: campo de texto «Puntos (x, y)» desde la API")
+	m.perturb(m.api_points(2.0, 2.0)[0], true)
+	check(m.puntos.size() == 3 and (m.puntos[2] as Vector2).distance_to(Vector2(2, 2)) < 0.01, "Gráficas: clic con «Perturbar» añade el punto (x, y)")
+	var api := SimulatorApi.new(lab.main_scene)
+	var rp: Dictionary = api.call_tool("lab_plot", {"funciones": ["x^3 - x"], "x": [-2, 2]})
+	check(rp.get("ok", false) and rp["marcas"].size() >= 5 and "raíces x = -1, 0, 1" in str(rp["info"]),
+		"API lab_plot: dibuja y devuelve raíces y extremos (x³ − x)")
+	await get_tree().process_frame
 
 func _t_raices() -> void:
 	var m = lab.module

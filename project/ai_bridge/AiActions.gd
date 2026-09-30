@@ -22,6 +22,16 @@ static func parse(text: String) -> Array:
 			return d["acciones"]
 	return []
 
+## El texto de la respuesta sin el bloque de acciones (para mostrarlo en el chat).
+static func strip_block(text: String) -> String:
+	var start := text.find("```")
+	if start >= 0:
+		var end := text.find("```", text.find("\n", start) + 1)
+		if end > start:
+			var out := (text.substr(0, start).strip_edges() + "\n" + text.substr(end + 3).strip_edges()).strip_edges()
+			return out + ("\n" if out != "" else "") + "[acciones propuestas abajo]"
+	return text
+
 static func _candidates(text: String) -> Array:
 	var out := []
 	var fenced := _extract_fenced(text)

@@ -345,9 +345,12 @@ intacta y se vuelve con **← MechaForge** (Esc).
 | Pilar | Módulos |
 |---|---|
 | **EDPs y física** | Onda 2D (FDTD: pulsos, interferencia, fronteras fija/libre/absorbente, modos normales de tambor con Bessel) · Calor (materiales reales, fuentes, disipación, isotermas) · Schrödinger (paquete gaussiano, |ψ|² como altura y fase como color, barreras, doble rendija, pozo, oscilador, efecto túnel medido) |
-| **Métodos numéricos** | **Ecuaciones no lineales** con 15 métodos (bisección, regula falsi, Illinois, Ridders, Brent · Newton, Newton para raíces múltiples, Halley, Chebyshev · secante, Steffensen, Müller, cuadrática inversa · punto fijo y Aitken Δ²), 9 funciones de ejemplo y comparación de todos (iteraciones, evaluaciones, orden observado) · **Sistemas lineales** 3×3 (Jacobi, Gauss-Seidel, SOR con ω óptimo, Richardson, descenso más pronunciado, gradiente conjugado; eliminación gaussiana geométrica paso a paso, LU, Cholesky, QR, Cramer, κ(A)) · **Sistemas no lineales** (Newton, Newton amortiguado, Broyden, punto fijo, Gauss-Seidel no lineal, descenso, Levenberg–Marquardt y cuencas de atracción en GPU) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · **Interpolación 1D** con 13 métodos (Lagrange, Newton, lineal, vecino, splines natural/sujeto/not-a-knot, Hermite, PCHIP, Akima, Floater–Hormann, trigonométrica, mínimos cuadrados; nodos de Chebyshev, fenómeno de Runge, constante de Lebesgue) · Interpolación 3D (spline, Catmull-Rom, B-spline, Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay) · **Integración y derivación 1D**: 18 cuadraturas (rectángulos, punto medio, trapecio, Simpson 1/3 y 3/8, Boole, Romberg, Gauss–Legendre, Gauss–Lobatto, Gauss–Kronrod adaptativa, Simpson adaptativa, Clenshaw–Curtis, tanh-sinh, Monte Carlo, cuasi-Monte Carlo, Gauss–Laguerre y Gauss–Hermite para intervalos infinitos) y 14 derivadas numéricas de 1.º y 2.º orden (diferencias hacia delante, atrás y centradas de 2 a 7 puntos, Richardson, paso complejo, diferenciación automática, derivada simbólica, Savitzky–Golay, Chebyshev, spline), con orden observado, curvas de error y ruido · Integración doble (punto medio, trapecio, Simpson, Gauss–Legendre 3 × 3, Monte Carlo y Halton) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
+| **Métodos numéricos** | **Gráficas**: calculadora gráfica con hasta 4 funciones y = f(x) (raíces, extremos y cortes marcados), paramétricas, polares r(θ), superficies z = f(x, y) y puntos de datos; OpenClaw dibuja aquí lo que lee en una imagen o un PDF · **Ecuaciones no lineales** con 15 métodos (bisección, regula falsi, Illinois, Ridders, Brent · Newton, Newton para raíces múltiples, Halley, Chebyshev · secante, Steffensen, Müller, cuadrática inversa · punto fijo y Aitken Δ²), 9 funciones de ejemplo y comparación de todos (iteraciones, evaluaciones, orden observado) · **Sistemas lineales** 3×3 (Jacobi, Gauss-Seidel, SOR con ω óptimo, Richardson, descenso más pronunciado, gradiente conjugado; eliminación gaussiana geométrica paso a paso, LU, Cholesky, QR, Cramer, κ(A)) · **Sistemas no lineales** (Newton, Newton amortiguado, Broyden, punto fijo, Gauss-Seidel no lineal, descenso, Levenberg–Marquardt y cuencas de atracción en GPU) · Optimización (gradiente con momento y Newton sobre z = f(x, y)) · **Interpolación 1D** con 13 métodos (Lagrange, Newton, lineal, vecino, splines natural/sujeto/not-a-knot, Hermite, PCHIP, Akima, Floater–Hormann, trigonométrica, mínimos cuadrados; nodos de Chebyshev, fenómeno de Runge, constante de Lebesgue) · Interpolación 3D (spline, Catmull-Rom, B-spline, Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay) · **Integración y derivación 1D**: 18 cuadraturas (rectángulos, punto medio, trapecio, Simpson 1/3 y 3/8, Boole, Romberg, Gauss–Legendre, Gauss–Lobatto, Gauss–Kronrod adaptativa, Simpson adaptativa, Clenshaw–Curtis, tanh-sinh, Monte Carlo, cuasi-Monte Carlo, Gauss–Laguerre y Gauss–Hermite para intervalos infinitos) y 14 derivadas numéricas de 1.º y 2.º orden (diferencias hacia delante, atrás y centradas de 2 a 7 puntos, Richardson, paso complejo, diferenciación automática, derivada simbólica, Savitzky–Golay, Chebyshev, spline), con orden observado, curvas de error y ruido · Integración doble (punto medio, trapecio, Simpson, Gauss–Legendre 3 × 3, Monte Carlo y Halton) · EDP numérica (FTCS, implícito, Crank-Nicolson y estabilidad) |
 | **Análisis complejo** | Coloreado de dominio 3D con detección de ceros y polos por su índice · Mapeos conformes animados (eᶻ, z², 1/z, Joukowsky, Möbius…) · Mandelbrot y Julia en relieve |
 | **Campos vectoriales** | Flechas instanciadas, gradiente, líneas de corriente RK4, partículas GPU con estela, divergencia y rotacional (ruedas de paletas), equilibrios clasificados · Teoremas de Gauss y Stokes verificados numéricamente |
+
+![Gráficas](docs/demo_lab_graficas.png)
+*Gráficas: x² − 2 y sin x con sus raíces, extremos y cortes marcados; el panel de información los lista.*
 
 ![Onda](docs/demo_lab_onda.png)
 *Ecuación de onda: crestas naranjas y valles cian sobre la membrana pulida.*
@@ -484,8 +487,10 @@ lectura entre dos terminales). Todo cambio llega como **vista previa** y lo
 confirmas tú.
 
 El **Laboratorio matemático** también se maneja por API: `lab_open`, `lab_get_state`,
-`lab_set_param`, `lab_control`, `lab_sample`, `lab_perturb`, `lab_capture` y
-`lab_close`. Sus cambios son solo de visualización y se anuncian en la barra de estado.
+`lab_set_param`, `lab_control`, `lab_sample`, `lab_perturb`, `lab_capture`,
+`lab_plot` (dibuja en **Gráficas** en una sola llamada) y `lab_close`. Sus cambios son
+solo de visualización y se anuncian en la barra de estado. Las notas del proyecto se
+leen con `get_notes` y se escriben con `write_note`, que llega como propuesta.
 
 Hay dos *skills* instaladas en OpenClaw (`~/.openclaw/skills/`, copias de
 `openclaw_skill/`):
@@ -543,7 +548,8 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
-| Laboratorio matemático (17 módulos, notación de las fórmulas, derivadas, cuadraturas y API) | `mflabtest` |
+| Laboratorio matemático (18 módulos, gráficas, notación de las fórmulas, derivadas, cuadraturas y API) | `mflabtest` |
+| Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, UDP y proceso de MediaPipe) | `mfmanos` |
 
 ## Arquitectura
@@ -558,7 +564,7 @@ Modular por carpetas dentro de `project/`:
 | `control/` | PID (C#), sensores del microcontrolador |
 | `rendering/` | Perfiles gráficos, entorno (HDRI/día-noche), texturas procedurales, mallas, shaders |
 | `ui/` | Interfaz, cámara orbital, controlador principal |
-| `ai_bridge/` | Puente con OpenClaw (chat) y API local de herramientas |
+| `ai_bridge/` | Puente con OpenClaw (chat con imágenes y PDF), lectura de PDF (PDFium) y API local de herramientas |
 | `io/` | Serialización de proyectos (JSON) |
 
 Detalle en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
@@ -584,6 +590,36 @@ Botón **🤖 IA** → panel de chat "OpenClaw (IA)":
   **Aplicar / Descartar** (reversible con deshacer). Conexión **solo local**.
 - Si OpenClaw no responde, la app funciona completa y lo indica.
 
+### Imágenes y PDF en el chat
+
+Adjunta archivos con **📎 Adjuntar**, arrastrándolos a la ventana o pegando una
+captura con **Ctrl+V** (hasta 6 por mensaje: PNG, JPG, WEBP, BMP, SVG o PDF). El
+agente los lee según su modelo y sus herramientas:
+
+| Tu agente… | Recibe |
+|---|---|
+| tiene un modelo con visión | las imágenes y las primeras 4 páginas de cada PDF como imágenes (fórmulas, figuras, escaneos) y el texto de los PDF |
+| es solo de texto | el texto extraído de los PDF (MechaForge lo extrae con PDFium). Si el gateway rechaza las imágenes, MechaForge reenvía el mensaje solo con el texto |
+| tiene herramientas (`pdf`, `image`, `read`) | además, la ruta de una copia local de cada archivo para abrirlo o leer más páginas |
+
+Con eso puede hacer lo que pida el documento. Todo llega como propuesta que confirmas
+con **Aplicar**:
+- **Graficar**: acción `grafica`. Abre el módulo **Gráficas** del laboratorio con las
+  funciones, curvas, superficies o puntos del ejercicio, y marca las raíces, los
+  extremos y los cortes.
+- **Construir**: piezas y uniones, como siempre.
+- **Programar**: el microcontrolador.
+- **Escribir**: acción `nota`, que añade texto a las **📝 Notas** del proyecto (se
+  guardan en el `.mforge`). Sirve para resúmenes, datos de un enunciado o los pasos
+  de una solución.
+
+![Adjuntos](docs/demo_ia_adjuntos.png)
+*Un PDF adjunto: el agente propone la gráfica y una nota con las raíces; debajo, los adjuntos del siguiente mensaje.*
+
+El texto de los archivos se marca como contenido del documento, no como órdenes.
+Las copias locales se guardan en `%APPDATA%\Godot\app_userdata\MechaForge\adjuntos`
+y se conservan las 40 más recientes.
+
 ![IA](docs/demo_ia.png)
 *Fase 4 — chat con OpenClaw conectado (agente cerebro), con el estado de la escena como contexto.*
 
@@ -596,4 +632,6 @@ Los proyectos se guardan como JSON legible con extensión `.mforge`
 
 ## Licencia
 
-Proyecto personal. Godot Engine se distribuye bajo licencia MIT.
+Proyecto personal. Godot Engine se distribuye bajo licencia MIT. PDFium (lectura de
+PDF, binarios de `bblanchon.PDFium.Win32`) se distribuye bajo las licencias BSD-3 y
+Apache 2.0: ver [docs/LICENCIAS_TERCEROS.md](docs/LICENCIAS_TERCEROS.md).
