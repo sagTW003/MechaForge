@@ -170,7 +170,7 @@ func set_enabled(on: bool) -> void:
 func _on_status(text: String, level: String) -> void:
 	if status_label:
 		status_label.text = text
-		status_label.add_theme_color_override("font_color", {"error": Color(1.0, 0.45, 0.35), "ok": Color(0.45, 0.95, 0.55)}.get(level, Color(0.75, 0.8, 0.88)))
+		status_label.add_theme_color_override("font_color", {"error": Color(1.0, 0.45, 0.35), "ok": Color(0.45, 0.95, 0.55), "warn": Color(1.0, 0.75, 0.35)}.get(level, Color(0.75, 0.8, 0.88)))
 	if level == "error":
 		lab._status("✋ " + text)
 		if enabled and not tracker.running:
@@ -387,6 +387,60 @@ func _on_grab_move(d: Vector3, rot: Vector3) -> void:
 	if grab_tilt and cam.view_mode != LabCamera.ViewMode.SUPERIOR:
 		cam.pitch = clampf(cam.pitch - (_dead(_grab_rot.x, TILT_DEAD) - _dead(prev.x, TILT_DEAD)), deg_to_rad(-89.0), deg_to_rad(80.0))
 
+# --- Cámara ------------------------------------------------------------------------------
+
+var camera_option: OptionButton
+var camera_names: Array = []        # cámaras detectadas (índice = el de mf_hands.py)
+var _camera_items: Array = []       # por entrada del desplegable: [índice, nombre]
+
+## Rellena el desplegable de cámaras. No abre ninguna: solo lee sus nombres.
+func refresh_cameras(announce: bool) -> void:
+	camera_names = HandTracker.list_cameras()
+	_camera_items = [[-1, ""]]
+	var labels := ["Automática"]
+	if camera_names.is_empty():
+		# Sin lista (otro sistema o fallo al enumerar): índices 0–3.
+		for i in range(4):
+			_camera_items.append([i, ""])
+			labels.append("Cámara %d" % i)
+	else:
+		for i in range(camera_names.size()):
+			_camera_items.append([i, str(camera_names[i])])
+			labels.append("%d · %s" % [i, camera_names[i]])
+	var sel := 0
+	if tracker.camera >= 0:
+		var at := HandTracker.resolve_camera(tracker.camera, tracker.camera_name, camera_names)
+		if at >= 0:
+			sel = at + 1
+		else:
+			# La elegida no está conectada: se muestra igualmente para no perderla.
+			_camera_items.append([tracker.camera, tracker.camera_name])
+			labels.append("%s (no conectada)" % (tracker.camera_name if tracker.camera_name != "" else "Cámara %d" % tracker.camera))
+			sel = labels.size() - 1
+	if camera_option:
+		camera_option.clear()
+		for l in labels:
+			camera_option.add_item(l)
+		camera_option.select(sel)
+		camera_option.tooltip_text = "Con qué cámara se hace el seguimiento. «Automática» usa la primera que funcione; «↻ Buscar cámaras» actualiza la lista sin encender ninguna."
+	if announce and lab:
+		lab._status("🎥 %s" % ("%d cámara(s): %s" % [camera_names.size(), ", ".join(camera_names)] if not camera_names.is_empty() else "No se encontró ninguna cámara (se probarán los índices 0–3)."))
+
+## Elige la cámara de la entrada i del desplegable, la guarda y, si el seguimiento
+## está activo, lo reinicia con ella.
+func select_camera(i: int) -> void:
+	if i < 0 or i >= _camera_items.size():
+		return
+	var it: Array = _camera_items[i]
+	tracker.camera = int(it[0])
+	tracker.camera_name = str(it[1])
+	tracker.save_config()
+	if lab:
+		lab._status("🎥 Cámara del seguimiento: %s" % (camera_option.get_item_text(i) if camera_option else str(it[1])))
+	if enabled and tracker.running:
+		tracker.stop()
+		tracker.start()
+
 ## Cámara en 1280×720: los puntos de una mano lejana salen más precisos.
 func set_hires(on: bool) -> void:
 	tracker.width = 1280 if on else 640
@@ -438,6 +492,9 @@ func build_panel(parent: CanvasLayer) -> FloatingPanel:
 		primary = ["Right", "Left", ""][i]
 		save_settings())
 	LabUI.section(box, "Zona de interacción y cámara")
+	camera_option = LabUI.option(box, "Cámara:", ["Automática"], 0, func(i): select_camera(i))
+	LabUI.button(box, "↻ Buscar cámaras", func(): refresh_cameras(true))
+	refresh_cameras(false)
 	LabUI.slider(box, "Zona de interacción (tamaño)", 0.3, 1.0, 0.01, recognizer.box_size.x, func(v):
 		recognizer.box_size = Vector2(v, v * 0.8333)
 		save_settings())

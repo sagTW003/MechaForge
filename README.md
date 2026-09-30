@@ -414,8 +414,10 @@ inferencia de unos 11 ms en CPU, y un filtro One Euro contra el temblor.
 - Con precisión adaptativa, los movimientos lentos dan un ajuste fino.
 - La zona de interacción, a la altura del pecho, evita el «brazo de gorila».
 
-Requiere Python 3 con `pip install -r tools/handtracking/requirements.txt`. La cámara
-solo se usa mientras está activo y no se guarda ninguna imagen. Guía completa, con la
+Requiere Python 3 con `pip install -r tools/handtracking/requirements.txt`. En el panel
+eliges la **cámara**: «Automática» o una de la lista, que se recuerda por su nombre.
+La cámara solo se usa mientras el seguimiento está activo y no se guarda ninguna
+imagen. Guía completa, con la
 arquitectura y cómo enlazar los eventos, en
 [docs/SEGUIMIENTO_MANOS.md](docs/SEGUIMIENTO_MANOS.md).
 
@@ -550,7 +552,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
 | Laboratorio matemático (18 módulos, gráficas, notación de las fórmulas, derivadas, cuadraturas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
-| Seguimiento de manos (filtro, gestos, controlador, UDP y proceso de MediaPipe) | `mfmanos` |
+| Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
 
 ## Arquitectura
 

@@ -219,6 +219,14 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
 - [x] API `lab_*` para OpenClaw y skill **mechaforge-laboratorio** (instalada con
       permiso). La API local sigue viva mientras el laboratorio está abierto.
 
+## ✅ Elección de la cámara del seguimiento de manos
+- [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»
+      y **↻ Buscar cámaras**. `handtracking/CameraList.cs` enumera DirectShow (mismo
+      orden que OpenCV) sin encender ninguna cámara.
+- [x] La cámara se guarda con su nombre y se busca por él al arrancar; si no está
+      conectada se usa la automática y el panel lo avisa. `mf_hands.py --camera-name`.
+- [x] 10 pruebas nuevas en `mfmanos` (61 sin ventana y 62 con ventana).
+
 ## ✅ Imágenes y PDF en el chat de OpenClaw
 - [x] **Adjuntos** en el panel de IA (📎, arrastrar a la ventana o Ctrl+V; hasta 6
       por mensaje). `ai_bridge/AiAttachments.gd` los prepara para cualquier agente:

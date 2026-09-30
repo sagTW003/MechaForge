@@ -23,6 +23,10 @@ extends Node
 ## La configuración (Python, cámara, puerto, token y ajustes) está en
 ## user://mechaforge_hands.json. El token se genera la primera vez y nunca va en el
 ## código ni en el repositorio.
+##
+## Cámara: -1 = la primera que funcione; si no, el índice de DirectShow (el orden de
+## CameraList) y su nombre. Al arrancar se busca por el nombre, así la elección se
+## mantiene aunque se conecte o desconecte otra cámara.
 
 signal hands_updated(hands: Array)
 signal status_changed(text: String, level: String)
@@ -35,6 +39,7 @@ const LABEL_VOTES := 8          # paquetes seguidos en que MediaPipe discrepa pa
 
 var python: String = "python"
 var camera: int = -1
+var camera_name: String = ""    # nombre de la cámara elegida ("" con camera = -1)
 var port: int = DEFAULT_PORT
 var token: String = ""
 var width: int = 640
@@ -79,6 +84,7 @@ func load_config() -> void:
 			cfg = d
 	python = str(cfg.get("python", python))
 	camera = int(cfg.get("camera", camera))
+	camera_name = str(cfg.get("camera_name", ""))
 	port = int(cfg.get("port", port))
 	token = str(cfg.get("token", ""))
 	width = int(cfg.get("width", width))
@@ -94,7 +100,7 @@ func load_config() -> void:
 		save_config()
 
 func save_config() -> void:
-	var cfg := {"python": python, "camera": camera, "port": port, "token": token, "width": width,
+	var cfg := {"python": python, "camera": camera, "camera_name": camera_name, "port": port, "token": token, "width": width,
 		"height": height, "fps": fps, "script": script_override, "min_cutoff": min_cutoff, "beta": beta,
 		"ajustes": settings,
 		"nota": "Seguimiento de manos de MechaForge. Solo 127.0.0.1; el token autentica los paquetes."}
@@ -115,6 +121,39 @@ func find_script() -> String:
 			return c
 	return ""
 
+# --- Cámaras ---------------------------------------------------------------------------
+
+## Nombres de las cámaras (índice = el que usa mf_hands.py). No abre ninguna.
+static func list_cameras() -> Array:
+	var scr = load("res://handtracking/CameraList.cs")
+	if scr == null:
+		return []
+	var cl = scr.new()
+	if cl == null or not cl.has_method("Names"):
+		return []
+	return Array(cl.Names())
+
+## Índice actual de la cámara elegida: la busca por su nombre (puede haber cambiado
+## de posición). -1 = automática o no está conectada. Sin lista (otro sistema o
+## fallo al enumerar) se usa el índice guardado.
+static func resolve_camera(index: int, name: String, names: Array) -> int:
+	if index < 0 or name == "" or names.is_empty():
+		return index
+	if index < names.size() and str(names[index]) == name:
+		return index            # dos cámaras con el mismo nombre: se respeta la elegida
+	return names.find(name)
+
+## Argumentos de mf_hands.py con la cámara ya localizada entre las conectadas (names).
+func build_args(script: String, names: Array, selftest: bool) -> Array:
+	var cam := resolve_camera(camera, camera_name, names)
+	var args := [script, "--port", str(port), "--token", token, "--camera", str(cam),
+		"--width", str(width), "--height", str(height), "--fps", str(fps), "--parent-pid", str(OS.get_process_id())]
+	if cam >= 0 and camera_name != "":
+		args.append_array(["--camera-name", camera_name])
+	if selftest:
+		args.append("--selftest")
+	return args
+
 # --- Ciclo de vida del proceso ---------------------------------------------------------
 
 ## Arranca el seguimiento (selftest: sin cámara, para comprobar Python, modelo y UDP).
@@ -132,11 +171,9 @@ func start(selftest: bool = false) -> bool:
 		_udp.close()
 		_set_status("No encuentro tools/handtracking/mf_hands.py.", "error")
 		return false
-	var args := [script, "--port", str(port), "--token", token, "--camera", str(camera),
-		"--width", str(width), "--height", str(height), "--fps", str(fps), "--parent-pid", str(OS.get_process_id())]
-	if selftest:
-		args.append("--selftest")
-	pid = OS.create_process(python, args, false)
+	var names := list_cameras()
+	var missing := camera >= 0 and resolve_camera(camera, camera_name, names) < 0
+	pid = OS.create_process(python, build_args(script, names, selftest), false)
 	if pid <= 0:
 		_udp.close()
 		_set_status("No se pudo ejecutar «%s». Instala Python 3 con mediapipe y opencv-python (tools/handtracking/requirements.txt) o indica la ruta de Python en %s." % [python, CONFIG_PATH], "error")
@@ -144,7 +181,10 @@ func start(selftest: bool = false) -> bool:
 	running = true
 	last_packet = now()
 	_reset_filters()
-	_set_status("Iniciando cámara y MediaPipe…", "info")
+	if missing and not selftest:
+		_set_status("La cámara «%s» no está conectada: uso la primera que funcione." % camera_name, "warn")
+	else:
+		_set_status("Iniciando cámara y MediaPipe…", "info")
 	return true
 
 func stop() -> void:

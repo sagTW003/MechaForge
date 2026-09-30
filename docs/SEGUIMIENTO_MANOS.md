@@ -165,8 +165,17 @@ mano lejana salen más precisos, aunque muchas cámaras bajan a 30 fps.
 
 Ordenado por secciones y con barra de desplazamiento:
 - Mano principal.
-- **Zona y cámara**: tamaño y altura de la zona de interacción, campo de visión de
-  la webcam y cámara en 1280×720.
+- **Zona y cámara**:
+  - **Cámara**: con qué cámara se hace el seguimiento. «Automática» usa la
+    primera que funcione, y **↻ Buscar cámaras** actualiza la lista.
+  - Tamaño y altura de la zona de interacción, campo de visión de la webcam y
+    cámara en 1280×720.
+
+  La lista sale de DirectShow, en el mismo orden de índices que usa OpenCV: solo se
+  leen los nombres, no se enciende ninguna cámara. La elegida se guarda con su nombre
+  en `user://mechaforge_hands.json` y se busca por él al activar el seguimiento, así
+  no cambia aunque conectes otra. Si no está conectada, se usa la automática y el
+  panel lo avisa. Al cambiarla con el seguimiento activo, se reinicia con la nueva.
 - **Pellizco**: umbrales, compensación con la mano lejos, sensibilidad de giro,
   ajuste fino, precisión adaptativa y sensibilidad del zoom.
 - **Dos puños**: desplazamiento, profundidad, giro e inclinación (×), y casillas
@@ -248,14 +257,20 @@ Para otra escena de Godot, instancia `HandTracker` y `GestureRecognizer` y en
   - precisión adaptativa;
   - controlador sobre el Laboratorio real: giro, pan, zoom, palma, agarre 3D
     (desplazar, subir, empujar/tirar, girar, inclinar), deslizador y botón;
+  - elección de la cámara: lista por nombre sin encenderlas, búsqueda por nombre,
+    cámara desconectada, argumentos de `mf_hands.py` y guardado (la configuración
+    del usuario se restaura);
   - canal UDP con token;
   - autoprueba del proceso real (`mf_hands.py --selftest`: carga el modelo, mide
     la inferencia y envía una mano sintética por UDP).
 - Diagnóstico manual del proceso: `python tools/handtracking/mf_hands.py --selftest --token X`.
+  Con una cámara concreta: `--camera 1 --camera-name "Nombre"` (el nombre solo sirve
+  para los mensajes).
 
 ## Privacidad y seguridad
 
-- La cámara solo se abre mientras el seguimiento está activo. El proceso termina
+- La cámara solo se abre mientras el seguimiento está activo. Buscar cámaras solo lee
+  sus nombres y no enciende ninguna. El proceso termina
   al desactivarlo o si MechaForge se cierra: vigila el PID del proceso padre.
 - No se guarda ni se envía ninguna imagen, solo coordenadas, y solo a 127.0.0.1
   con token.

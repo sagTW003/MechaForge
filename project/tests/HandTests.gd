@@ -34,6 +34,7 @@ func run() -> void:
 	_t_fist_lock()
 	_t_grab_events()
 	await _t_controller()
+	_t_cameras()
 	await _t_udp()
 	await _t_sidecar()
 	print("[TEST] Manos: %d OK, %d FALLOS" % [ok, fail])
@@ -683,6 +684,61 @@ func _t_udp() -> void:
 	check(ignored and got[0] == 1 and absf(tr.inference_ms - 7.5) < 1e-6, "UDP: se ignoran los paquetes sin el token y se aceptan los buenos")
 	tr.stop()
 	tr.queue_free()
+
+# --- Elección de la cámara (sin encender ninguna) ---------------------------------------------
+
+func _t_cameras() -> void:
+	var names := HandTracker.list_cameras()
+	var all_str := true
+	for n in names:
+		all_str = all_str and typeof(n) == TYPE_STRING and str(n) != ""
+	var ctrl: VirtualLabController = lab.hands
+	check(all_str and not ctrl.tracker.running, "Cámaras: se listan por su nombre sin encender ninguna (%s)" % (", ".join(names) if not names.is_empty() else "ninguna"))
+	check(HandTracker.resolve_camera(-1, "", ["A"]) == -1 and HandTracker.resolve_camera(1, "B", ["B", "A"]) == 0
+		and HandTracker.resolve_camera(0, "X", ["A", "B"]) == -1 and HandTracker.resolve_camera(2, "B", []) == 2
+		and HandTracker.resolve_camera(1, "Cam", ["Cam", "Cam"]) == 1,
+		"Cámaras: la elegida se sigue por su nombre aunque cambie de posición; si no está, automática")
+	var opt: OptionButton = ctrl.camera_option
+	var expected := 1 + (names.size() if not names.is_empty() else 4)
+	check(opt != null and opt.get_item_text(0).begins_with("Automática") and opt.item_count >= expected,
+		"Panel: desplegable «Cámara» con «Automática» y %d entradas más" % (expected - 1))
+	# Elegir desde el panel guarda la cámara (se restaura la configuración del usuario al final).
+	var tr: HandTracker = ctrl.tracker
+	var saved := FileAccess.get_file_as_string(HandTracker.CONFIG_PATH) if FileAccess.file_exists(HandTracker.CONFIG_PATH) else ""
+	var keep := [tr.camera, tr.camera_name]
+	opt.select(1)
+	opt.item_selected.emit(1)
+	var first_name: String = str(names[0]) if not names.is_empty() else ""
+	var on_disk = JSON.parse_string(FileAccess.get_file_as_string(HandTracker.CONFIG_PATH))
+	check(tr.camera == 0 and tr.camera_name == first_name and typeof(on_disk) == TYPE_DICTIONARY
+		and int(on_disk.get("camera", -9)) == 0 and str(on_disk.get("camera_name", "?")) == first_name,
+		"Panel: elegir una cámara la guarda con su nombre")
+	var args := tr.build_args("mf_hands.py", names, false)
+	var ci := args.find("--camera")
+	check(ci >= 0 and args[ci + 1] == "0" and (first_name == "" or (args.has("--camera-name") and args[args.find("--camera-name") + 1] == first_name)),
+		"Proceso: mf_hands.py recibe el índice y el nombre de la cámara elegida")
+	tr.camera = 3
+	tr.camera_name = "Cámara que no existe"
+	var args2 := tr.build_args("mf_hands.py", ["Otra"], false)
+	check(args2[args2.find("--camera") + 1] == "-1" and not args2.has("--camera-name"),
+		"Proceso: si la cámara elegida no está conectada se usa la automática")
+	ctrl.refresh_cameras(false)
+	check(opt.get_item_text(opt.selected).ends_with("(no conectada)"), "Panel: una cámara elegida pero desconectada se muestra como «no conectada»")
+	opt.select(0)
+	opt.item_selected.emit(0)
+	check(tr.camera == -1 and tr.camera_name == "", "Panel: «Automática» vuelve a probar las cámaras en orden")
+	# Configuración del usuario intacta.
+	if saved != "":
+		var f := FileAccess.open(HandTracker.CONFIG_PATH, FileAccess.WRITE)
+		f.store_string(saved)
+		f.close()
+	tr.load_config()
+	check(tr.camera == int(keep[0]) and tr.camera_name == str(keep[1]), "Cámaras: la configuración guardada del usuario se restaura")
+	ctrl.refresh_cameras(false)
+	var out := []
+	var code := OS.execute(tr.python, [tr.find_script(), "--help"], out, true)
+	if code == 0:
+		check("--camera-name" in "".join(out), "mf_hands.py admite --camera-name")
 
 # --- Proceso de Python (modelo real, sin cámara) ---------------------------------------------
 

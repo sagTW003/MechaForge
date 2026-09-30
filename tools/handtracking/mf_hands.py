@@ -14,7 +14,7 @@ Capa «HandTracker» (captura + inferencia) del sistema de seguimiento de manos:
 - Termina solo si MechaForge se cierra (vigila el PID del proceso padre).
 
 Uso (lo lanza MechaForge; a mano, para diagnosticar):
-  python mf_hands.py --port 18791 --token XXXX [--camera -1] [--width 640 --height 480 --fps 60]
+  python mf_hands.py --port 18791 --token XXXX [--camera -1 [--camera-name NOMBRE]] [--width 640 --height 480 --fps 60]
   python mf_hands.py --selftest --port 18791 --token XXXX   (sin cámara: modelo + UDP)
 """
 
@@ -180,15 +180,17 @@ def run_camera(args, sender, stop):
     import mediapipe as mp
     landmarker = make_landmarker(args.model, args.max_hands)
     cap, where, tried = open_camera(args.camera, args.width, args.height, args.fps)
+    label = " «%s»" % args.camera_name if args.camera_name else ""
     if cap is None:
-        sender.status("No se pudo abrir ninguna cámara (probé %s). Revisa Configuración > Privacidad > Cámara "
-                      "y cierra otras aplicaciones que la usen (p. ej. el HUD Viernes)." % ", ".join(tried), "error")
+        what = "la cámara %d%s" % (args.camera, label) if args.camera >= 0 else "ninguna cámara"
+        sender.status("No se pudo abrir %s (probé %s). Revisa Configuración > Privacidad > Cámara "
+                      "y cierra otras aplicaciones que la usen (p. ej. el HUD Viernes)." % (what, ", ".join(tried)), "error")
         return 2
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     cam_fps = cap.get(cv2.CAP_PROP_FPS)
-    sender.status("Cámara %s abierta: %dx%d a %.0f fps." % (where, w, h, cam_fps), "ok", width=w, height=h, cam_fps=cam_fps)
-    log("cámara %s %dx%d %.0f fps" % (where, w, h, cam_fps))
+    sender.status("Cámara %s%s abierta: %dx%d a %.0f fps." % (where, label, w, h, cam_fps), "ok", width=w, height=h, cam_fps=cam_fps)
+    log("cámara %s%s %dx%d %.0f fps" % (where, label, w, h, cam_fps))
     grab = Capture(cap)
     last_ts = 0
     last_status = time.time()
@@ -265,6 +267,7 @@ def main():
     ap.add_argument("--port", type=int, default=18791)
     ap.add_argument("--token", default="")
     ap.add_argument("--camera", type=int, default=-1, help="índice de la cámara (-1 = probar 0..3)")
+    ap.add_argument("--camera-name", default="", help="nombre de la cámara elegida (solo para los mensajes)")
     ap.add_argument("--width", type=int, default=640)
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--fps", type=int, default=60)
