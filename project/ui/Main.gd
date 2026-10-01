@@ -94,7 +94,9 @@ var _mcu_state: Dictionary = {}
 var mcu_last_vars: Dictionary = {}
 var _mcu_parse_key: String = ""
 var _mcu_parse_cache: Dictionary = {}
-const MCU_PART_IDS := ["microcontrolador", "arduino_nano"]
+const MCU_PART_IDS := ["microcontrolador", "arduino_nano", "esp32_devkit", "movil_61"]
+## Funciones i2c_… del programa (registros de los sensores por el bus I²C).
+var mcu_io := McuIo.new()
 
 # --- Música (Spotify) ---
 var music_panel: FloatingPanel
@@ -1840,7 +1842,19 @@ func api_telemetry(uid: String) -> Dictionary:
 	return {"simulando": true, "piezas": out, "motores": ctrl,
 		"electrico": {"voltaje": e.get("voltage", 0.0), "corriente_a": e.get("current", 0.0), "potencia_w": e.get("power", 0.0)},
 		"sensores": _mcu_sensor_vars.duplicate(),
+		"bus_i2c": mcu_sensors.bus.duplicate(true),
 		"microcontrolador": {"activo": mcu_enabled, "variables": mcu_last_vars.duplicate()}}
+
+## Óptica del visor (pantalla + lentes): distancias, imagen virtual, campo de visión,
+## píxeles por grado, distancia entre lentes y avisos.
+func api_headset() -> Dictionary:
+	var r := Optics.analyze(parts_root)
+	for it in r.get("lentes", []):
+		if is_inf(float(it["imagen_m"])):
+			it["imagen_m"] = -1.0          # sin imagen virtual (JSON no admite infinito)
+		if is_inf(float(it["aumento"])):
+			it["aumento"] = -1.0
+	return r
 
 ## Análisis de diseño como datos (estabilidad, esfuerzos, masa, consumo).
 func api_analyze() -> Dictionary:
@@ -2798,6 +2812,10 @@ func _refresh_properties() -> void:
 			_add_dim_spin("Módulo", "modulo", dm.get("modulo", 1.0))
 			_add_dim_spin("Ancho", "ancho", dm.get("ancho", 8.0))
 			_add_prop_row("Ø primitivo", "%.1f mm" % (PartLibrary.gear_pitch_radius_m(def) * 2000.0))
+		elif forma == "lente":
+			_add_dim_spin("Diámetro", "diametro", dm.get("diametro", 37.0))
+			_add_dim_spin("Focal", "focal", dm.get("focal", 45.0))
+			_add_dim_spin("Canto", "borde", dm.get("borde", 1.0))
 		elif forma == "cilindro" or forma == "tubo":
 			_add_dim_spin("Radio", "radio", dm.get("radio", 10.0))
 			_add_dim_spin("Altura", "altura", dm.get("altura", 100.0))
@@ -2857,9 +2875,19 @@ func _add_physical_props(part: PartInstance) -> void:
 		_add_spin_row("Paredes (mm)", 0.0, 10.0, 0.1, float(ps["paredes_mm"]), func(v):
 			part.set_print_setting("paredes_mm", v)
 			_after_mass_change())
+	if def.has("optica") or def.has("pantalla"):
+		_add_optics_props(part)
 	if def.has("imu"):
 		var prm := Sensors.imu_params(part)
 		prop_container.add_child(_label("IMU (%s):" % str(prm["modelo"])))
+		if def.has("terminales"):
+			var bs: Dictionary = I2CBus.statuses(self).get(part.uid, {})
+			_add_prop_row("Bus I²C", str(bs.get("motivo", "")))
+			var dirs := [0x68, 0x69]
+			_add_option_row("Dirección", ["0x68 (AD0 a GND)", "0x69 (AD0 a VCC)"], dirs.find(I2CBus.address(part)),
+				func(i):
+					part.estado["i2c_dir"] = dirs[i]
+					Config.project_dirty = true)
 		var rates := [50.0, 100.0, 200.0, 500.0, 1000.0]
 		_add_option_row("Muestreo", rates.map(func(r): return "%d Hz" % int(r)), rates.find(float(prm["odr_hz"])),
 			func(i): _set_imu_param(part, "odr_hz", rates[i]))
@@ -2876,6 +2904,36 @@ func _add_physical_props(part: PartInstance) -> void:
 		ideal.focus_mode = Control.FOCUS_NONE
 		ideal.toggled.connect(func(v): _set_imu_param(part, "ideal", v))
 		prop_container.add_child(ideal)
+
+## Óptica del visor al seleccionar una lente o la pantalla (Optics.analyze).
+func _add_optics_props(part: PartInstance) -> void:
+	prop_container.add_child(_label("Óptica del visor:"))
+	if part.def.has("optica"):
+		_add_spin_row("Ojo a lente (mm)", 5.0, 40.0, 0.5, Optics.eye_relief_m(part) * 1000.0, func(v):
+			part.estado["ojo_mm"] = v
+			Config.project_dirty = true)
+	var r := Optics.analyze(parts_root)
+	if not r.get("ok", false):
+		_add_prop_row("Estado", str(r.get("motivo", "")))
+		return
+	for it in r["lentes"]:
+		if part.def.has("optica") and it["uid"] != part.uid:
+			continue
+		var tag := "" if part.def.has("optica") else " (%s)" % it["lado"]
+		_add_prop_row("A la pantalla" + tag, "%.1f mm (f = %.0f mm)" % [it["distancia_mm"], it["focal_mm"]])
+		if it["enfocado"]:
+			_add_prop_row("Imagen" + tag, "a %.2f m del ojo, ×%.1f" % [it["imagen_m"], it["aumento"]])
+		else:
+			_add_prop_row("Imagen" + tag, "desenfocada (pantalla más allá del foco)")
+		_add_prop_row("Campo" + tag, "%.0f° × %.0f° · %.1f px/°" % [it["fov_h"], it["fov_v"], it["ppd"]])
+	if r.has("ipd_mm"):
+		_add_prop_row("Entre lentes", "%.1f mm (IPD)" % r["ipd_mm"])
+	for a in r.get("avisos", []):
+		var w := _label("⚠ " + str(a))
+		w.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		w.add_theme_color_override("font_color", Color(1.0, 0.72, 0.35))
+		w.add_theme_font_size_override("font_size", 11)
+		prop_container.add_child(w)
 
 func _set_imu_param(part: PartInstance, key: String, value: Variant) -> void:
 	var d: Dictionary = part.estado.get("imu", {}).duplicate()
@@ -3096,6 +3154,7 @@ func _try_surface_snap(screen_pos: Vector2, dims: Vector3, exclude: PartInstance
 ## aceleración de pasos consecutivos y la telemetría los muestra siempre.
 func _physics_process(delta: float) -> void:
 	if simulator and simulator.is_running():
+		mcu_sensors.bus = I2CBus.statuses(self)
 		_mcu_sensor_vars = mcu_sensors.read(parts_root, simulator, get_world_3d().direct_space_state)
 		if not simulator.paused:
 			_mcu_tick(delta)
@@ -3977,6 +4036,8 @@ func _on_sim_started() -> void:
 	if graph_uid != "":
 		call_deferred("_indicate_connection", graph_uid)
 	mcu_sensors.reset()
+	mcu_io.reset()
+	circuit_rt.solve_once()       # el bus I²C del primer paso ve el circuito ya resuelto
 	mcu_time = 0.0
 	_mcu_state = {}
 	mcu_last_vars = {}
@@ -4802,6 +4863,11 @@ func _show_circuit_result(r: Dictionary) -> void:
 
 ## Evalúa una expresión con las variables dadas (usa Expression de Godot).
 func _eval_expr(expr_str: String, vars: Dictionary) -> float:
+	if expr_str.contains("i2c"):
+		mcu_io.main = self
+		expr_str = mcu_io.expand(expr_str, vars, _eval_expr)
+		if expr_str == "":
+			return NAN
 	var e := Expression.new()
 	var names := PackedStringArray(vars.keys())
 	if e.parse(expr_str, names) != OK:
@@ -4970,6 +5036,7 @@ func _refresh_mcu_sensors() -> void:
 	if nctrl > 0:
 		txt += "\nSalidas: output (unión elegida)" + (", m1..m%d (uniones con control)" % nctrl)
 	txt += "\nLas variables guardan su valor entre pasos (empiezan en 0). Bajo «inicio:», solo el primer paso; bajo «bucle:», cada paso."
+	txt += "\nI²C: i2c_leer(dir, reg), i2c16(dir, reg), i2c_escribir(dir, reg, valor), i2c_ok(dir)."
 	mcu_sensors_label.text = txt
 	if mcu_blocks:
 		mcu_blocks.set_variables(names)

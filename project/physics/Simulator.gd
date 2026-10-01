@@ -258,9 +258,10 @@ func _make_body(part: PartInstance) -> RigidBody3D:
 		cs.shape = sd["shape"]
 		cs.transform = sd["xf"]
 		body.add_child(cs)
-	# Piezas importadas con malla estanca: centro de masa e inercia de la malla real
-	# (si no, Jolt los deduce de las formas de colisión con densidad uniforme).
-	if PartLibrary.has_mesh_mass(part.def):
+	# Piezas con geometría propia (malla importada estanca, carcasa, soporte de lentes):
+	# centro de masa e inercia reales (si no, Jolt los deduce de las formas de
+	# colisión con densidad uniforme).
+	if PartLibrary.has_custom_mass(part.def):
 		body.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 		body.center_of_mass = part.com_local()
 		var inertia := part.inertia_local()

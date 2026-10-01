@@ -271,11 +271,32 @@ que faltaba estaba en el proyecto.
 - [x] Corregido: los OBJ y STL importados se veían del revés (esos formatos definen la
       cara frontal en sentido antihorario y Godot en horario). Paneles de propiedades
       que se salían de la pantalla con textos largos.
-- [x] Pruebas `mfvr` (59).
+- [x] Pruebas `mfvr` (59 de la fase 0).
+
+### ✅ Fase 1 — Piezas del visor
+- [x] **Piezas** (`parts/vr.json`): pantalla LCD 5.5" 2560×1440 que se enciende con
+      5 V (carta de ajuste lado a lado), móvil con pantalla e IMU, lentes biconvexa
+      (casquetes esféricos, R = 2(n − 1)f) y Fresnel, soporte de lentes con ranuras,
+      carcasa impresa con nariz y pasacables (cajas: colisión exacta y masa de las
+      paredes) y ESP32 DevKitC por USB (5V y 3V3).
+- [x] **Óptica de lente delgada** (`vr/Optics.gd`): imagen virtual, aumento, campo de
+      visión por ojo con el límite del borde de la lente, píxeles por grado, IPD,
+      descentrado y desnivel, con avisos; en el panel de propiedades y en la herramienta
+      `analyze_headset`.
+- [x] **Bus I²C** (`electronics/I2CBus.gd`): alimentación 3–5.5 V, SDA/SCL a los pines
+      de la placa (y si van cruzados o falta uno), GND común y conflictos de dirección
+      (0x68/0x69); sin cables, conexión directa como antes.
+- [x] **Registros del MPU-6050** (`control/McuIo.gd`): `i2c_leer`, `i2c16`,
+      `i2c_escribir` e `i2c_ok`; WHO_AM_I, arranque dormido, fondos de escala y
+      muestreo por registro, temperatura. Las llamadas se sustituyen por su valor antes
+      de evaluar (sin objetos propios en la Expression).
+- [x] **Ejemplo «Gafas VR caseras»** (12.º): la ESP32 despierta el MPU-6050 por I²C y
+      estima la orientación con un filtro complementario a partir de sus registros.
+- [x] Corregido: el bus I²C del primer paso de una simulación veía el circuito sin
+      resolver (recién abierto el proyecto) y la IMU no se inicializaba.
+- [x] Pruebas: `mfvr` (103) y el ejemplo en `mfejemplos`.
 
 ### Fases siguientes
-- [ ] Fase 1 — Piezas del visor: pantalla o móvil, lentes con focal, soporte con ajuste
-      de la distancia entre ojos, ESP32 y MPU-6050 con bus I²C, carcasa de ejemplo.
 - [ ] Fase 2 — Render estéreo: cámaras por ojo unidas al visor, shader de distorsión
       de lente y aberración cromática, vista lado a lado en la pantalla del visor.
 - [ ] Fase 3 — Bucle de la IMU a la cámara con una cabeza de prueba motorizada.

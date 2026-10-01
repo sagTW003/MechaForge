@@ -116,10 +116,13 @@ func _ensure_topology() -> void:
 					nl.link(groups[g], k)
 				else:
 					groups[g] = k
-		# Pines internos unidos del Arduino Nano (dos GND y dos RESET).
-		if str(part.def.get("electrico", {}).get("tipo", "")) == "nano":
+		# Pines internos unidos del Arduino Nano (dos GND y dos RESET) y de la ESP32.
+		var etipo := str(part.def.get("electrico", {}).get("tipo", ""))
+		if etipo == "nano":
 			nl.link(main._key(part.uid, "GND"), main._key(part.uid, "GND2"))
 			nl.link(main._key(part.uid, "RST"), main._key(part.uid, "RST2"))
+		elif etipo == "esp32":
+			nl.link(main._key(part.uid, "GND"), main._key(part.uid, "GND2"))
 	# Patas insertadas: pata y agujero son el mismo nodo.
 	for part in main._electronic_parts():
 		if part.is_inserted() and boards.has(part.inserted_in):
@@ -178,6 +181,16 @@ func _add_elements(n: NodeNetlist, with_sources: bool, with_meter: bool) -> Stri
 							n.add_branch(k.call(part, pin), gnd, 25.0, 0.0, {"kind": "io", "uid": part.uid})
 					if ground == "":
 						ground = gnd
+			"esp32":
+				# Alimentada por USB: 5V del puerto y 3V3 del regulador AMS1117.
+				if with_sources and power_on and not tripped.has(part.uid):
+					var g32: String = k.call(part, "GND")
+					var e5 := n.add_branch(g32, k.call(part, "5V"), 0.15, -5.0, {"kind": "src", "uid": part.uid})
+					sources.append({"uid": part.uid, "name": "ESP32 (5V)", "branch": e5, "pos": k.call(part, "5V"), "neg": g32, "v": 5.0, "part": part})
+					var e3 := n.add_branch(g32, k.call(part, "3V3"), 0.5, -3.3, {"kind": "src", "uid": part.uid})
+					sources.append({"uid": part.uid, "name": "ESP32 (3V3)", "branch": e3, "pos": k.call(part, "3V3"), "neg": g32, "v": 3.3, "part": part})
+					if ground == "":
+						ground = g32
 			"ic555":
 				var vcc: String = k.call(part, "VCC")
 				var g5: String = k.call(part, "GND")
@@ -464,6 +477,8 @@ func _update_leds() -> void:
 		if part.def.get("apariencia", "") == "led" and not seen.has(part.uid):
 			led_level[part.uid] = 0.0
 			_set_led_visual(part, 0.0)
+		elif part.def.has("pantalla"):
+			_set_screen_lit(part, screen_powered(part))
 		elif str(part.def.get("electrico", {}).get("tipo", "")) == "nano":
 			var on := power_on and not tripped.has(part.uid)
 			var d13 := int(digital_out.get(part.uid, {}).get("D13", 0)) > 0
@@ -473,6 +488,21 @@ func _update_leds() -> void:
 						var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
 						var lit: bool = on if str(mi.get_meta("nano_led")) == "PWR" else (on and d13)
 						if m: m.emission_energy_multiplier = 4.0 if lit else 0.05
+
+## Pantalla del visor: encendida si entre 5V y GND llegan al menos 4.3 V.
+func screen_powered(part: PartInstance) -> bool:
+	if burned.has(part.uid):
+		return false
+	var v := voltage(main._key(part.uid, "5V")) - voltage(main._key(part.uid, "GND"))
+	return not is_nan(v) and v >= 4.3
+
+func _set_screen_lit(part: PartInstance, lit: bool) -> void:
+	for root in _visual_roots(part):
+		for mi in root.find_children("*", "MeshInstance3D", true, false):
+			if mi.has_meta("pantalla_luz"):
+				var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+				if m:
+					m.emission_energy_multiplier = 1.0 if lit else 0.0
 
 func _set_led_visual(part: PartInstance, level: float) -> void:
 	var col: Color = LED_COLORS.get(_led_params(part.def.get("electrico", {}))["color"], Color(1, 0.1, 0.1))

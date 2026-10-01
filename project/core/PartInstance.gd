@@ -215,7 +215,13 @@ func _make_mesh() -> Mesh:
 	if forma == "custom" and def.has("_mesh"):
 		return def["_mesh"]
 	var d: Dictionary = def.get("dimensiones_mm", {})
+	var boxes := PartLibrary.compound_boxes(def)
+	if not boxes.is_empty():
+		return MeshFactory.boxes(boxes)
 	match forma:
+		"lente":
+			var lg := PartLibrary.lens_geometry(def)
+			return MeshFactory.lens(lg["r"], lg["R"], lg["h"], lg["edge"], lg["fresnel"])
 		"esfera":
 			var sph := SphereMesh.new()
 			sph.radius = float(d.get("radio", 10.0)) / 1000.0
@@ -277,21 +283,22 @@ func printed_volume_m3() -> float:
 	var shell := minf(v, PartLibrary.area_m2(def) * maxf(0.0, float(ps["paredes_mm"])) / 1000.0)
 	return shell + clampf(float(ps["relleno"]), 0.0, 1.0) * (v - shell)
 
-## Centro de masa en el espacio de la pieza (el de la malla si es importada y estanca).
+## Centro de masa en el espacio de la pieza: el de la malla importada estanca o el
+## de las cajas que forman la pieza (carcasa, soporte de lentes); si no, el centro.
 func com_local() -> Vector3:
-	if PartLibrary.has_mesh_mass(def):
-		return def["_masa"]["centroide"]
-	return Vector3.ZERO
+	return PartLibrary.mass_model(def).get("centroide", Vector3.ZERO)
 
 ## Inercia diagonal (kg·m²) respecto al centro de masa, en los ejes de la pieza, para
-## piezas importadas con malla estanca. Vector3.ZERO = la calcula el motor por la forma.
-## Los productos de inercia de la malla no se usan (el motor solo admite la diagonal).
+## las piezas con geometría propia (PartLibrary.mass_model). Vector3.ZERO = la calcula
+## el motor por la forma. Los productos de inercia no se usan (el motor solo admite
+## la diagonal).
 func inertia_local() -> Vector3:
-	if not PartLibrary.has_mesh_mass(def):
+	var mm := PartLibrary.mass_model(def)
+	if mm.is_empty():
 		return Vector3.ZERO
-	var v := PartLibrary.volume_m3(def)
+	var v := float(mm["volumen"])
 	var rho_eff := mass_kg() / v if v > 0.0 else 0.0
-	var it: Array = def["_masa"]["inercia"]
+	var it: Array = mm["inercia"]
 	return Vector3(float(it[0]), float(it[1]), float(it[2])) * rho_eff
 
 func friction() -> float:
@@ -315,6 +322,12 @@ func make_collision_shape() -> Shape3D:
 		s.radius = float(d.get("radio", 10.0)) / 1000.0
 		s.height = float(d.get("altura", 100.0)) / 1000.0
 		return s
+	if forma == "lente":
+		var lg := PartLibrary.lens_geometry(def)
+		var ls := CylinderShape3D.new()
+		ls.radius = lg["r"]
+		ls.height = lg["t"]
+		return ls
 	var s2 := BoxShape3D.new()
 	s2.size = PartLibrary.dims_m(def)
 	return s2
@@ -330,6 +343,14 @@ func collision_mode() -> String:
 ## Formas de colisión de la pieza para el simulador: [{shape, xf}] en el espacio de
 ## la pieza. Las primitivas dan una sola forma; las importadas, según collision_mode().
 func make_collision_shapes() -> Array:
+	var boxes := PartLibrary.compound_boxes(def)
+	if not boxes.is_empty():
+		var out_b := []
+		for b in boxes:
+			var bs := BoxShape3D.new()
+			bs.size = b["s"]
+			out_b.append({"shape": bs, "xf": Transform3D(Basis.IDENTITY, b["c"])})
+		return out_b
 	if def.get("forma", "") == "custom" and def.has("_mesh") and collision_mode() != "caja":
 		var out := []
 		for pts in MeshImporter.convex_hulls(def, collision_mode() == "multiple"):

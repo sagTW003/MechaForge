@@ -13,6 +13,9 @@ extends RefCounted
 ##   imuN_roll/pitch/yaw  IMU: orientación VERDADERA en ° (referencia para comparar
 ##                lo que estime el programa; un MPU-6050 real no la da).
 ##   imuN_gyro    IMU: |ω| (rad/s);  imuN_nueva: 1 si en este paso llegó una muestra.
+##   imuN_ok      IMU: 1 si responde. Un módulo con cables debe estar bien conectado
+##                al bus I²C de una placa (I2CBus); sin ningún cable funciona directo.
+##                El móvil cuenta como IMU (la suya interna).
 ##   finN         Final de carrera: 1 si algo toca su palanca (cara +Y, 3 mm), si no 0.
 ##   fuerzaN      Sensor de fuerza: fuerza de contacto sobre su cara (N).
 ##   lineaN       Sensor de línea (IR hacia abajo): 1 sobre la cinta negra, si no 0.
@@ -33,14 +36,14 @@ extends RefCounted
 ## No hay magnetómetro: el yaw estimado integrando gz deriva, como en el real.
 
 const KINDS := {
-	"sensor_ultrasonido": "dist", "lidar": "lidar", "encoder": "enc", "imu": "imu",
+	"sensor_ultrasonido": "dist", "lidar": "lidar", "encoder": "enc", "imu": "imu", "movil_61": "imu",
 	"final_carrera": "fin", "sensor_fuerza": "fuerza", "sensor_linea": "linea",
 }
 const DESCR := {
 	"dist": "distancia ultrasonido (m)", "lidar": "distancia mínima LiDAR (m)", "enc": "ángulo encoder (°)",
 	"imu": "IMU: _ax _ay _az (g), _gx _gy _gz (°/s), _roll _pitch _yaw (° reales), _nueva", "fin": "final de carrera (0/1)", "fuerza": "fuerza (N)", "linea": "línea bajo el sensor (0/1)",
 }
-const IMU_SUFFIXES := ["_ax", "_ay", "_az", "_gx", "_gy", "_gz", "_roll", "_pitch", "_yaw", "_gyro", "_nueva"]
+const IMU_SUFFIXES := ["_ax", "_ay", "_az", "_gx", "_gy", "_gz", "_roll", "_pitch", "_yaw", "_gyro", "_nueva", "_ok"]
 
 ## Parámetros por defecto de la IMU (MPU-6050, datasheet rev. 3.4; sesgos residuales
 ## típicos tras calibrar). Se sobrescriben con "imu" de la definición y del estado.
@@ -60,6 +63,11 @@ const G0 := 9.80665               # 1 g (m/s²)
 
 var _enc_state: Dictionary = {}     # uid -> {q0, last, acc}
 var _imu_state: Dictionary = {}     # uid -> estado del modelo de la IMU
+## Estado del bus I²C de cada IMU con cables (uid -> I2CBus.status); lo fija Main.
+var bus: Dictionary = {}
+## Configuración escrita por registros durante la simulación (uid -> parámetros):
+## fondos de escala y muestreo que el programa cambia con i2c_escribir.
+var runtime: Dictionary = {}
 
 ## [{var, kind, part}] de los sensores de la escena (orden estable).
 static func list(parts_root: Node) -> Array:
@@ -181,8 +189,24 @@ static func imu_angles(b: Basis) -> Vector3:
 		rad_to_deg(-asin(clampf(bx.y, -1.0, 1.0))),     # pitch
 		rad_to_deg(atan2(-bx.z, bx.x)))                 # yaw
 
+## Parámetros en uso de una IMU: los de la pieza más lo escrito por registros.
+func params_for(part: PartInstance) -> Dictionary:
+	var p := imu_params(part)
+	p.merge(runtime.get(part.uid, {}), true)
+	return p
+
+## Última muestra de una IMU en cuentas del ADC (lo que guardan sus registros):
+## "ax".."gz" con el fondo de escala actual. 0 si aún no hay muestra.
+func raw_counts(part: PartInstance, key: String) -> int:
+	var st: Dictionary = _imu_state.get(part.uid, {})
+	if st.is_empty():
+		return 0
+	var prm := params_for(part)
+	var fs := float(prm["accel_fs_g"]) if key.begins_with("a") else float(prm["gyro_fs_dps"])
+	return clampi(int(roundf(float(st["out"].get(key, 0.0)) / (fs / 32768.0))), -32768, 32767)
+
 func _read_imu(part: PartInstance, body: RigidBody3D, sim: Simulator, v: String, vars: Dictionary) -> void:
-	var prm := imu_params(part)
+	var prm := params_for(part)
 	var xf: Transform3D = sim.part_transform(part.uid)
 	var st: Dictionary = _imu_state.get(part.uid, {})
 	if st.is_empty():
@@ -206,14 +230,17 @@ func _read_imu(part: PartInstance, body: RigidBody3D, sim: Simulator, v: String,
 			if float(st["t_next"]) <= t:
 				st["t_next"] = t + period
 	var o: Dictionary = st["out"]
+	var bs: Dictionary = bus.get(part.uid, {})
+	var reachable := bs.is_empty() or bool(bs.get("ok", false))
 	for k in o:
-		vars[v + "_" + k] = o[k]
+		vars[v + "_" + k] = o[k] if reachable else 0.0
+	vars[v + "_ok"] = 1.0 if reachable else 0.0
 	var ang := imu_angles(xf.basis)
 	vars[v + "_roll"] = ang.x
 	vars[v + "_pitch"] = ang.y
 	vars[v + "_yaw"] = ang.z
 	vars[v + "_gyro"] = body.angular_velocity.length()
-	vars[v + "_nueva"] = 1.0 if st["nueva"] else 0.0
+	vars[v + "_nueva"] = 1.0 if st["nueva"] and reachable else 0.0
 
 ## Estado inicial: sesgos fijos por pieza (semilla = su uid, así cada IMU es siempre
 ## la misma de una simulación a otra) y salida a cero hasta la primera muestra.
@@ -269,3 +296,4 @@ static func _adc(x: float, fs: float, ideal: bool) -> float:
 func reset() -> void:
 	_enc_state.clear()
 	_imu_state.clear()
+	runtime.clear()

@@ -1257,6 +1257,10 @@
         "tipo": "nano",
         "usb": true
       },
+      "i2c": {
+        "sda": "A4",
+        "scl": "A5"
+      },
       "descripcion": "Alimentado por USB: 5V y 3V3 como fuentes; el programa del microcontrolador escribe d2…d13 (0/1)."
     },
     {

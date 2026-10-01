@@ -8,6 +8,8 @@ extends RefCounted
 ## - tube: tubo hueco con espesor de pared.
 ## - gear: engranaje recto con dientes (módulo, nº de dientes) y cubo con agujero.
 ## - plate_holes: patrón de orificios pasantes (M5 cada 20 mm) para placas.
+## - lens: lente biconvexa (casquetes esféricos) o Fresnel (anillos), eje Y.
+## - boxes: varias cajas achaflanadas en una malla (carcasa, soporte de lentes).
 ## Las mallas se cachean por dimensiones: piezas iguales comparten la malla.
 
 static var _cache: Dictionary = {}
@@ -390,5 +392,97 @@ static func plate_holes(size: Vector3) -> MultiMeshInstance3D:
 	mmi.name = "Orificios"
 	mmi.multimesh = mm
 	return mmi
+
+#endregion
+
+#region LENTES Y PIEZAS DE VARIAS CAJAS ---------------------------------------
+
+## Lente de eje Y: biconvexa (radio de curvatura R, casquetes de altura h, canto
+## "edge") o Fresnel (lámina de grosor "edge" con anillos en la cara superior).
+static func lens(r: float, R: float, h: float, edge: float, fresnel: bool, segs: int = 48) -> ArrayMesh:
+	var key := "ln_%.5f_%.5f_%.5f_%.5f_%s" % [r, R, h, edge, str(fresnel)]
+	if _cache.has(key):
+		return _cache[key]
+	# Perfil (ρ, y) de la mitad superior como tramos [p0, n0, p1, n1] (normales 2D).
+	var top := []
+	var y0 := edge * 0.5
+	if fresnel:
+		var zones := 8
+		var depth := minf(edge * 0.35, 0.0006)
+		for k in range(zones):
+			var r0 := r * k / zones
+			var r1 := r * (k + 1) / zones
+			var fn := Vector2(depth, r1 - r0).normalized()
+			top.append([Vector2(r0, y0), fn, Vector2(r1, y0 - depth), fn])
+			top.append([Vector2(r1, y0 - depth), Vector2(1, 0), Vector2(r1, y0), Vector2(1, 0)])
+	else:
+		var rings := 14
+		var yc := y0 - (R - h)            # centro de la esfera del casquete superior
+		var prev := Vector2(0.0, y0 + h)
+		for i in range(1, rings + 1):
+			var rho := r * float(i) / rings
+			var p := Vector2(rho, yc + sqrt(maxf(0.0, R * R - rho * rho)))
+			var n0 := Vector2(prev.x, prev.y - yc) / R
+			var n1 := Vector2(p.x, p.y - yc) / R
+			top.append([prev, n0, p, n1])
+			prev = p
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for sgn: float in [1.0, -1.0]:
+		for sg in top:
+			var a: Vector2 = sg[0]
+			var b: Vector2 = sg[2]
+			var na: Vector2 = sg[1]
+			var nb: Vector2 = sg[3]
+			if sgn < 0.0:
+				if fresnel:
+					continue        # cara inferior plana (abajo)
+				a.y = -a.y; b.y = -b.y; na.y = -na.y; nb.y = -nb.y
+			_lathe_band(st, a, na, b, nb, segs)
+	if fresnel:
+		_lathe_band(st, Vector2(0, -y0), Vector2(0, -1), Vector2(r, -y0), Vector2(0, -1), segs)
+	# Canto.
+	_lathe_band(st, Vector2(r, -y0), Vector2(1, 0), Vector2(r, y0), Vector2(1, 0), segs)
+	var m := _finish(st)
+	_cache[key] = m
+	return m
+
+## Superficie de revolución entre dos puntos del perfil (ρ, y) con sus normales.
+static func _lathe_band(st: SurfaceTool, a: Vector2, na: Vector2, b: Vector2, nb: Vector2, segs: int) -> void:
+	for i in range(segs):
+		var t0 := TAU * float(i) / segs
+		var t1 := TAU * float(i + 1) / segs
+		var d0 := Vector3(cos(t0), 0, sin(t0))
+		var d1 := Vector3(cos(t1), 0, sin(t1))
+		var p := [d0 * a.x + Vector3.UP * a.y, d1 * a.x + Vector3.UP * a.y, d1 * b.x + Vector3.UP * b.y, d0 * b.x + Vector3.UP * b.y]
+		var n := [(d0 * na.x + Vector3.UP * na.y).normalized(), (d1 * na.x + Vector3.UP * na.y).normalized(),
+			(d1 * nb.x + Vector3.UP * nb.y).normalized(), (d0 * nb.x + Vector3.UP * nb.y).normalized()]
+		var dm: Vector3 = (n[0] + n[1] + n[2] + n[3]).normalized()
+		for tri in [[0, 1, 2], [0, 2, 3]]:
+			var q0: Vector3 = p[tri[0]]
+			var q1: Vector3 = p[tri[1]]
+			var q2: Vector3 = p[tri[2]]
+			if (q1 - q0).cross(q2 - q0).length_squared() < 1e-18:
+				continue        # triángulo degenerado (en el eje)
+			var order: Array = tri if (q1 - q0).cross(q2 - q0).dot(dm) <= 0.0 else [tri[0], tri[2], tri[1]]
+			for k in order:
+				st.set_normal(n[k])
+				st.add_vertex(p[k])
+
+## Varias cajas achaflanadas en una sola malla: [{c: centro, s: tamaño}] en metros.
+static func boxes(list: Array) -> ArrayMesh:
+	var sig := PackedStringArray()
+	for b in list:
+		sig.append("%s%s" % [str(b["c"]), str(b["s"])])
+	var key := "bx_%d" % "|".join(sig).hash()
+	if _cache.has(key):
+		return _cache[key]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for b in list:
+		st.append_from(chamfer_box(b["s"]), 0, Transform3D(Basis.IDENTITY, b["c"]))
+	var m := st.commit()
+	_cache[key] = m
+	return m
 
 #endregion

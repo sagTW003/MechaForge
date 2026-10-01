@@ -170,6 +170,30 @@ func _t_arduino_555() -> void:
 	check(green_on > 3 and green_off > 3, "  el programa (d2) hace parpadear el LED verde (%d/%d)" % [green_on, green_off])
 	check(readings.size() >= 2, "  el multímetro sigue la salida del 555 (%s V)" % str(readings.keys()))
 
+func _t_gafas_vr() -> void:
+	var op := Optics.analyze(main.parts_root)
+	var ln: Array = op.get("lentes", [])
+	check(op.get("ok", false) and absf(float(op.get("ipd_mm", 0.0)) - 63.0) < 0.2 and ln.size() == 2
+		and absf(float(ln[0]["distancia_mm"]) - 40.0) < 0.5 and ln[0]["enfocado"] and op["avisos"].is_empty(),
+		"  óptica: lentes a 40 mm de la pantalla, IPD 63 mm, sin avisos (campo %.0f° × %.0f°)" % [float(ln[0]["fov_h"]) if ln else 0.0, float(ln[0]["fov_v"]) if ln else 0.0])
+	var st: Dictionary = main._stability_data()
+	check(float(st.get("mass", 0.0)) > 0.15 and float(st.get("mass", 0.0)) < 0.3, "  masa del visor %.0f g" % (float(st.get("mass", 0.0)) * 1000.0))
+	main._toggle_simulation()
+	await wait_phys(240)
+	var v: Dictionary = main.mcu_last_vars
+	var imu := _part("imu")
+	check(int(v.get("quien", 0)) == 0x68 and int(v.get("ok", 0)) == 1 and bool(main.mcu_sensors.bus.get(imu.uid, {}).get("ok", false)),
+		"  la ESP32 encuentra el MPU-6050 por I²C (WHO_AM_I = 0x%X) y lo despierta" % int(v.get("quien", 0)))
+	check(absf(float(v.get("az", 0.0)) - 1.0) < 0.05 and absf(float(v.get("roll", 99.0))) < 2.5 and absf(float(v.get("pitch", 99.0))) < 2.5,
+		"  filtro complementario con los registros: az = %.3f g, visor nivelado (roll %.2f°, pitch %.2f°)" % [float(v.get("az", 0.0)), float(v.get("roll", 0.0)), float(v.get("pitch", 0.0))])
+	check(main.circuit_rt.screen_powered(_part("pantalla_55")), "  la pantalla recibe 5 V de la ESP32 y se enciende")
+	var sane := true
+	for c in main.parts_root.get_children():
+		var b: RigidBody3D = main.simulator.get_body(c.uid)
+		if b and (is_nan(b.global_position.x) or b.global_position.distance_to(c.position) > 0.012):
+			sane = false
+	check(sane, "  el conjunto se mantiene montado (lentes dentro del recorrido de sus deslizaderas)")
+
 func _t_grua() -> void:
 	await _generic(4.0)
 	var up := _body("perfil_4040_300").global_transform.basis.y

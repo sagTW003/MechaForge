@@ -52,6 +52,9 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template == "vr0":
 		await _vr0_shot(out_path)
 		return
+	if template == "vr1":
+		await _vr1_shot(out_path)
+		return
 	var sp := func(id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
 		return main._spawn(id, mat, pos, rot)
 	# Placa base perforada y bastidor de perfiles 2020.
@@ -191,6 +194,36 @@ func _vr0_shot(out_path: String) -> void:
 	cam.target = Vector3(0.03, 0.04, 0.0); cam.distance = 0.55
 	cam._yaw = deg_to_rad(-25); cam._pitch = deg_to_rad(-32)
 	cam._update_transform()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(2.5).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Fase 1 del visor VR: el ejemplo «Gafas VR caseras» con una lente seleccionada
+## (óptica en el panel de propiedades) y la pantalla encendida con la carta de ajuste.
+func _vr1_shot(out_path: String) -> void:
+	main._open_example("res://templates/12_gafas_vr.mforge")
+	await get_tree().process_frame
+	for p in [main.biblioteca_panel, main.uniones_panel, main.circuito_panel, main.mcu_panel, main.music_panel, main.ai_panel, main.graphics_panel]:
+		if p: p.visible = false
+	main.circuit_rt.solve_once()
+	main.circuit_rt.step(0.01)
+	for c in main.parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id == "lente_cardboard_37":
+			main._select(c)
+			break
+	main.connections_root.visible = false
+	main.gizmo.attach(null)
+	# Panel de propiedades más alto y desplazado hasta la óptica del visor.
+	var scroll: ScrollContainer = main.prop_container.get_parent()
+	scroll.custom_minimum_size = Vector2(276, 760)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	for n in main.prop_container.get_children():
+		if n is Label and str((n as Label).text).begins_with("Óptica"):
+			scroll.scroll_vertical = int((n as Control).position.y) - 230
 	MaterialLibrary.wait_textures()
 	await get_tree().create_timer(2.5).timeout
 	await RenderingServer.frame_post_draw

@@ -83,7 +83,126 @@ static func build(def: Dictionary) -> Node3D:
 		"sensor_linea": return _line_sensor(d)
 		"fsr": return _fsr(d)
 		"lidar": return _lidar(d)
+		"pantalla": return _screen(d, def, false)
+		"movil": return _screen(d, def, true)
+		"esp32": return _esp32(d)
 		_: return null
+
+## Carta de ajuste lado a lado (un círculo, una cruz y una rejilla por ojo, y barras
+## de color): lo que muestra la pantalla del visor hasta que haya render estéreo.
+static var _sbs_pattern: ImageTexture
+
+static func sbs_pattern() -> ImageTexture:
+	if _sbs_pattern:
+		return _sbs_pattern
+	var w := 640
+	var h := 360
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	img.fill(Color(0.04, 0.05, 0.08))
+	var half := w / 2
+	for eye in range(2):
+		var x0 := eye * half
+		var cx := x0 + half / 2
+		var cy := h / 2
+		for y in range(h):
+			for x in range(x0, x0 + half):
+				var dx := float(x - cx)
+				var dy := float(y - cy)
+				var r := sqrt(dx * dx + dy * dy)
+				var c := Color(-1, 0, 0)
+				if (x - x0) % 40 == 0 or y % 40 == 0:
+					c = Color(0.22, 0.25, 0.3)
+				if absf(r - h * 0.16) < 1.2 or absf(r - h * 0.33) < 1.2:
+					c = Color(0.35, 0.85, 1.0)
+				if (absi(x - cx) < 1 and absf(dy) < h * 0.4) or (absi(y - cy) < 1 and absf(dx) < half * 0.4):
+					c = Color(1, 1, 1)
+				if x == x0 or x == x0 + half - 1 or y == 0 or y == h - 1:
+					c = Color(0.9, 0.5, 0.15)
+				if c.r >= 0.0:
+					img.set_pixel(x, y, c)
+		# Barras de color abajo.
+		var bars := [Color(1, 0.15, 0.1), Color(0.2, 1, 0.3), Color(0.2, 0.4, 1), Color(1, 1, 1)]
+		for i in range(4):
+			img.fill_rect(Rect2i(cx - 60 + i * 30, h - 46, 26, 18), bars[i])
+	img.generate_mipmaps()
+	_sbs_pattern = ImageTexture.create_from_image(img)
+	return _sbs_pattern
+
+## Pantalla LCD con su placa controladora detrás, o teléfono móvil. La cara activa
+## mira a +Y: un plano con la carta de ajuste emisiva (meta "pantalla_luz"); el LCD
+## se enciende cuando le llega alimentación (CircuitRuntime) y el móvil siempre.
+static func _screen(d: Vector3, def: Dictionary, phone: bool) -> Node3D:
+	var n := Node3D.new()
+	var info: Dictionary = def.get("pantalla", {})
+	var area: Array = info.get("area_mm", [d.x * 960.0, d.z * 940.0])
+	var aw := float(area[0]) / 1000.0
+	var ah := float(area[1]) / 1000.0
+	if phone:
+		var body := MeshInstance3D.new()
+		body.mesh = MeshFactory.chamfer_box(d, minf(d.y * 0.4, 0.003))
+		body.material_override = mat(Color(0.2, 0.21, 0.24), 0.85, 0.35)
+		n.add_child(body)
+		n.add_child(_box(Vector3(d.x - 0.004, 0.0004, d.z - 0.004), mat(Color(0.02, 0.02, 0.025), 0.0, 0.1), Vector3(0, d.y * 0.5 + 0.0002, 0)))
+		n.add_child(_box(Vector3(0.028, 0.0015, 0.028), mat(Color(0.07, 0.07, 0.08), 0.4, 0.3), Vector3(d.x * 0.36, -d.y * 0.5 - 0.0007, d.z * 0.26)))
+		n.add_child(_cyl(0.0055, 0.0018, mat(Color(0.01, 0.01, 0.02), 0.2, 0.05), Vector3(d.x * 0.36, -d.y * 0.5 - 0.0012, d.z * 0.26)))
+	else:
+		var panel_t := minf(0.003, d.y * 0.5)
+		n.add_child(_box(Vector3(d.x, panel_t, d.z), mat(Color(0.06, 0.06, 0.065), 0.3, 0.4), Vector3(0, d.y * 0.5 - panel_t * 0.5, 0)))
+		var pcb := MeshInstance3D.new()
+		pcb.mesh = MeshFactory.chamfer_box(Vector3(d.x * 0.5, 0.0016, d.z * 0.62))
+		pcb.material_override = MaterialLibrary.get_visual("baquelita")
+		pcb.position = Vector3(d.x * 0.2, d.y * 0.5 - panel_t - 0.0012, -d.z * 0.08)
+		n.add_child(pcb)
+		var metal := mat(Color(0.75, 0.76, 0.78), 1.0, 0.3)
+		n.add_child(_box(Vector3(0.011, 0.0045, 0.015), metal, Vector3(d.x * 0.4, -d.y * 0.5 + 0.00225, d.z * 0.12)))
+		n.add_child(_box(Vector3(0.008, 0.0028, 0.012), metal, Vector3(d.x * 0.4, -d.y * 0.5 + 0.0014, -d.z * 0.12)))
+		n.add_child(_box(Vector3(0.02, 0.0004, 0.03), mat(Color(0.75, 0.45, 0.1), 0.2, 0.5), Vector3(-d.x * 0.1, d.y * 0.5 - panel_t - 0.0002, 0)))
+	var glass := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(aw, ah)
+	glass.mesh = pm
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color(0.015, 0.015, 0.02)
+	gm.roughness = 0.08
+	gm.metallic_specular = 0.6
+	gm.emission_enabled = true
+	gm.emission = Color(1, 1, 1)
+	gm.emission_texture = sbs_pattern()
+	gm.emission_energy_multiplier = 1.0 if phone else 0.0
+	glass.material_override = gm
+	glass.position = Vector3(0, d.y * 0.5 + (0.0005 if phone else 0.0002), 0)
+	glass.set_meta("pantalla_luz", true)
+	n.add_child(glass)
+	return n
+
+## ESP32 DevKitC: placa negra, módulo ESP-WROOM-32 con blindaje y antena, dos tiras
+## de pines a lo largo, micro USB, botones EN/BOOT y LED rojo de encendido.
+static func _esp32(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	var t := 0.0016
+	var y0 := -d.y * 0.5
+	var board := MeshInstance3D.new()
+	board.mesh = MeshFactory.chamfer_box(Vector3(d.x, t, d.z), t * 0.3)
+	board.material_override = mat(Color(0.05, 0.05, 0.06), 0.0, 0.5)
+	board.position = Vector3(0, y0 + t * 0.5 + 0.0025, 0)
+	n.add_child(board)
+	var top := y0 + t + 0.0025
+	var metal := mat(Color(0.78, 0.79, 0.81), 1.0, 0.25)
+	n.add_child(_box(Vector3(0.018, 0.0032, 0.016), metal, Vector3(d.x * 0.5 - 0.0155, top + 0.0016, 0)))
+	n.add_child(_box(Vector3(0.0065, 0.0008, 0.018), mat(Color(0.08, 0.2, 0.12), 0.0, 0.5), Vector3(d.x * 0.5 - 0.0032, top + 0.0004, 0)))
+	n.add_child(_box(Vector3(0.006, 0.003, 0.008), metal, Vector3(-d.x * 0.5 + 0.0028, top + 0.0015, 0)))
+	var black := mat(Color(0.03, 0.03, 0.035), 0.0, 0.6)
+	var gold := mat(Color(0.85, 0.68, 0.25), 0.95, 0.3)
+	for sz: float in [-1.0, 1.0]:
+		n.add_child(_box(Vector3(0.00254 * 19, 0.0025, 0.0025), black, Vector3(0, y0 + 0.00125, sz * 0.0127)))
+		for i in range(19):
+			n.add_child(_box(Vector3(0.00064, 0.0085, 0.00064), gold, Vector3(-0.02286 + 0.00254 * i, y0 + 0.00425, sz * 0.0127)))
+	for bx: float in [-0.012, -0.004]:
+		n.add_child(_box(Vector3(0.004, 0.0015, 0.003), black, Vector3(bx - d.x * 0.25, top + 0.00075, d.z * 0.3)))
+	var led := mat(Color(1.0, 0.15, 0.1), 0.0, 0.3, true)
+	led.emission_energy_multiplier = 3.0
+	n.add_child(_box(Vector3(0.0016, 0.0008, 0.0008), led, Vector3(-d.x * 0.3, top + 0.0004, -d.z * 0.3)))
+	return n
 
 static func _pcb(d: Vector3, def: Dictionary) -> Node3D:
 	var n := Node3D.new()

@@ -432,7 +432,7 @@ arquitectura y cómo enlazar los eventos, en
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
-Once proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
+Doce proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
 título; guárdalos con «Guardar como…»):
 
 | Ejemplo | Qué muestra |
@@ -448,6 +448,7 @@ título; guárdalos con «Guardar como…»):
 | Péndulo doble | Dinámica caótica con conservación de la energía |
 | Multímetro en protoboard | Tensión en el LED y en la resistencia, continuidad, corriente en serie |
 | Arduino Nano y NE555 (DIP) | Integrados que cruzan el canal; 555 astable y salidas `d2`/`d13` del programa |
+| Gafas VR caseras | Carcasa impresa, pantalla, lentes en deslizaderas (IPD 63 mm) y ESP32 que lee el MPU-6050 por I²C con un filtro complementario |
 
 Los ejemplos son archivos `.mforge` en `project/templates/`: **añadir un proyecto
 al menú = copiar ahí un `.mforge`** (con `"nombre"` y `"descripcion"`). Se regeneran
@@ -514,6 +515,34 @@ bucle:
   huecos, como el interior de una carcasa), *un casco convexo* o *caja envolvente*.
 - Las piezas pequeñas (menos de 3 cm) y las importadas de paredes finas usan detección
   continua de colisiones: a velocidad no atraviesan paredes delgadas.
+
+### Gafas VR caseras: las piezas del visor
+
+![Gafas VR caseras](docs/demo_vr_fase1.png)
+*Ejemplo «Gafas VR caseras» con una lente seleccionada: a 40 mm de la pantalla forma la imagen a 0.37 m del ojo (×9), con 72° × 79° de campo por ojo, 15 píxeles por grado e IPD de 63 mm.*
+
+- **Piezas** (categoría «vr»): pantalla LCD de 5.5" 2560×1440 (se enciende con 5 V y
+  muestra una carta de ajuste lado a lado), móvil de 6.1" con su IMU (tipo Cardboard;
+  también puede correr el programa), lente biconvexa Ø37 mm f = 45 mm y Fresnel Ø50 mm
+  f = 50 mm (diámetro, focal y canto editables; geometría y masa de verdad), soporte de
+  lentes con ranuras para ajustar la distancia entre ojos con deslizaderas, carcasa
+  impresa (abierta por la cara, con hueco para la nariz y pasacables; colisión exacta
+  con sus paredes) y ESP32 DevKitC alimentada por USB.
+- **Óptica de lente delgada** al seleccionar una lente o la pantalla (y con la
+  herramienta `analyze_headset`): distancia a la pantalla, imagen virtual y aumento,
+  campo de visión por ojo (con el recorte del borde de la lente), píxeles por grado,
+  distancia entre lentes y avisos (pantalla más allá del foco, imagen demasiado cerca,
+  lentes descentradas o a distinta altura, IPD fuera de 54–74 mm).
+- **Bus I²C**: un módulo MPU-6050 con cables solo responde si VCC–GND recibe 3–5.5 V,
+  SDA y SCL van a los pines I²C de una placa (ESP32: GPIO21/22; Nano: A4/A5) sin
+  cruzarse, el GND es común y no hay otra IMU en su dirección (0x68, o 0x69 con AD0);
+  el panel dice qué falla. Sin ningún cable funciona directo, como antes.
+- **Registros del MPU-6050** desde el programa, como con la librería Wire:
+  `i2c_leer(dir, reg)`, `i2c16(dir, reg)` (16 bits con signo), `i2c_escribir(dir, reg,
+  valor)` e `i2c_ok(dir)`. WHO_AM_I = 0x68, arranca dormido (PWR_MGMT_1 = 0x40), los
+  fondos de escala y el muestreo se cambian por registro, y los datos están en
+  0x3B–0x48. Las llamadas se resuelven antes de evaluar la expresión: el programa nunca
+  recibe objetos de la aplicación.
 
 ![Seguidor de línea](docs/demo_seguidor.png)
 *Carro seguidor de línea: dos sensores IR, control diferencial de velocidad y el programa del microcontrolador.*
@@ -601,7 +630,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Visor VR casero, fase 0 (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas) | `mfvr` |
+| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros) | `mfvr` |
 
 ## Arquitectura
 

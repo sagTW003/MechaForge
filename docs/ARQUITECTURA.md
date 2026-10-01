@@ -24,6 +24,12 @@
 - `MeshMass.cs` — volumen, área, centroide e inercia de una malla estanca
   (teorema de la divergencia) para los modelos importados.
 
+### `vr/` — Visor VR casero
+- `Optics.gd` — óptica de lente delgada del visor (imagen virtual, campo de visión,
+  píxeles por grado, IPD y avisos).
+- Piezas en `parts/vr.json`; el bus I²C está en `electronics/I2CBus.gd` y las funciones
+  `i2c_…` del programa en `control/McuIo.gd`.
+
 ### `physics/` — Simulación (Fase 2)
 - `Simulator.gd` — convierte las piezas en `RigidBody3D` (Jolt), crea las uniones
   y las gobierna cada paso físico. Uniones: **fija/deslizadera/rótula** con

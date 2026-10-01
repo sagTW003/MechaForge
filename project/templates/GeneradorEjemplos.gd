@@ -1,7 +1,7 @@
 extends Node
 ## GeneradorEjemplos — Construye los proyectos de ejemplo y los guarda en
 ## res://templates/*.mforge (los muestra el menú «Ejemplos»).
-##   Godot --headless --path project -- mfgen
+##   Godot --headless --path project -- mfgen [id ...]   (sin id: todos)
 ## Cada ejemplo es una escena completa y funcional: piezas, uniones, cables,
 ## programa del microcontrolador, vista de cámara y entorno.
 
@@ -30,11 +30,17 @@ const EJEMPLOS := [
 		"Mide con el multímetro (📟): tensión del LED (≈1.85 V), caída en la resistencia (sonda roja a la columna 11), continuidad de un riel (apaga la alimentación) y corriente EN SERIE (quita el puente negro e intercala las sondas en A⎓)."],
 	["11_arduino_555", "Arduino Nano y NE555 (DIP) en protoboard",
 		"Integrados DIP que cruzan el canal central: el Nano (USB) alimenta los rieles, el 555 astable hace parpadear el LED rojo y el programa (d2, d13) el LED verde. Pulsa ▶ Simular."],
+	["12_gafas_vr", "Gafas VR caseras",
+		"Carcasa impresa en PLA con pantalla de 5.5\", dos lentes de f = 45 mm en deslizaderas (distancia entre ojos de 63 mm) y una ESP32 que lee el MPU-6050 por I²C y estima la orientación con un filtro complementario. Selecciona una lente para ver su óptica."],
 ]
 
 func run() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://templates"))
+	var ua := OS.get_cmdline_user_args()
+	var only := ua.slice(ua.find("mfgen") + 1)
 	for e in EJEMPLOS:
+		if not only.is_empty() and not e[0] in only:
+			continue
 		main._on_new()
 		await get_tree().process_frame
 		await call("_ej_" + e[0].substr(3))
@@ -240,6 +246,57 @@ func _ej_arduino_555() -> void:
 		"roja": {"clave": k.call(_same_col(str(ic.pin_map["OUT"]), 3)), "pos": null}, "negra": {"clave": k.call("N1_24"), "pos": null}}
 	_program("# Arduino Nano: el LED «L» (D13) y el LED verde (D2)\n# parpadean a 1 Hz; el LED rojo lo hace oscilar el NE555.\nd13 = floor(fmod(t * 2, 2))\nd2 = d13\nd13")
 	_view(Vector3(0.0, 0.01, 0.04), 0.4, -10, -50, 0)
+
+## Visor VR (adelante = +X, la cara en −X). La pantalla, el soporte y las lentes usan
+## la misma orientación: su +Y mira hacia el ojo (−X), su +X a −Z y su +Z arriba.
+func _ej_gafas_vr() -> void:
+	var yc := 0.0475
+	var face := Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0)).get_euler()
+	var shell := _anchor(_sp("carcasa_visor", "pla", Vector3(0, yc, 0)))
+	var scr := _sp("pantalla_55", "abs", Vector3(0.027, yc, 0), face)
+	var holder := _sp("soporte_lentes", "pla", Vector3(-0.016, yc, 0), face)
+	var lenses := []
+	for z in [0.0315, -0.0315]:
+		lenses.append(_sp("lente_cardboard_37", "acrilico", Vector3(-0.016, yc, z), face))
+	# Electrónica sobre el techo: los cables de la pantalla bajan por el pasacables.
+	var esp := _sp("esp32_devkit", "abs", Vector3(0.005, 0.1, -0.045))
+	var imu := _sp("imu", "abs", Vector3(-0.005, 0.099, 0.03))
+	for q in [scr, holder, esp, imu]:
+		main._tpl_fix(shell, q, q.position)
+	for ln in lenses:
+		var c := Connection.new()
+		c.a_uid = holder.uid; c.b_uid = ln.uid
+		c.tipo = Connection.Tipo.DESLIZADERA; c.axis = 2; c.anchor = ln.position
+		c.limit_enabled = true; c.limit_lower = -0.009; c.limit_upper = 0.009
+		main.connections.append(c)
+	var k := func(p: PartInstance, t: String) -> String: return main._key(p.uid, t)
+	main.wires = [
+		{"uid": "v1", "a_key": k.call(esp, "5V"), "b_key": k.call(scr, "5V"), "tipo": "power", "color": "auto"},
+		{"uid": "v2", "a_key": k.call(esp, "GND"), "b_key": k.call(scr, "GND"), "tipo": "gnd", "color": "auto"},
+		{"uid": "v3", "a_key": k.call(esp, "3V3"), "b_key": k.call(imu, "VCC"), "tipo": "power", "color": "naranja"},
+		{"uid": "v4", "a_key": k.call(esp, "GND2"), "b_key": k.call(imu, "GND"), "tipo": "gnd", "color": "negro"},
+		{"uid": "v5", "a_key": k.call(esp, "GPIO22"), "b_key": k.call(imu, "SCL"), "tipo": "signal", "color": "amarillo"},
+		{"uid": "v6", "a_key": k.call(esp, "GPIO21"), "b_key": k.call(imu, "SDA"), "tipo": "signal", "color": "azul"},
+	]
+	main._redraw_wires()
+	_program(VR_PROGRAM)
+	_view(Vector3(-0.005, 0.055, 0.0), 0.4, 62, -24, 0)
+
+const VR_PROGRAM := """# ESP32 + MPU-6050 por I²C (dirección 0x68): despierta el sensor,
+# lee sus registros y estima la orientación con un filtro complementario.
+inicio:
+  ok = i2c_escribir(0x68, 0x6B, 0)
+  quien = i2c_leer(0x68, 0x75)
+bucle:
+  ax = i2c16(0x68, 0x3B) / 16384.0
+  ay = i2c16(0x68, 0x3D) / 16384.0
+  az = i2c16(0x68, 0x3F) / 16384.0
+  gx = i2c16(0x68, 0x43) / 131.0
+  gy = i2c16(0x68, 0x45) / 131.0
+  gz = i2c16(0x68, 0x47) / 131.0
+  roll = 0.98 * (roll + gx * dt) + 0.02 * atan2(ay, az) * 180 / pi
+  pitch = 0.98 * (pitch + gy * dt) + 0.02 * atan2(-ax, sqrt(ay * ay + az * az)) * 180 / pi
+  yaw = yaw + gz * dt"""
 
 func _ej_grua() -> void:
 	var base := _anchor(_sp("placa_base_200x200", "acero", Vector3(0, 0.004, 0)))

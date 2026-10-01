@@ -43,6 +43,7 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `list_parts` | Catálogo de piezas (`def_id`) y materiales disponibles |
 | `get_telemetry` | Posición/velocidad de piezas, consigna/medida/temperatura de motores, consumo |
 | `analyze_design` | Masa, centro de masa, estabilidad (margen de vuelco), esfuerzos, autonomía |
+| `analyze_headset` | Visor VR: por lente, distancia a la pantalla, imagen virtual (m, −1 si no hay) y aumento, campo de visión h × v, píxeles por grado, descentrado; distancia entre lentes (IPD) y avisos |
 | `add_part` | `{"def_id","material","pos":[x,y,z],"rot_deg":[x,y,z]}` (metros; el suelo es y=0) |
 | `connect_parts` | `{"a","b","union":"fija|bisagra|deslizadera|rotula|engranaje","eje":"X|Y|Z","motor":true}` |
 | `set_property` | `{"uid","material","dims_mm":{...},"pos":[...]}` |
@@ -115,6 +116,19 @@ m1 = base - 7 * err
 m2 = base + 7 * err
 output = m1
 ```
+
+Bus I²C: un módulo `imu` con cables solo responde bien conectado (VCC a 3V3 o 5V, GND
+común, SDA/SCL a GPIO21/GPIO22 de `esp32_devkit` o A4/A5 de `arduino_nano`, una
+dirección por IMU: 0x68 o 0x69); `get_telemetry` trae `bus_i2c` con el motivo si falla
+e `imu1_ok`. Registros del MPU-6050 desde el programa: `i2c_leer(dir, reg)`,
+`i2c16(dir, reg)` (con signo), `i2c_escribir(dir, reg, valor)`, `i2c_ok(dir)`; arranca
+dormido (escribe 0 en 0x6B), WHO_AM_I 0x75 = 0x68, acelerómetro en 0x3B/0x3D/0x3F
+(16384 por g a ±2 g), giroscopio en 0x43/0x45/0x47 (131 por °/s a ±250 °/s).
+
+Piezas del visor VR (categoría `vr`): `pantalla_55` (cara hacia +Y, 5 V), `movil_61`
+(pantalla e IMU propias), `lente_cardboard_37` y `lente_fresnel_50` (eje óptico Y),
+`soporte_lentes`, `carcasa_visor` y `esp32_devkit`. Proyecto de ejemplo «Gafas VR
+caseras». Para revisar un diseño de visor usa `analyze_headset`.
 
 Orientación con la IMU (filtro complementario):
 

@@ -1,0 +1,213 @@
+{
+  "piezas": [
+    {
+      "id": "pantalla_55",
+      "nombre": "Pantalla LCD 5.5\" 2560×1440 (con placa HDMI)",
+      "categoria": "vr",
+      "material": "abs",
+      "forma": "placa",
+      "apariencia": "pantalla",
+      "dimensiones_mm": {
+        "x": 126,
+        "y": 6,
+        "z": 73
+      },
+      "pantalla": {
+        "diagonal_pulg": 5.5,
+        "res": [2560, 1440],
+        "area_mm": [121.8, 68.5],
+        "refresco_hz": 60
+      },
+      "electrico": {
+        "tipo": "carga",
+        "resistencia_ohm": 10.0
+      },
+      "terminales": [
+        {
+          "id": "5V",
+          "tipo": "power",
+          "pos_mm": [32, -1.5, 33]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [26, -1.5, 33]
+        }
+      ],
+      "descripcion": "La cara de la pantalla mira hacia +Y. Se enciende con 5 V (consume ~0.5 A)."
+    },
+    {
+      "id": "movil_61",
+      "nombre": "Teléfono móvil 6.1\" 2532×1170 (con IMU)",
+      "categoria": "vr",
+      "material": "aluminio_anodizado",
+      "forma": "placa",
+      "apariencia": "movil",
+      "dimensiones_mm": {
+        "x": 147,
+        "y": 8,
+        "z": 71.5
+      },
+      "pantalla": {
+        "diagonal_pulg": 6.1,
+        "res": [2532, 1170],
+        "area_mm": [140.6, 64.9],
+        "refresco_hz": 60
+      },
+      "imu": {
+        "modelo": "LSM6DSO (móvil)",
+        "odr_hz": 200.0,
+        "gyro_fs_dps": 2000.0,
+        "accel_fs_g": 4.0,
+        "gyro_ruido": 0.0038,
+        "accel_ruido": 70.0,
+        "gyro_sesgo": 0.2,
+        "accel_sesgo": 10.0
+      },
+      "descripcion": "Visor tipo Cardboard: pantalla siempre encendida (cara hacia +Y) e IMU propia; el programa del microcontrolador puede correr en el móvil."
+    },
+    {
+      "id": "lente_cardboard_37",
+      "nombre": "Lente biconvexa Ø37 mm, f = 45 mm (tipo Cardboard)",
+      "categoria": "vr",
+      "material": "acrilico",
+      "forma": "lente",
+      "dimensiones_mm": {
+        "diametro": 37,
+        "focal": 45,
+        "borde": 1.0
+      },
+      "optica": {
+        "tipo": "biconvexa",
+        "indice": 1.49,
+        "k1": 0.215,
+        "k2": 0.215
+      },
+      "descripcion": "Eje óptico a lo largo de Y. Acrílico (PMMA, n = 1.49); k1 y k2 = distorsión radial de la lente (perfil por defecto de Godot)."
+    },
+    {
+      "id": "lente_fresnel_50",
+      "nombre": "Lente Fresnel Ø50 mm, f = 50 mm",
+      "categoria": "vr",
+      "material": "acrilico",
+      "forma": "lente",
+      "dimensiones_mm": {
+        "diametro": 50,
+        "focal": 50,
+        "borde": 2.0
+      },
+      "optica": {
+        "tipo": "fresnel",
+        "indice": 1.49,
+        "k1": 0.215,
+        "k2": 0.215
+      },
+      "descripcion": "Lámina plana de 2 mm con anillos concéntricos: más ligera que una biconvexa de la misma focal."
+    },
+    {
+      "id": "soporte_lentes",
+      "nombre": "Soporte de lentes con ajuste de distancia entre ojos",
+      "categoria": "vr",
+      "material": "pla",
+      "forma": "soporte_lentes",
+      "dimensiones_mm": {
+        "x": 140,
+        "y": 3,
+        "z": 50
+      },
+      "ranuras": {
+        "ancho": 56,
+        "alto": 34,
+        "separacion": 64
+      },
+      "descripcion": "Placa con dos ranuras horizontales: cada lente se une con una deslizadera para ajustar la distancia entre ojos (IPD)."
+    },
+    {
+      "id": "carcasa_visor",
+      "nombre": "Carcasa de visor (impresión 3D)",
+      "categoria": "vr",
+      "material": "pla",
+      "forma": "carcasa",
+      "dimensiones_mm": {
+        "x": 65,
+        "y": 95,
+        "z": 160,
+        "espesor": 2.5
+      },
+      "nariz": {
+        "ancho": 40,
+        "fondo": 22
+      },
+      "pasacables": {
+        "ancho": 30,
+        "fondo": 16,
+        "z": -30
+      },
+      "descripcion": "Abierta por −X (lado de la cara), con la pared frontal en +X, hueco para la nariz abajo y un pasacables en el techo, encima de la pantalla."
+    },
+    {
+      "id": "esp32_devkit",
+      "nombre": "ESP32 DevKitC (USB)",
+      "categoria": "electronica",
+      "material": "abs",
+      "forma": "placa",
+      "apariencia": "esp32",
+      "dimensiones_mm": {
+        "x": 54.4,
+        "y": 10,
+        "z": 27.9
+      },
+      "electrico": {
+        "tipo": "esp32",
+        "usb": true
+      },
+      "i2c": {
+        "sda": "GPIO21",
+        "scl": "GPIO22"
+      },
+      "terminales": [
+        {
+          "id": "3V3",
+          "tipo": "power",
+          "pos_mm": [-22.86, 5, 12.7]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [10.16, 5, 12.7]
+        },
+        {
+          "id": "5V",
+          "tipo": "power",
+          "pos_mm": [22.86, 5, 12.7]
+        },
+        {
+          "id": "GND2",
+          "tipo": "gnd",
+          "pos_mm": [-22.86, 5, -12.7]
+        },
+        {
+          "id": "GPIO22",
+          "tipo": "signal",
+          "pos_mm": [-17.78, 5, -12.7]
+        },
+        {
+          "id": "GPIO21",
+          "tipo": "signal",
+          "pos_mm": [-10.16, 5, -12.7]
+        },
+        {
+          "id": "GPIO4",
+          "tipo": "signal",
+          "pos_mm": [7.62, 5, -12.7]
+        },
+        {
+          "id": "GPIO2",
+          "tipo": "signal",
+          "pos_mm": [12.7, 5, -12.7]
+        }
+      ],
+      "descripcion": "Alimentada por USB: 5V y 3V3 como fuentes. I²C en GPIO21 (SDA) y GPIO22 (SCL)."
+    }
+  ]
+}
