@@ -237,6 +237,12 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       Plano tangente, ∇f, cortes por P, hessiana, ruido y error frente a h.
 - [x] 27 pruebas nuevas en `mflabtest` (órdenes observados, regiones curvas,
       singularidad, pesos de Genz–Malik, órdenes de las derivadas, ruido).
+- [x] **Verificación de todos los métodos** (1D y 2D): barridos con todos los ejemplos
+      frente al valor exacto, comprobado por caminos independientes (diferenciación
+      automática frente a simbólica, NumPy para Gauss–Hermite). Corregidos la retícula
+      de Fibonacci (un punto caía en la esquina singular) y las adaptativas iteradas
+      (si la tolerancia no cabe en el presupuesto se relaja y se avisa en lugar de no dar
+      valor). Quedan como pruebas permanentes en `mflabtest` (~1000 casos).
 
 ## ✅ Elección de la cámara del seguimiento de manos
 - [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»

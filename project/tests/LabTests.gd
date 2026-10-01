@@ -801,8 +801,116 @@ func _t_integracion() -> void:
 	check(m.hover_text(hit).contains("∂f/∂x"), "Derivación 2D: la lectura flotante da las derivadas parciales")
 	m.perturb(m.api_points(-0.4, 0.8)[0], true)
 	check(absf(m.x0 + 0.4) < 0.01 and absf(m.y0 - 0.8) < 0.01, "Derivación 2D: clic con «Perturbar» mueve P a (%s, %s)" % [m._short(m.x0), m._short(m.y0)])
+	_verify_2d_derivatives(m)
 	m.set_mode(0)
 	await get_tree().process_frame
+	_verify_2d_integration(m)
+
+## Los 19 métodos de integración 2D dan el valor correcto en regiones suaves, curvas y
+## con una singularidad (las reglas que evalúan la esquina singular lo avisan).
+func _verify_2d_integration(m) -> void:
+	m.gp = 6
+	# Tolerancias por método: [suave (campana, triángulo), borde curvo (disco, entre curvas)].
+	var tol := [[5e-2, 5e-2], [1e-3, 1e-2], [2e-3, 5e-2], [1e-4, 2e-2], [1e-4, 2e-2], [1e-6, 2e-2], [1e-8, 1e-2],
+		[1e-12, 1e-3], [1e-12, 1e-3], [1e-12, 1e-3], [1e-9, 1e-3], [1e-9, 1e-8], [1e-8, 1e-7], [1e-9, 1e-9], [1e-9, 1e-8],
+		[-1.0, -1.0], [1e-3, 1e-2], [1e-3, 1e-3], [1e-3, 1e-3]]
+	var bad := []
+	var cases := 0
+	for spec in [[0, 0], [5, 0], [6, 1], [7, 1]]:
+		m._load_int(spec[0])
+		for k in range(19):
+			var r: Dictionary = _run2d(m, k)
+			cases += 1
+			if r.get("estado", "") != "ok":
+				bad.append("%s en «%s»: %s" % [m.INT_SHORT[k], m.INT_PRESETS[spec[0]]["nombre"], r.get("estado", "")])
+				continue
+			var e: float = r["error"]
+			var lim: float = float(tol[k][spec[1]])
+			if lim < 0.0:
+				lim = 4.0 * float(r["sigma"])
+			if e > lim:
+				bad.append("%s en «%s»: error %s > %s" % [m.INT_SHORT[k], m.INT_PRESETS[spec[0]]["nombre"], LabUI.sci(e, 1), LabUI.sci(lim, 0)])
+	check(bad.is_empty(), "Verificación 2D: los 19 métodos de integración dan el valor exacto en 4 regiones (%d casos)%s" % [cases, "" if bad.is_empty() else ": " + "; ".join(bad.slice(0, 4))])
+	# Singular 1/√(x² + y²) en [0, 1]²: o un valor correcto o el aviso de la singularidad.
+	m._load_int(9)
+	var corner := [0, 2, 3, 4, 5, 6, 8, 9, 12]
+	var sing_tol := {1: 5e-2, 7: 1e-2, 10: 1e-2, 11: 1e-6, 13: 1e-9, 14: 1e-8, 16: 1e-2, 17: 2e-2, 18: 2e-2}
+	var bad2 := []
+	for k in range(19):
+		var r2: Dictionary = _run2d(m, k)
+		if k in corner:
+			if not str(r2.get("estado", "")).contains("no es finita"):
+				bad2.append("%s debería avisar de la singularidad" % m.INT_SHORT[k])
+		elif r2.get("estado", "") != "ok":
+			bad2.append("%s: %s" % [m.INT_SHORT[k], r2.get("estado", "")])
+		elif k == 15:
+			if float(r2["error"]) > 4.0 * float(r2["sigma"]):
+				bad2.append("Monte Carlo fuera de 4σ")
+		elif float(r2["error"]) > float(sing_tol.get(k, 1e-6)):
+			bad2.append("%s: error %s" % [m.INT_SHORT[k], LabUI.sci(float(r2["error"]), 1)])
+	check(bad2.is_empty(), "Verificación 2D con la singularidad en la esquina: valores correctos o aviso%s" % ("" if bad2.is_empty() else ": " + "; ".join(bad2.slice(0, 4))))
+	m.gp = 3
+
+func _run2d(m, k: int) -> Dictionary:
+	if k in m.ADAPTIVE:
+		return m.run_int(k, 8, 1e-10)
+	if k in m.SAMPLING:
+		return m.run_int(k, 16, -1.0, 40000)
+	if k == 6:
+		return m.run_int(k, 40)
+	if k == 9:
+		return m.run_int(k, 20)
+	return m.run_int(k, 32)
+
+## Error relativo aceptable con el mejor h de la lista, según el orden del método.
+static func _dtol2d(meth: int, second: bool) -> float:
+	match meth:
+		0, 1: return 1e-3 if second else 1e-6
+		2: return 1e-5 if second else 1e-8
+		3: return 1e-7 if second else 1e-10
+		4: return 1e-8 if second else 1e-11
+		5: return 1e-7 if second else 1e-10
+		6: return 1e-6 if second else 1e-13
+		7, 8: return 1e-12
+		9: return 1e-5 if second else 1e-8
+		10: return 1e-4 if second else 1e-7
+	return 1e-6
+
+## Las 8 derivadas con los 11 métodos en los 7 ejemplos: con un h adecuado cada método
+## da la exacta (que coincide por dos caminos: diferenciación automática y simbólica).
+func _verify_2d_derivatives(m) -> void:
+	var hs := []
+	for k in range(-16, 1):
+		hs.append(pow(10.0, k))
+	var bad := []
+	var cases := 0
+	var exact_bad := 0
+	for pr in range(m.DIFF_PRESETS.size()):
+		m._load_diff(pr)
+		m.theta_deg = 30.0
+		m.noise_exp = -17.0
+		m.levels = 4
+		var e: Dictionary = m.exact_all()
+		var vars := {"x": m.x0, "y": m.y0}
+		var pairs := [[m.dx_e, "fx"], [m.dy_e, "fy"], [m.dxx_e, "fxx"], [m.dyy_e, "fyy"], [m.dxy_e, "fxy"]]
+		for q in pairs:
+			if absf((q[0] as MathExpr).eval_real(vars) - float(e[q[1]])) > 1e-12 * maxf(1.0, absf(float(e[q[1]]))):
+				exact_bad += 1
+		for tg in range(8):
+			var ex: float = m.exact_target(tg)
+			var sc := maxf(1.0, absf(ex))
+			for meth in range(11):
+				cases += 1
+				var best := INF
+				for h in hs:
+					var r: Dictionary = m.run_diff(meth, tg, h)
+					if r["estado"] == "ok":
+						best = minf(best, absf(float(r["valor"]) - ex) / sc)
+				if best > _dtol2d(meth, tg in [2, 3, 4, 5]):
+					bad.append("%s %s en «%s»: %s" % [m.DIFF_SHORT[meth], m.TSYM[tg], m.DIFF_PRESETS[pr]["nombre"], LabUI.sci(best, 1)])
+	check(exact_bad == 0, "Verificación 2D: las derivadas exactas coinciden por diferenciación automática y simbólica (7 ejemplos)")
+	check(bad.is_empty(), "Verificación 2D: los 11 métodos dan las 8 derivadas correctas en los 7 ejemplos (%d casos)%s" % [cases, "" if bad.is_empty() else ": " + "; ".join(bad.slice(0, 4))])
+	m.levels = 3
 
 func _t_calculo() -> void:
 	var m = lab.module
@@ -899,6 +1007,80 @@ func _t_calculo() -> void:
 	m.compare = false
 	m.set_mode(0)
 
+	await _verify_1d()
+
+## Los métodos 1D dan el valor exacto en los ejemplos donde son aplicables.
+func _verify_1d() -> void:
+	var m = lab.module
+	m.compare = false
+	m.set_mode(0)
+	await get_tree().process_frame
+	# Tolerancias con n = 512 (40 nodos en Gauss, 128 en Clenshaw–Curtis), tol 10⁻¹², N = 10⁵.
+	var tol := [1e-2, 1e-2, 1e-4, 1e-4, 1e-6, 1e-6, 1e-9, 1e-10, 1e-6, 1e-6, 1e-12, 1e-12, 1e-12, 1e-12, -1.0, 1e-4]
+	var bad := []
+	var cases := 0
+	for pr in [0, 1, 2, 6, 8]:
+		m._load_int(pr)
+		m._changed()
+		for k in range(16):
+			var nn := 40 if k in [8, 9] else (128 if k == 12 else 512)
+			var r: Dictionary = m.run_int(k, nn, 1e-12, 100000)
+			cases += 1
+			var lim: float = tol[k]
+			if r.get("estado", "") != "ok":
+				bad.append("%s: %s" % [m.INT_SHORT[k], r.get("estado", "")])
+			elif float(r["error"]) > (4.0 * float(r["sigma"]) if lim < 0.0 else lim):
+				bad.append("%s en «%s»: %s" % [m.INT_SHORT[k], m.INT_PRESETS[pr]["nombre"], LabUI.sci(float(r["error"]), 1)])
+	# Intervalos infinitos: Gauss–Kronrod, tanh-sinh y la regla de Gauss del peso adecuado.
+	for spec in [[9, [10, 13, 16]], [10, [10, 13, 17]], [11, [10, 13]]]:
+		m._load_int(spec[0])
+		m._changed()
+		for k in spec[1]:
+			var r2: Dictionary = m.run_int(k, 40, 1e-12, 1000)
+			cases += 1
+			if r2.get("estado", "") != "ok" or float(r2["error"]) > 1e-12:
+				bad.append("%s en «%s»: %s" % [m.INT_SHORT[k], m.INT_PRESETS[spec[0]]["nombre"], r2.get("estado", "") if r2.get("estado", "") != "ok" else LabUI.sci(float(r2["error"]), 1)])
+	check(bad.is_empty(), "Verificación 1D: las 18 cuadraturas dan el valor exacto donde son aplicables (%d casos)%s" % [cases, "" if bad.is_empty() else ": " + "; ".join(bad.slice(0, 4))])
+	# Gauss–Hermite con la cola lenta de Cauchy: converge despacio, igual que NumPy (hermgauss).
+	m._load_int(11)
+	m._changed()
+	var gh: Dictionary = m.run_int(17, 40)
+	check(absf(float(gh["error"]) - 0.2334441083395049) < 1e-9, "Verificación 1D: Gauss–Hermite (40 nodos) con 1/(1 + x²) da lo mismo que NumPy (error %.10f)" % float(gh["error"]))
+	# Derivadas: con un h adecuado, cada método da la exacta (x|x| no es suave: sin Chebyshev).
+	m.set_mode(1)
+	await get_tree().process_frame
+	var dtol1 := [1e-6, 1e-6, 1e-8, 1e-7, 1e-7, 1e-10, 1e-11, 1e-10, 1e-13, 1e-12, 1e-12, 1e-8, 1e-9, 1e-7]
+	var dtol2 := [1e-3, 1e-3, 1e-5, 1e-4, 1e-4, 1e-7, 1e-8, 1e-7, 1e-6, 1e-12, 1e-12, 1e-5, 1e-6, 1e-4]
+	var dbad := []
+	var dcases := 0
+	for pr2 in range(m.DIFF_PRESETS.size()):
+		m._load_diff(pr2)
+		m.noise_exp = -17.0
+		for ordr in [1, 2]:
+			m.order = ordr
+			var ex: float = m.exact_d(m.x0, ordr)
+			var sc := maxf(1.0, absf(ex))
+			for meth in range(14):
+				if meth == 12 and pr2 == 7:
+					continue
+				dcases += 1
+				var best := INF
+				if meth == 12:
+					for nc in [16, 32, 64, 128]:
+						m.n_cheb = nc
+						best = minf(best, absf(float(m.run_diff(12, m.x0, 1e-3)["valor"]) - ex) / sc)
+				else:
+					for kk in range(-16, 1):
+						var rd: Dictionary = m.run_diff(meth, m.x0, pow(10.0, kk))
+						if rd["estado"] == "ok":
+							best = minf(best, absf(float(rd["valor"]) - ex) / sc)
+				if best > float((dtol1 if ordr == 1 else dtol2)[meth]):
+					dbad.append("%s f%s en «%s»: %s" % [m.DIFF_SHORT[meth], "′" if ordr == 1 else "″", m.DIFF_PRESETS[pr2]["nombre"], LabUI.sci(best, 1)])
+	m.order = 1
+	m.n_cheb = 24
+	check(dbad.is_empty(), "Verificación 1D: los 14 métodos dan f′ y f″ correctas en los 8 ejemplos (%d casos)%s" % [dcases, "" if dbad.is_empty() else ": " + "; ".join(dbad.slice(0, 4))])
+	m.set_mode(0)
+	await get_tree().process_frame
 func _t_edp1d() -> void:
 	var m = lab.module
 	m.r = 0.4

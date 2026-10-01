@@ -25,6 +25,7 @@ const SIZE := 4.0
 const HEIGHT := 1.6
 const GRID := 90
 const BUDGET := 600000          # evaluaciones máximas de un método (se corta y se avisa)
+const ADAPTIVE_BUDGET := 250000 # por intento de las adaptativas (luego se relaja la tolerancia)
 
 # --- Integración ---------------------------------------------------------------------------
 
@@ -424,7 +425,7 @@ func _compute_reference() -> void:
 		return
 	var r := run_int(11, n, 1e-11, 1000)
 	reference = float(r.get("valor", NAN))
-	ref_src = "Gauss–Kronrod iterada, tol 10⁻¹¹"
+	ref_src = "Gauss–Kronrod iterada, tol 10^%d" % int(round(log(float(r.get("tol_usada", 1e-11))) / log(10.0)))
 	if str(r.get("estado", "ok")) != "ok":
 		var r2 := run_int(14, n, 1e-10, 1000)
 		reference = float(r2.get("valor", NAN))
@@ -626,8 +627,10 @@ func _sampling(kind: int, N: int, bins: int) -> Dictionary:
 				fib.append(fib[fib.size() - 1] + fib[fib.size() - 2])
 			var Fk: int = fib[fib.size() - 1]
 			var Fp: int = fib[fib.size() - 2]
+			# Desplazamiento fijo (½F en u, φ − 1 en v): el punto k = 0 no cae en la esquina
+			# (0, 0), donde una singularidad le daría un peso enorme.
 			for i in range(Fk):
-				pts.append(Vector2((i + 0.5) / Fk, fposmod((float(i) * Fp + 0.5) / Fk, 1.0)))
+				pts.append(Vector2((i + 0.5) / Fk, fposmod(float(i) * Fp / Fk + 0.6180339887498949, 1.0)))
 	var s := 0.0
 	var s2 := 0.0
 	var sums := {}
@@ -678,10 +681,24 @@ func run_int(m: int, nn: int, tol: float = -1.0, N: int = -1, record: bool = fal
 	elif m == 10:
 		r = _cub7(nn)
 		r["n"] = nn
-	elif m in [11, 12, 13]:
-		r = _iterated(m, tol)
-	elif m == 14:
-		r = _genz(tol)
+	elif m in ADAPTIVE:
+		# Si la tolerancia pedida no cabe en el presupuesto, se relaja (×100) hasta que
+		# quepa: mejor un valor correcto con menos cifras que ninguno.
+		var tol_try := tol
+		var limit := mini(_budget, ADAPTIVE_BUDGET)
+		while true:
+			_ev = 0
+			_over = false
+			_rec.clear()
+			var saved := _budget
+			_budget = limit
+			r = _genz(tol_try) if m == 14 else _iterated(m, tol_try)
+			_budget = saved
+			if not _over or tol_try >= 1e-3:
+				break
+			tol_try *= 100.0
+		if tol_try > tol and not _over:
+			r["tol_usada"] = tol_try
 	else:
 		r = _sampling(m, N, clampi(nn, 1, 40))
 	_recording = false
@@ -1473,6 +1490,8 @@ func info() -> String:
 					t += "N = %d %s\n" % [int(sel["N"]), "nodos por lado" if imethod == 9 else "muestras"]
 				if sel.has("error_est"):
 					t += "Error estimado |grado 7 − grado 5| = %s en %d subregiones\n" % [LabUI.sci(float(sel["error_est"]), 2), int(sel["regiones"])]
+				if sel.has("tol_usada"):
+					t += "[color=#ffbb66]La tolerancia 10^%d no cabe en %d evaluaciones: resultado con 10^%d.[/color]\n" % [int(round(tol_exp)), ADAPTIVE_BUDGET, int(round(log(float(sel["tol_usada"])) / log(10.0)))]
 				if sel.has("niveles"):
 					t += "%d niveles de Romberg por dirección\n" % int(sel["niveles"])
 				if sel.has("n") and imethod in PANEL_RULES:
