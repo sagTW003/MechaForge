@@ -111,7 +111,8 @@ func _test_sensors_and_blocks() -> void:
 	var v := sens.read(main.parts_root, main.simulator, main.get_world_3d().direct_space_state)
 	# Sensor en x=0 (cara +X en 0.0225), placa vertical con cara en x = 0.3 - 0.004.
 	check(absf(float(v.get("dist1", 0.0)) - 0.2735) < 0.01, "Ultrasonido mide la distancia a la pared (%.3f m ≈ 0.274)" % float(v.get("dist1", 0.0)))
-	check(absf(float(v.get("imu1_pitch", 0.0)) - 20.0) < 1.0, "IMU mide el cabeceo (%.1f° ≈ 20°)" % float(v.get("imu1_pitch", 0.0)))
+	# Convención del MPU-6050: pitch > 0 = morro abajo; la pieza está 20° morro arriba.
+	check(absf(float(v.get("imu1_pitch", 0.0)) + 20.0) < 1.0, "IMU mide el cabeceo (%.1f° ≈ −20°, morro arriba)" % float(v.get("imu1_pitch", 0.0)))
 	main.simulator.stop()
 	# Bloques → script → ejecución.
 	var be := BlockEditor.new()

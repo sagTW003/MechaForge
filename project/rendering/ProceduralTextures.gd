@@ -8,7 +8,8 @@ extends RefCounted
 ##   - normal  (microrelieve derivado de un mapa de alturas)
 ## Patrones: cepillado (aluminio, inox), granallado (anodizado), laminado (acero),
 ## cobre oxidado, plástico, caucho, madera, concreto, fibra de carbono (sarga 2x2),
-## PCB (máscara verde con pistas y vías), estaño y vidrio.
+## PCB (máscara verde con pistas y vías), estaño, vidrio, impreso en 3D (capas de
+## 0.2 mm) y cartón corrugado.
 ##
 ## generate() es puro (solo Image) y se puede ejecutar en un hilo de trabajo;
 ## MaterialLibrary crea las texturas en el hilo principal al terminar.
@@ -20,6 +21,8 @@ const SCALE := {
 	"cepillado": 8.0, "granallado": 30.0, "laminado": 5.0, "cobre": 8.0,
 	"plastico": 25.0, "caucho": 30.0, "madera": 4.0, "concreto": 3.0,
 	"carbono": 50.0, "pcb": 20.0, "estano": 40.0, "vidrio": 5.0,
+	# 64 capas de 0.2 mm por repetición (12.8 mm); 8 canales E de 3.3 mm (26.4 mm).
+	"impreso": 78.0, "carton": 38.0,
 }
 
 static func scale_for(pattern: String) -> float:
@@ -106,6 +109,25 @@ static func generate(pattern: String, base: Color, base_rough: float, seed: int 
 					hv = 0.5 + b * 0.5
 					c = base * (0.95 + b * 0.06)
 					r = base_rough + b * 0.08
+				"impreso":
+					# Capas de impresión: un cordón redondeado cada 4 px, con la extrusión
+					# de cada capa algo distinta (líneas horizontales en las caras laterales).
+					var bead := sin(float(y % 4) / 4.0 * PI)
+					var jit := (_hash(0, y / 4, seed) - 0.5) * 0.08
+					var g := _tile(fine, x * 3.0, y * 3.0, n * 3.0, n * 3.0)
+					hv = 0.25 + bead * 0.6 + jit + g * 0.05
+					c = base * (0.9 + bead * 0.1 + jit * 0.5)
+					r = base_rough + (1.0 - bead) * 0.15 + g * 0.03
+				"carton":
+					# Papel kraft: fibras alargadas, canales del corrugado marcados bajo
+					# la cara y alguna mota oscura.
+					var fib := _tile(fine, x * 0.6, y * 3.0, n * 0.6, n * 3.0)
+					var b := _tile(mid, x, y, n, n)
+					var ridge := 0.5 + 0.5 * cos(TAU * float(y) / 32.0)
+					var sp := 1.0 if _hash(x, y, seed) > 0.992 else 0.0
+					hv = 0.4 + ridge * 0.25 + fib * 0.2
+					c = base * (0.9 + b * 0.08 + fib * 0.05 + ridge * 0.04 - sp * 0.25)
+					r = clampf(base_rough + fib * 0.04, 0.0, 1.0)
 				"vidrio":
 					# Huellas/polvo muy sutiles solo en la rugosidad.
 					var b := clampf(_tile(mid, x, y, n, n) * 2.0 - 0.6, 0.0, 1.0)
@@ -138,6 +160,8 @@ static func _bump_strength(pattern: String) -> float:
 		"madera": return 2.0
 		"concreto": return 3.0
 		"vidrio": return 0.1
+		"impreso": return 2.0
+		"carton": return 1.2
 		_: return 1.5
 
 static func _noise(seed: int, freq: float, octaves: int) -> FastNoiseLite:

@@ -89,6 +89,21 @@ const DATA := {
 		"nombre": "Acrílico", "patron": "vidrio", "densidad": 1180.0, "friccion": 0.4, "restitucion": 0.2,
 		"color": Color(0.7, 0.85, 0.95, 0.4), "metalico": 0.0, "rugosidad": 0.05, "limite_mpa": 70.0,
 	},
+	# Filamentos de impresión 3D: la masa sigue el modelo de paredes + relleno
+	# (PartInstance.mass_kg); el límite es el de la pieza impresa, no el del filamento.
+	"pla": {
+		"nombre": "PLA (impresión 3D)", "patron": "impreso", "densidad": 1240.0, "friccion": 0.35, "restitucion": 0.3,
+		"color": Color(0.80, 0.81, 0.83), "metalico": 0.0, "rugosidad": 0.55, "limite_mpa": 50.0, "imprimible": true,
+	},
+	"petg": {
+		"nombre": "PETG (impresión 3D)", "patron": "impreso", "densidad": 1270.0, "friccion": 0.4, "restitucion": 0.3,
+		"color": Color(0.16, 0.36, 0.52), "metalico": 0.0, "rugosidad": 0.3, "limite_mpa": 50.0, "imprimible": true,
+	},
+	# Cartón corrugado de canal E (~1.5 mm, ~400 g/m²): densidad aparente de la plancha.
+	"carton": {
+		"nombre": "Cartón corrugado", "patron": "carton", "densidad": 250.0, "friccion": 0.5, "restitucion": 0.05,
+		"color": Color(0.64, 0.49, 0.32), "metalico": 0.0, "rugosidad": 0.92, "limite_mpa": 5.0,
+	},
 }
 
 ## Juego de texturas real para cada material (si falta, se usa el procedural).
@@ -129,6 +144,10 @@ func restitution(id: String) -> float:
 
 func yield_strength_pa(id: String) -> float:
 	return get_data(id).get("limite_mpa", 100.0) * 1.0e6
+
+## Filamento de impresión 3D: la pieza lleva paredes y relleno (no es maciza).
+func is_printable(id: String) -> bool:
+	return bool(get_data(id).get("imprimible", false))
 
 ## Devuelve (y cachea) el StandardMaterial3D PBR para un material dado.
 ## Las texturas procedurales (albedo/rugosidad/normales) se generan en un hilo de

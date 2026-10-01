@@ -246,9 +246,53 @@ func _make_mesh() -> Mesh:
 				return MeshFactory.tslot_profile(size)
 			return MeshFactory.chamfer_box(size)
 
-## Masa en kg = densidad(material) * volumen.
+## Masa en kg = densidad(material) * volumen. Con filamento de impresión 3D el
+## volumen es el de las paredes más el relleno (printed_volume_m3).
 func mass_kg() -> float:
-	return MaterialLibrary.density(material_id) * PartLibrary.volume_m3(def)
+	var rho := MaterialLibrary.density(material_id)
+	if MaterialLibrary.is_printable(material_id):
+		return rho * printed_volume_m3()
+	return rho * PartLibrary.volume_m3(def)
+
+## Ajustes de impresión 3D de la pieza (se guardan en "estado"): relleno (0..1) y
+## grosor de las paredes en mm (perímetros + capas superior e inferior).
+const PRINT_DEFAULTS := {"relleno": 0.2, "paredes_mm": 0.8}
+
+func print_settings() -> Dictionary:
+	var ps: Dictionary = PRINT_DEFAULTS.duplicate()
+	ps.merge(estado.get("impresion", {}), true)
+	return ps
+
+func set_print_setting(key: String, value: float) -> void:
+	var ps: Dictionary = estado.get("impresion", {}).duplicate()
+	ps[key] = value
+	estado["impresion"] = ps
+
+## Volumen de plástico de una pieza impresa: una cáscara de "paredes_mm" (área ×
+## grosor, nunca más que la pieza) más el relleno del interior. Aproximación: la
+## densidad resultante se reparte uniforme (centroide e inercia del sólido).
+func printed_volume_m3() -> float:
+	var v := PartLibrary.volume_m3(def)
+	var ps := print_settings()
+	var shell := minf(v, PartLibrary.area_m2(def) * maxf(0.0, float(ps["paredes_mm"])) / 1000.0)
+	return shell + clampf(float(ps["relleno"]), 0.0, 1.0) * (v - shell)
+
+## Centro de masa en el espacio de la pieza (el de la malla si es importada y estanca).
+func com_local() -> Vector3:
+	if PartLibrary.has_mesh_mass(def):
+		return def["_masa"]["centroide"]
+	return Vector3.ZERO
+
+## Inercia diagonal (kg·m²) respecto al centro de masa, en los ejes de la pieza, para
+## piezas importadas con malla estanca. Vector3.ZERO = la calcula el motor por la forma.
+## Los productos de inercia de la malla no se usan (el motor solo admite la diagonal).
+func inertia_local() -> Vector3:
+	if not PartLibrary.has_mesh_mass(def):
+		return Vector3.ZERO
+	var v := PartLibrary.volume_m3(def)
+	var rho_eff := mass_kg() / v if v > 0.0 else 0.0
+	var it: Array = def["_masa"]["inercia"]
+	return Vector3(float(it[0]), float(it[1]), float(it[2])) * rho_eff
 
 func friction() -> float:
 	return MaterialLibrary.friction(material_id)
@@ -274,6 +318,28 @@ func make_collision_shape() -> Shape3D:
 	var s2 := BoxShape3D.new()
 	s2.size = PartLibrary.dims_m(def)
 	return s2
+
+## Colisión de una pieza importada: "caja" (envolvente), "convexa" (un casco) o
+## "multiple" (varias piezas convexas que conservan los huecos; por defecto).
+const COLLISION_MODES := ["multiple", "convexa", "caja"]
+
+func collision_mode() -> String:
+	var m := str(estado.get("colision", "multiple"))
+	return m if m in COLLISION_MODES else "multiple"
+
+## Formas de colisión de la pieza para el simulador: [{shape, xf}] en el espacio de
+## la pieza. Las primitivas dan una sola forma; las importadas, según collision_mode().
+func make_collision_shapes() -> Array:
+	if def.get("forma", "") == "custom" and def.has("_mesh") and collision_mode() != "caja":
+		var out := []
+		for pts in MeshImporter.convex_hulls(def, collision_mode() == "multiple"):
+			if (pts as PackedVector3Array).size() >= 4:
+				var cs := ConvexPolygonShape3D.new()
+				cs.points = pts
+				out.append({"shape": cs, "xf": Transform3D.IDENTITY})
+		if not out.is_empty():
+			return out
+	return [{"shape": make_collision_shape(), "xf": Transform3D.IDENTITY}]
 
 ## Crea una MeshInstance3D independiente con la misma malla y material,
 ## para usarla en el cuerpo rígido durante la simulación.

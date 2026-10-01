@@ -959,7 +959,7 @@
     },
     {
       "id": "imu",
-      "nombre": "Sensor IMU",
+      "nombre": "Sensor IMU (MPU-6050)",
       "categoria": "sensor",
       "material": "abs",
       "forma": "placa",
@@ -968,7 +968,48 @@
         "x": 25,
         "y": 8,
         "z": 18
-      }
+      },
+      "imu": {
+        "modelo": "MPU-6050"
+      },
+      "terminales": [
+        {
+          "id": "VCC",
+          "tipo": "power",
+          "pos_mm": [
+            -10,
+            4,
+            6
+          ]
+        },
+        {
+          "id": "GND",
+          "tipo": "gnd",
+          "pos_mm": [
+            -10,
+            4,
+            2
+          ]
+        },
+        {
+          "id": "SCL",
+          "tipo": "signal",
+          "pos_mm": [
+            -10,
+            4,
+            -2
+          ]
+        },
+        {
+          "id": "SDA",
+          "tipo": "signal",
+          "pos_mm": [
+            -10,
+            4,
+            -6
+          ]
+        }
+      ]
     },
     {
       "id": "final_carrera",

@@ -49,6 +49,9 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template.begins_with("ej:"):
 		await _example_shot("res://templates/%s.mforge" % template.substr(3), out_path)
 		return
+	if template == "vr0":
+		await _vr0_shot(out_path)
+		return
 	var sp := func(id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
 		return main._spawn(id, mat, pos, rot)
 	# Placa base perforada y bastidor de perfiles 2020.
@@ -168,6 +171,33 @@ func _garage_shot(out_path: String, which: String) -> void:
 	get_tree().quit()
 
 ## Capturas de la electrónica nueva: multímetro, integrados DIP y cortocircuito.
+## Fase 0 del visor VR: carcasa importada impresa en PLA (malla estanca con hueco),
+## placas de PETG y cartón, IMU y microcontrolador; panel de propiedades de la carcasa.
+func _vr0_shot(out_path: String) -> void:
+	main._on_new()
+	var vt: Node = load("res://tests/VrTests.gd").new()
+	var def: Dictionary = vt._import("visor_carcasa", vt._cup(0.16, 0.08, 0.09, 0.003))
+	vt.free()
+	main._spawn("placa_base_200x200", "carton", Vector3(0, 0.004, 0))
+	var shell: PartInstance = main._spawn(def["id"], "pla", Vector3(-0.02, 0.048, 0))
+	main._spawn("placa_100x100", "petg", Vector3(0.12, 0.0105, 0.09), Vector3(0, 0.4, 0))
+	main._spawn("imu", "abs", Vector3(0.1, 0.013, -0.06))
+	main._spawn("microcontrolador", "abs", Vector3(0.17, 0.015, -0.02))
+	for p in [main.biblioteca_panel, main.uniones_panel, main.circuito_panel, main.mcu_panel, main.music_panel, main.ai_panel, main.graphics_panel]:
+		if p: p.visible = false
+	main._update_counts()
+	main._select(shell)
+	var cam: CameraOrbit = main.camera
+	cam.target = Vector3(0.03, 0.04, 0.0); cam.distance = 0.55
+	cam._yaw = deg_to_rad(-25); cam._pitch = deg_to_rad(-32)
+	cam._update_transform()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(2.5).timeout
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
 func _electronics_shot(out_path: String, which: String) -> void:
 	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.mcu_panel, main.elec_panel]:
 		if p: p.visible = false

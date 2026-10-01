@@ -244,6 +244,44 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       (si la tolerancia no cabe en el presupuesto se relaja y se avisa en lugar de no dar
       valor). Quedan como pruebas permanentes en `mflabtest` (~1000 casos).
 
+## 🔄 Gafas VR caseras (simulación del visor)
+Plan en seis fases a partir del análisis de factibilidad: el motor ya trae cámaras
+secundarias, capas de render y un modo VR tipo Cardboard con distorsión de lente; lo
+que faltaba estaba en el proyecto.
+
+### ✅ Fase 0 — Prerrequisitos
+- [x] **Microcontrolador con memoria**: las variables se conservan entre pasos
+      (empiezan en 0), secciones `inicio:` y `bucle:`, y el programa corre en una placa
+      sin uniones con control (solo cálculo). Sus variables y las lecturas de los
+      sensores salen en la telemetría y en `get_telemetry`.
+- [x] **IMU MPU-6050** (`control/Sensors.gd`): fuerza específica y giroscopio en los
+      ejes del chip (`imuN_ax…gz`), orientación verdadera ZYX (`imuN_roll/pitch/yaw`),
+      muestreo con retención, ruido del datasheet, sesgo reproducible por pieza, deriva
+      (paseo aleatorio), saturación y cuantización a 16 bits; parámetros en el panel
+      de propiedades. Terminales VCC, GND, SCL y SDA. Cambio de convención: `pitch` > 0
+      es ahora morro abajo y `roll` > 0 lado derecho abajo (los del chip real).
+- [x] **Materiales** PLA y PETG con modelo de impresión (paredes + relleno) y cartón
+      corrugado, con texturas procedurales de capas y de kraft.
+- [x] **Mallas importadas con física real**: volumen, área, centroide e inercia de la
+      malla estanca (`core/MeshMass.cs`); colisión con varias piezas convexas (V-HACD),
+      un casco o la caja; centro de masa propio en la simulación y en el análisis de
+      estabilidad.
+- [x] Detección continua de colisiones en piezas pequeñas y de paredes finas (una bola
+      de 2 cm atravesaba un fondo de 6 mm).
+- [x] Corregido: los OBJ y STL importados se veían del revés (esos formatos definen la
+      cara frontal en sentido antihorario y Godot en horario). Paneles de propiedades
+      que se salían de la pantalla con textos largos.
+- [x] Pruebas `mfvr` (59).
+
+### Fases siguientes
+- [ ] Fase 1 — Piezas del visor: pantalla o móvil, lentes con focal, soporte con ajuste
+      de la distancia entre ojos, ESP32 y MPU-6050 con bus I²C, carcasa de ejemplo.
+- [ ] Fase 2 — Render estéreo: cámaras por ojo unidas al visor, shader de distorsión
+      de lente y aberración cromática, vista lado a lado en la pantalla del visor.
+- [ ] Fase 3 — Bucle de la IMU a la cámara con una cabeza de prueba motorizada.
+- [ ] Fase 4 — Verificación óptica (distorsión residual, error de IPD) y ergonomía.
+- [ ] Fase 5 — Ejemplo «Gafas VR caseras», API, suite y documentación.
+
 ## ✅ Elección de la cámara del seguimiento de manos
 - [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»
       y **↻ Buscar cámaras**. `handtracking/CameraList.cs` enumera DirectShow (mismo

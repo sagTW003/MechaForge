@@ -44,7 +44,7 @@ const TOOLS := [
 			"dims_mm": {"type": "object"}, "pos": {"type": "array", "items": {"type": "number"}}}}},
 	{"name": "remove_part", "description": "Propone eliminar una pieza.",
 		"input_schema": {"type": "object", "required": ["uid"], "properties": {"uid": {"type": "string"}}}},
-	{"name": "write_controller_script", "description": "Propone el programa del microcontrolador (líneas 'variable = expresión'; la última es la consigna). Variables: t, x, dt y sensores.",
+	{"name": "write_controller_script", "description": "Propone el programa del microcontrolador (líneas 'variable = expresión'; la última es la consigna). Las variables conservan su valor entre pasos (empiezan en 0); bajo 'inicio:' solo el primer paso, bajo 'bucle:' cada paso. Entradas: t, x, dt y sensores (IMU: imu1_ax/ay/az en g, imu1_gx/gy/gz en °/s).",
 		"input_schema": {"type": "object", "required": ["script"], "properties": {"script": {"type": "string"}}}},
 	{"name": "run_simulation", "description": "Inicia la simulación física.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "stop_simulation", "description": "Detiene la simulación y restaura el estado inicial.", "input_schema": {"type": "object", "properties": {}}},

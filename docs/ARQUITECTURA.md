@@ -21,6 +21,8 @@
 - `PartInstance.gd` — una pieza colocada: construye su malla procedural, cuerpo
   de selección, calcula su masa y se serializa.
 - `MassProperties.cs` — cálculo de masa e inercia (módulo C#).
+- `MeshMass.cs` — volumen, área, centroide e inercia de una malla estanca
+  (teorema de la divergencia) para los modelos importados.
 
 ### `physics/` — Simulación (Fase 2)
 - `Simulator.gd` — convierte las piezas en `RigidBody3D` (Jolt), crea las uniones

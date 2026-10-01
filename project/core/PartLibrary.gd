@@ -106,10 +106,20 @@ static func dims_m(def: Dictionary) -> Vector3:
 		var d: Dictionary = def.get("dimensiones_mm", {})
 		return Vector3(float(d.get("x", 20)), float(d.get("y", 20)), float(d.get("z", 20))) / 1000.0
 
+## Pieza importada con malla estanca: su volumen, centroide e inercia son los de
+## la propia malla (MeshImporter.mass_properties) y no los de la caja envolvente.
+static func has_mesh_mass(def: Dictionary) -> bool:
+	if def.get("forma", "") != "custom":
+		return false
+	var m: Dictionary = def.get("_masa", {})
+	return bool(m.get("cerrada", false)) and float(m.get("volumen", 0.0)) > 0.0
+
 ## Volumen aproximado en m³ (para masa).
 static func volume_m3(def: Dictionary) -> float:
 	var forma: String = def.get("forma", "caja")
 	var d: Dictionary = def.get("dimensiones_mm", {})
+	if has_mesh_mass(def):
+		return float(def["_masa"]["volumen"])
 	match forma:
 		"cilindro":
 			var r := float(d.get("radio", 10.0)) / 1000.0
@@ -133,6 +143,34 @@ static func volume_m3(def: Dictionary) -> float:
 			# Perfiles en T: fracción maciza de la sección (2020 ≈ 0.5 kg/m).
 			var fill := float(def.get("relleno", 1.0))
 			return v.x * v.y * v.z * fill
+
+## Área de la superficie en m² (para las paredes de una pieza impresa en 3D).
+static func area_m2(def: Dictionary) -> float:
+	var forma: String = def.get("forma", "caja")
+	var d: Dictionary = def.get("dimensiones_mm", {})
+	if has_mesh_mass(def):
+		return float(def["_masa"]["area"])
+	match forma:
+		"cilindro":
+			var r := float(d.get("radio", 10.0)) / 1000.0
+			var h := float(d.get("altura", 100.0)) / 1000.0
+			return TAU * r * r + TAU * r * h
+		"tubo":
+			var r := float(d.get("radio", 10.0)) / 1000.0
+			var h := float(d.get("altura", 100.0)) / 1000.0
+			var ri := maxf(0.0, r - float(d.get("espesor", 2.0)) / 1000.0)
+			return TAU * (r + ri) * h + TAU * (r * r - ri * ri)
+		"esfera":
+			var rs := float(d.get("radio", 10.0)) / 1000.0
+			return 2.0 * TAU * rs * rs
+		"engranaje":
+			# Flancos de los dientes: ~1.5 veces el canto de un disco primitivo.
+			var rp := gear_pitch_radius_m(def)
+			var w := float(d.get("ancho", 8.0)) / 1000.0
+			return TAU * rp * rp + TAU * rp * w * 1.5
+		_:
+			var v := dims_m(def)
+			return 2.0 * (v.x * v.y + v.y * v.z + v.x * v.z)
 
 ## Engranajes: número de dientes, módulo (mm) y radios en metros.
 static func gear_teeth(def: Dictionary) -> int:

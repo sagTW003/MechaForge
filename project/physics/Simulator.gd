@@ -129,10 +129,11 @@ func start(connections: Array) -> void:
 			_bodies[part.uid] = _make_body(part)
 			continue
 		var rel: Transform3D = host.global_transform.affine_inverse() * part.global_transform
-		var cs := CollisionShape3D.new()
-		cs.shape = part.make_collision_shape()
-		cs.transform = rel
-		host.add_child(cs)
+		for sd in part.make_collision_shapes():
+			var cs := CollisionShape3D.new()
+			cs.shape = sd["shape"]
+			cs.transform = rel * (sd["xf"] as Transform3D)
+			host.add_child(cs)
 		var vis: Node3D = part.make_visual_clone()
 		vis.name = "Visual_%s" % part.uid
 		vis.transform = rel * vis.transform
@@ -252,9 +253,19 @@ func _make_body(part: PartInstance) -> RigidBody3D:
 	body.can_sleep = true
 	body.collision_layer = WORLD_LAYER | PartInstance.PICK_LAYER
 	body.collision_mask = WORLD_LAYER
-	var cs := CollisionShape3D.new()
-	cs.shape = part.make_collision_shape()
-	body.add_child(cs)
+	for sd in part.make_collision_shapes():
+		var cs := CollisionShape3D.new()
+		cs.shape = sd["shape"]
+		cs.transform = sd["xf"]
+		body.add_child(cs)
+	# Piezas importadas con malla estanca: centro de masa e inercia de la malla real
+	# (si no, Jolt los deduce de las formas de colisión con densidad uniforme).
+	if PartLibrary.has_mesh_mass(part.def):
+		body.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+		body.center_of_mass = part.com_local()
+		var inertia := part.inertia_local()
+		if inertia.x > 0.0 and inertia.y > 0.0 and inertia.z > 0.0:
+			body.inertia = inertia
 	var vis := part.make_visual_clone()
 	vis.name = "Visual_%s" % part.uid
 	body.add_child(vis)
@@ -266,6 +277,12 @@ func _make_body(part: PartInstance) -> RigidBody3D:
 	if part.def.get("sin_colision", false):
 		body.collision_layer = MARK_LAYER
 		body.collision_mask = 0
+	# Piezas pequeñas o de paredes finas: detección continua de colisiones. Con pasos
+	# discretos una bola de 2 cm que cae a 1.6 m/s avanza 13 mm por paso y atravesaba
+	# el fondo de 6 mm de una carcasa importada.
+	var dm := PartLibrary.dims_m(part.def)
+	if minf(dm.x, minf(dm.y, dm.z)) < 0.03 or (part.def.get("forma", "") == "custom" and part.collision_mode() == "multiple"):
+		body.continuous_cd = true
 	# El sensor de fuerza lee los impulsos de contacto de su cuerpo.
 	if part.def_id == "sensor_fuerza":
 		body.contact_monitor = true
@@ -714,9 +731,15 @@ func center_of_mass() -> Dictionary:
 		var b: RigidBody3D = _bodies[uid]
 		if is_instance_valid(b) and not seen.has(b):
 			seen[b] = true
-			acc += b.global_position * b.mass
+			acc += body_com(b) * b.mass
 			total += b.mass
 	return {"pos": (acc / total) if total > 0.0 else Vector3.ZERO, "mass": total}
+
+## Centro de masa de un cuerpo en coordenadas de mundo (el propio, si es personalizado).
+static func body_com(b: RigidBody3D) -> Vector3:
+	if b.center_of_mass_mode == RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM:
+		return b.global_transform * b.center_of_mass
+	return b.global_position
 
 func _make_com_marker() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()

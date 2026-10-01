@@ -88,6 +88,13 @@ var mcu_blocks: BlockEditor
 var mcu_sensors_label: Label
 var mcu_sensors := Sensors.new()
 var _mcu_sensor_vars: Dictionary = {}
+## Variables del programa que se conservan entre pasos (memoria del microcontrolador)
+## y las últimas calculadas (telemetría y API).
+var _mcu_state: Dictionary = {}
+var mcu_last_vars: Dictionary = {}
+var _mcu_parse_key: String = ""
+var _mcu_parse_cache: Dictionary = {}
+const MCU_PART_IDS := ["microcontrolador", "arduino_nano"]
 
 # --- Música (Spotify) ---
 var music_panel: FloatingPanel
@@ -309,6 +316,11 @@ func _ready() -> void:
 		rt.main = self
 		add_child(rt)
 		rt.call_deferred("run")
+	elif "mfvr" in OS.get_cmdline_user_args():
+		var vt: Node = load("res://tests/VrTests.gd").new()
+		vt.main = self
+		add_child(vt)
+		vt.call_deferred("run")
 
 func _run_protoboard_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
@@ -1826,7 +1838,9 @@ func api_telemetry(uid: String) -> Dictionary:
 				"temperatura_c": simulator.motor_temperature(cn.uid), "bloqueado": simulator.is_stalled(cn.uid)}
 	var e := simulator.electrical()
 	return {"simulando": true, "piezas": out, "motores": ctrl,
-		"electrico": {"voltaje": e.get("voltage", 0.0), "corriente_a": e.get("current", 0.0), "potencia_w": e.get("power", 0.0)}}
+		"electrico": {"voltaje": e.get("voltage", 0.0), "corriente_a": e.get("current", 0.0), "potencia_w": e.get("power", 0.0)},
+		"sensores": _mcu_sensor_vars.duplicate(),
+		"microcontrolador": {"activo": mcu_enabled, "variables": mcu_last_vars.duplicate()}}
 
 ## Análisis de diseño como datos (estabilidad, esfuerzos, masa, consumo).
 func api_analyze() -> Dictionary:
@@ -2112,7 +2126,7 @@ func _stability_data() -> Dictionary:
 		if c is PartInstance:
 			var p := c as PartInstance
 			var mkg := p.mass_kg()
-			acc += p.position * mkg; total += mkg
+			acc += (p.transform * p.com_local()) * mkg; total += mkg
 			var box := SnapPoints.world_aabb(p, p.def)
 			if box.position.y < 0.01:
 				grounded = true
@@ -2795,6 +2809,7 @@ func _refresh_properties() -> void:
 			_add_dim_spin("Fondo (Z)", "z", dm.get("z", 20.0))
 	var anc := CheckBox.new()
 	anc.text = "Anclada al mundo (fija en simulación)"
+	anc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # si no, ensancha el panel y se sale de la pantalla
 	anc.button_pressed = selected_part.anchored
 	anc.focus_mode = Control.FOCUS_NONE
 	var sp_ref := selected_part
@@ -2802,6 +2817,7 @@ func _refresh_properties() -> void:
 	prop_container.add_child(anc)
 	_prop_mass_label = _add_prop_row_ref("Masa", Units.fmt_mass(selected_part.mass_kg()))
 	_add_prop_row("Densidad", "%.0f kg/m³" % MaterialLibrary.density(selected_part.material_id))
+	_add_physical_props(selected_part)
 	_add_prop_row("Posición", "X %.3f  Y %.3f  Z %.3f m" % [selected_part.position.x, selected_part.position.y, selected_part.position.z])
 	_add_prop_row("Rotación Y", Units.fmt_angle(selected_part.rotation.y))
 
@@ -2816,6 +2832,97 @@ func _refresh_properties() -> void:
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	prop_container.add_child(hint)
+
+## Propiedades físicas según la pieza: impresión 3D (relleno y paredes), malla y
+## colisión de los modelos importados, y parámetros de la IMU.
+func _add_physical_props(part: PartInstance) -> void:
+	var def := part.def
+	if def.get("forma", "") == "custom":
+		var m: Dictionary = def.get("_masa", {})
+		_add_prop_row("Volumen", "%.1f cm³" % (PartLibrary.volume_m3(def) * 1.0e6))
+		_add_prop_row("Malla", "cerrada: masa e inercia reales" if PartLibrary.has_mesh_mass(def)
+			else "abierta (%d triángulos): masa con la caja envolvente" % int(m.get("triangulos", 0)))
+		var modes := PartInstance.COLLISION_MODES
+		_add_option_row("Colisión", ["Varias convexas", "Un casco convexo", "Caja envolvente"],
+			modes.find(part.collision_mode()), func(i):
+				part.estado["colision"] = modes[i]
+				Config.project_dirty = true,
+			"Varias piezas convexas conservan los huecos de la malla (el interior de una carcasa, el alojamiento de una lente); un casco convexo los rellena; la caja envolvente es lo más simple.")
+	if MaterialLibrary.is_printable(part.material_id):
+		prop_container.add_child(_label("Impresión 3D:"))
+		var ps := part.print_settings()
+		_add_spin_row("Relleno (%)", 0.0, 100.0, 5.0, float(ps["relleno"]) * 100.0, func(v):
+			part.set_print_setting("relleno", v / 100.0)
+			_after_mass_change())
+		_add_spin_row("Paredes (mm)", 0.0, 10.0, 0.1, float(ps["paredes_mm"]), func(v):
+			part.set_print_setting("paredes_mm", v)
+			_after_mass_change())
+	if def.has("imu"):
+		var prm := Sensors.imu_params(part)
+		prop_container.add_child(_label("IMU (%s):" % str(prm["modelo"])))
+		var rates := [50.0, 100.0, 200.0, 500.0, 1000.0]
+		_add_option_row("Muestreo", rates.map(func(r): return "%d Hz" % int(r)), rates.find(float(prm["odr_hz"])),
+			func(i): _set_imu_param(part, "odr_hz", rates[i]))
+		var gfs := [250.0, 500.0, 1000.0, 2000.0]
+		_add_option_row("Giroscopio", gfs.map(func(r): return "±%d °/s" % int(r)), gfs.find(float(prm["gyro_fs_dps"])),
+			func(i): _set_imu_param(part, "gyro_fs_dps", gfs[i]))
+		var afs := [2.0, 4.0, 8.0, 16.0]
+		_add_option_row("Acelerómetro", afs.map(func(r): return "±%d g" % int(r)), afs.find(float(prm["accel_fs_g"])),
+			func(i): _set_imu_param(part, "accel_fs_g", afs[i]))
+		var ideal := CheckBox.new()
+		ideal.text = "Sensor ideal (sin ruido, sesgo ni deriva)"
+		ideal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ideal.button_pressed = bool(prm["ideal"])
+		ideal.focus_mode = Control.FOCUS_NONE
+		ideal.toggled.connect(func(v): _set_imu_param(part, "ideal", v))
+		prop_container.add_child(ideal)
+
+func _set_imu_param(part: PartInstance, key: String, value: Variant) -> void:
+	var d: Dictionary = part.estado.get("imu", {}).duplicate()
+	d[key] = value
+	part.estado["imu"] = d
+	Config.project_dirty = true
+
+func _after_mass_change() -> void:
+	Config.project_dirty = true
+	if _prop_mass_label and is_instance_valid(_prop_mass_label) and selected_part:
+		_prop_mass_label.text = Units.fmt_mass(selected_part.mass_kg())
+
+func _add_option_row(label: String, items: Array, selected: int, on_select: Callable, tooltip := "") -> void:
+	var hb := HBoxContainer.new()
+	var kl := _label(label)
+	kl.custom_minimum_size = Vector2(110, 0)
+	kl.add_theme_color_override("font_color", Color(0.6, 0.63, 0.68))
+	hb.add_child(kl)
+	var ob := OptionButton.new()
+	ob.fit_to_longest_item = false
+	ob.clip_text = true
+	ob.custom_minimum_size = Vector2(120, 0)
+	ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for it in items:
+		ob.add_item(str(it))
+	if selected >= 0:
+		ob.select(selected)
+	ob.item_selected.connect(on_select)
+	ob.tooltip_text = tooltip
+	hb.add_child(ob)
+	prop_container.add_child(hb)
+
+func _add_spin_row(label: String, lo: float, hi: float, step: float, value: float, on_change: Callable) -> void:
+	var hb := HBoxContainer.new()
+	var kl := _label(label)
+	kl.custom_minimum_size = Vector2(110, 0)
+	kl.add_theme_color_override("font_color", Color(0.6, 0.63, 0.68))
+	hb.add_child(kl)
+	var sb := SpinBox.new()
+	sb.min_value = lo
+	sb.max_value = hi
+	sb.step = step
+	sb.value = value
+	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sb.value_changed.connect(on_change)
+	hb.add_child(sb)
+	prop_container.add_child(hb)
 
 func _add_prop_row(k: String, v: String) -> void:
 	_add_prop_row_ref(k, v)
@@ -2985,9 +3092,13 @@ func _try_surface_snap(screen_pos: Vector2, dims: Vector3, exclude: PartInstance
 
 ## Bucle del microcontrolador a paso fijo, sincronizado con la física (120 Hz):
 ## la consigna no depende de los FPS (con fotogramas lentos no se queda atrás).
+## Los sensores se leen en cada paso aunque no haya programa: la IMU deriva la
+## aceleración de pasos consecutivos y la telemetría los muestra siempre.
 func _physics_process(delta: float) -> void:
-	if simulator and simulator.is_running() and not simulator.paused:
-		_mcu_tick(delta)
+	if simulator and simulator.is_running():
+		_mcu_sensor_vars = mcu_sensors.read(parts_root, simulator, get_world_3d().direct_space_state)
+		if not simulator.paused:
+			_mcu_tick(delta)
 
 func _process(_delta: float) -> void:
 	_update_joint_indicator()
@@ -3867,6 +3978,8 @@ func _on_sim_started() -> void:
 		call_deferred("_indicate_connection", graph_uid)
 	mcu_sensors.reset()
 	mcu_time = 0.0
+	_mcu_state = {}
+	mcu_last_vars = {}
 	await get_tree().process_frame
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	elec_panel.position = Vector2(8, vp.y - elec_panel.size.y - 44)
@@ -4702,34 +4815,76 @@ func _eval_expr(expr_str: String, vars: Dictionary) -> float:
 	return float(r)
 
 ## Ejecuta un "programa" multilínea: cada línea 'nombre = expr' define una
-## variable; la última línea evaluada es la salida (consigna).
-func _mcu_run(lines: Array, t: float, x: float, dt: float, out_vars: Variant = null) -> float:
-	var vars := {"t": t, "x": x, "dt": dt, "pi": PI}
+## variable; la última línea evaluada del bucle es la salida (consigna).
+## Como en un microcontrolador real, las variables conservan su valor entre pasos
+## (empiezan en 0): "yaw = yaw + imu1_gz * dt" integra. Las líneas bajo «inicio:» se
+## ejecutan solo en el primer paso y las de «bucle:» (o sin etiqueta) en todos.
+## "state" guarda la memoria entre llamadas; sin él cada llamada empieza de cero
+## (validación de un programa).
+func _mcu_run(lines: Array, t: float, x: float, dt: float, out_vars: Variant = null, state: Variant = null) -> float:
+	var st: Dictionary = state if state is Dictionary else {}
+	var prog := _mcu_parse(lines)
+	var vars := {}
+	for n in prog["nombres"]:
+		vars[n] = st.get(n, 0.0)
+	vars.merge({"t": t, "x": x, "dt": dt, "pi": PI}, true)
 	# Sensores (en simulación: lecturas reales; fuera: 0 para validar).
 	var sv: Dictionary = _mcu_sensor_vars if simulator.is_running() else Sensors.zero_vars(parts_root)
-	for k in sv:
-		vars[k] = sv[k]
+	vars.merge(sv, true)
+	if not st.get("_iniciado", false):
+		if is_nan(_mcu_exec(prog["inicio"], vars)):
+			return NAN
+		st["_iniciado"] = true
+	var result := _mcu_exec(prog["bucle"], vars)
+	if is_nan(result):
+		return NAN
+	for n in prog["nombres"]:
+		st[n] = vars[n]
+	if out_vars is Dictionary:
+		(out_vars as Dictionary).merge(vars, true)
+	return result
+
+## Ejecuta líneas ya analizadas ({var, expr}); devuelve la última o NAN si falla.
+func _mcu_exec(prog_lines: Array, vars: Dictionary) -> float:
 	var result := 0.0
+	for ln in prog_lines:
+		var v := _eval_expr(ln["expr"], vars)
+		if is_nan(v):
+			return NAN
+		if ln["var"] != "":
+			vars[ln["var"]] = v
+		result = v
+	return result
+
+## Separa el programa en «inicio:» y «bucle:» y reúne los nombres asignados.
+func _mcu_parse(lines: Array) -> Dictionary:
+	var key := "\n".join(PackedStringArray(lines))
+	if key == _mcu_parse_key:
+		return _mcu_parse_cache
+	var prog := {"inicio": [], "bucle": [], "nombres": []}
+	var sec := "bucle"
+	var re := RegEx.create_from_string("^([A-Za-z_][A-Za-z0-9_]*)\\s*=(?!=)\\s*(.*)$")
 	for raw in lines:
 		var line := str(raw).strip_edges()
 		if line == "" or line.begins_with("#"):
 			continue
-		if "=" in line:
-			var idx := line.find("=")
-			var vname := line.substr(0, idx).strip_edges()
-			var v := _eval_expr(line.substr(idx + 1).strip_edges(), vars)
-			if is_nan(v):
-				return NAN
-			vars[vname] = v
-			result = v
+		var low := line.to_lower()
+		if low in ["inicio:", "setup:"]:
+			sec = "inicio"
+			continue
+		if low in ["bucle:", "loop:"]:
+			sec = "bucle"
+			continue
+		var m := re.search(line)
+		if m:
+			prog[sec].append({"var": m.get_string(1), "expr": m.get_string(2)})
+			if not prog["nombres"].has(m.get_string(1)):
+				prog["nombres"].append(m.get_string(1))
 		else:
-			var v := _eval_expr(line, vars)
-			if is_nan(v):
-				return NAN
-			result = v
-	if out_vars is Dictionary:
-		(out_vars as Dictionary).merge(vars, true)
-	return result
+			prog[sec].append({"var": "", "expr": line})
+	_mcu_parse_key = key
+	_mcu_parse_cache = prog
+	return prog
 
 func _build_mcu_panel() -> void:
 	mcu_panel = FloatingPanel.new("Microcontrolador")
@@ -4814,6 +4969,7 @@ func _refresh_mcu_sensors() -> void:
 	var nctrl := _controlled_connections().size()
 	if nctrl > 0:
 		txt += "\nSalidas: output (unión elegida)" + (", m1..m%d (uniones con control)" % nctrl)
+	txt += "\nLas variables guardan su valor entre pasos (empiezan en 0). Bajo «inicio:», solo el primer paso; bajo «bucle:», cada paso."
 	mcu_sensors_label.text = txt
 	if mcu_blocks:
 		mcu_blocks.set_variables(names)
@@ -4838,7 +4994,10 @@ func _apply_mcu() -> void:
 	_populate_mcu_targets()
 	_refresh_mcu_sensors()
 	if mcu_target_selector.item_count == 0:
-		if _find_nano() != null:
+		# Sin uniones con control: el programa corre en la placa (salidas digitales
+		# del Nano o solo cálculo, p. ej. estimar la orientación con la IMU).
+		var nano := _find_nano()
+		if nano != null or _find_mcu_part() != null:
 			mcu_target_uid = ""
 			mcu_lines = mcu_editor.text.split("\n")
 			if is_nan(_mcu_run(mcu_lines, 0.0, 0.0, 1.0 / 120.0)):
@@ -4847,9 +5006,13 @@ func _apply_mcu() -> void:
 				return
 			mcu_enabled = true
 			mcu_time = 0.0
-			mcu_status.text = "Programa activo en el Arduino Nano: escribe d2…d13 = 0/1. Pulsa ▶ Simular."
+			_mcu_state = {}
+			if nano != null:
+				mcu_status.text = "Programa activo en el Arduino Nano: escribe d2…d13 = 0/1. Pulsa ▶ Simular."
+			else:
+				mcu_status.text = "Programa activo en el microcontrolador (sin uniones con control): calcula sus variables, que se ven en la telemetría. Pulsa ▶ Simular."
 			return
-		mcu_status.text = "No hay uniones con control PID. Crea una bisagra con control de Posición o Velocidad."
+		mcu_status.text = "No hay uniones con control PID ni microcontrolador. Crea una bisagra con control de Posición o Velocidad, o coloca una placa."
 		mcu_enabled = false
 		return
 	var sel := mcu_target_selector.selected if mcu_target_selector.selected >= 0 else 0
@@ -4861,17 +5024,33 @@ func _apply_mcu() -> void:
 		return
 	mcu_enabled = true
 	mcu_time = 0.0
+	_mcu_state = {}
 	mcu_status.text = "Programa activo. Pulsa ▶ Simular para verlo generar la consigna."
+
+## Placa programable de la escena (microcontrolador genérico o Arduino Nano).
+func _find_mcu_part() -> PartInstance:
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id in MCU_PART_IDS:
+			return c
+	return null
+
+## Guarda las variables que calcula el programa (sin sensores ni t, x, dt).
+func _store_mcu_vars(vars: Dictionary) -> void:
+	mcu_last_vars = {}
+	for n in _mcu_parse(mcu_lines)["nombres"]:
+		if vars.has(n):
+			mcu_last_vars[n] = vars[n]
 
 func _mcu_tick(delta: float) -> void:
 	if not mcu_enabled:
 		return
 	if mcu_target_uid == "":
-		# Solo salidas digitales (Arduino Nano sin uniones controladas).
+		# Sin uniones controladas: salidas digitales del Nano y/o solo cálculo.
 		mcu_time += delta
 		var dv := {}
-		if not is_nan(_mcu_run(mcu_lines, mcu_time, 0.0, delta, dv)):
+		if not is_nan(_mcu_run(mcu_lines, mcu_time, 0.0, delta, dv, _mcu_state)):
 			_apply_digital_outputs(dv)
+			_store_mcu_vars(dv)
 		return
 	mcu_time += delta
 	var conn := _find_conn(mcu_target_uid)
@@ -4879,11 +5058,11 @@ func _mcu_tick(delta: float) -> void:
 		return
 	var is_pos := conn.control_mode == Connection.ControlMode.POSICION
 	var x := rad_to_deg(simulator.control_measure(conn.uid)) if is_pos else simulator.control_measure(conn.uid)
-	_mcu_sensor_vars = mcu_sensors.read(parts_root, simulator, get_world_3d().direct_space_state)
 	var vars := {}
-	var out := _mcu_run(mcu_lines, mcu_time, x, delta, vars)
+	var out := _mcu_run(mcu_lines, mcu_time, x, delta, vars, _mcu_state)
 	if is_nan(out):
 		return
+	_store_mcu_vars(vars)
 	conn.ctrl_setpoint = deg_to_rad(out) if is_pos else out
 	_apply_digital_outputs(vars)
 	# Salidas mN: consigna de la N-ésima unión con control (varios actuadores).

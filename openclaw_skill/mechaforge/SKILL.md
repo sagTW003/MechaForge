@@ -91,12 +91,22 @@ con Aplicar.
 
 ## Programa del microcontrolador
 
-Líneas `variable = expresión`, evaluadas cada ciclo; la última es la consigna de la
-unión elegida y `m1`, `m2`… son consignas de las uniones con control (en orden).
-Variables: `t` (s), `x` (medida), `dt` y sensores: `dist1` (ultrasonido, m),
-`lidar1` (m), `enc1` (°), `imu1_pitch`/`imu1_roll` (°), `fin1` (0/1), `fuerza1` (N),
-`linea1` (0/1). Funciones: `sin`, `cos`, `abs`, `clamp`, `min`, `max`… y
-`a if condición else b`.
+Líneas `variable = expresión`, evaluadas cada ciclo (120 Hz); la última es la
+consigna de la unión elegida y `m1`, `m2`… son consignas de las uniones con control
+(en orden). Las variables **conservan su valor entre ciclos** (empiezan en 0): se puede
+integrar (`yaw = yaw + imu1_gz * dt`). Las líneas bajo `inicio:` se ejecutan solo en el
+primer ciclo y las de `bucle:` (o sin etiqueta) en todos. Sin uniones con control, el
+programa corre igual en una placa (`microcontrolador` o `arduino_nano`) y sus variables
+salen en `get_telemetry` (`microcontrolador.variables`, y las lecturas en `sensores`).
+
+Entradas: `t` (s), `x` (medida), `dt` y sensores: `dist1` (ultrasonido, m),
+`lidar1` (m), `enc1` (°), `fin1` (0/1), `fuerza1` (N), `linea1` (0/1) y la IMU
+(MPU-6050): `imu1_ax/ay/az` (g) e `imu1_gx/gy/gz` (°/s) con ruido, sesgo, deriva,
+saturación y muestreo reales (ejes: x adelante, y izquierda, z arriba; en reposo
+`az` = 1), `imu1_nueva` (1 si llegó muestra) y la orientación verdadera
+`imu1_roll/pitch/yaw` (°; roll > 0 lado derecho abajo, pitch > 0 morro abajo, yaw > 0
+a la izquierda), útil para comparar con la estimada. Funciones: `sin`, `cos`, `abs`,
+`atan2`, `sqrt`, `clamp`, `min`, `max`… y `a if condición else b`.
 
 ```
 base = 6
@@ -104,4 +114,18 @@ err = linea1 - linea2
 m1 = base - 7 * err
 m2 = base + 7 * err
 output = m1
+```
+
+Orientación con la IMU (filtro complementario):
+
+```
+inicio:
+  roll = atan2(imu1_ay, imu1_az) * 180 / pi
+  pitch = atan2(-imu1_ax, sqrt(imu1_ay * imu1_ay + imu1_az * imu1_az)) * 180 / pi
+bucle:
+  roll_acc = atan2(imu1_ay, imu1_az) * 180 / pi
+  pitch_acc = atan2(-imu1_ax, sqrt(imu1_ay * imu1_ay + imu1_az * imu1_az)) * 180 / pi
+  roll = 0.98 * (roll + imu1_gx * dt) + 0.02 * roll_acc
+  pitch = 0.98 * (pitch + imu1_gy * dt) + 0.02 * pitch_acc
+  yaw = yaw + imu1_gz * dt
 ```

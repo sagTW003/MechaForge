@@ -466,9 +466,54 @@ El panel **Microcontrolador** tiene dos pestañas: **Script** y **Bloques** (tip
 Scratch: *Fijar*, *Si/si no*, *Onda*, *Escalón*, *Seguir sensor*, *Limitar*,
 *Motor n*, *Salida*; pulsa *Generar script desde bloques*). Los sensores de la
 escena aparecen como variables: `dist1` (ultrasonido), `lidar1`, `enc1`,
-`imu1_pitch`/`imu1_roll`, `fin1` (final de carrera), `fuerza1`, `linea1` (IR).
+`imu1_…` (IMU, abajo), `fin1` (final de carrera), `fuerza1`, `linea1` (IR).
 Además de `output`, las variables `m1`, `m2`… fijan la consigna de cada unión con
 control, en orden. Plantilla de ejemplo: **Carro seguidor de línea**.
+
+**Memoria entre pasos.** Como en una placa real, las variables conservan su valor de
+un paso al siguiente (empiezan en 0), así que se puede integrar o filtrar:
+`yaw = yaw + imu1_gz * dt`. Las líneas bajo `inicio:` se ejecutan solo en el primer
+paso y las de `bucle:` (o sin etiqueta) en cada paso. El programa también corre en una
+placa sin uniones con control (solo cálculo); sus variables salen en la telemetría.
+
+**IMU (MPU-6050).** `imu1_ax/ay/az` (g) e `imu1_gx/gy/gz` (°/s) son las lecturas del
+chip, con los ejes de un GY-521 montado plano (x adelante, y a la izquierda, z arriba:
+en reposo `az` = +1 g y en caída libre 0). El modelo reproduce el datasheet: muestreo
+de 50 a 1000 Hz (entre muestras se mantiene el valor; `imu1_nueva` = 1 cuando llega
+una), ruido, sesgo propio de cada pieza, deriva del giroscopio, saturación al fondo de
+escala (±250…2000 °/s, ±2…16 g) y cuantización a 16 bits; en el panel de propiedades
+se elige el muestreo, los fondos de escala o «Sensor ideal». `imu1_roll/pitch/yaw` es
+la orientación **verdadera** (para comparar lo que estime el programa): roll > 0 lado
+derecho abajo, pitch > 0 morro abajo, yaw > 0 giro a la izquierda. No hay
+magnetómetro, así que el yaw integrado deriva, como en el real. Filtro complementario:
+
+```
+inicio:
+  roll = atan2(imu1_ay, imu1_az) * 180 / pi
+  pitch = atan2(-imu1_ax, sqrt(imu1_ay * imu1_ay + imu1_az * imu1_az)) * 180 / pi
+bucle:
+  roll_acc = atan2(imu1_ay, imu1_az) * 180 / pi
+  pitch_acc = atan2(-imu1_ax, sqrt(imu1_ay * imu1_ay + imu1_az * imu1_az)) * 180 / pi
+  roll = 0.98 * (roll + imu1_gx * dt) + 0.02 * roll_acc
+  pitch = 0.98 * (pitch + imu1_gy * dt) + 0.02 * pitch_acc
+  yaw = yaw + imu1_gz * dt
+```
+
+### Piezas impresas en 3D, cartón y modelos importados
+
+![Carcasa impresa](docs/demo_vr_fase0.png)
+*Carcasa de visor importada (malla estanca con hueco) impresa en PLA sobre una placa de cartón: masa con paredes y relleno, malla cerrada y colisión de varias piezas convexas.*
+
+- **Materiales** PLA, PETG (impresión 3D) y cartón corrugado. Las piezas de PLA y PETG
+  llevan **paredes y relleno** (por defecto 0.8 mm y 20 %, editables en el panel de
+  propiedades): masa = densidad × (área × paredes + relleno × resto del volumen).
+- **Modelos importados con masa real**: si la malla STL/OBJ/GLB es estanca, su volumen,
+  centro de masa e inercia se calculan de la propia malla (`core/MeshMass.cs`) en vez de
+  la caja envolvente; el panel indica si la malla está cerrada.
+- **Colisión de los importados**: *varias piezas convexas* (por defecto; conserva los
+  huecos, como el interior de una carcasa), *un casco convexo* o *caja envolvente*.
+- Las piezas pequeñas (menos de 3 cm) y las importadas de paredes finas usan detección
+  continua de colisiones: a velocidad no atraviesan paredes delgadas.
 
 ![Seguidor de línea](docs/demo_seguidor.png)
 *Carro seguidor de línea: dos sensores IR, control diferencial de velocidad y el programa del microcontrolador.*
@@ -556,6 +601,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
+| Visor VR casero, fase 0 (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas) | `mfvr` |
 
 ## Arquitectura
 
