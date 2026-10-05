@@ -61,6 +61,7 @@
 | `Ctrl+C` / `Ctrl+V` | Copiar / pegar pieza |
 | `M` | Copia **simétrica** respecto del plano YZ (x → −x) |
 | `G` | Activar/desactivar snapping a la rejilla |
+| `V` / botón `👓 Visor` | Vista del visor VR (render estéreo de las gafas) |
 
 ## Simulación y uniones (Fase 2)
 | Control | Acción |

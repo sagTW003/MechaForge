@@ -26,7 +26,12 @@
 
 ### `vr/` — Visor VR casero
 - `Optics.gd` — óptica de lente delgada del visor (imagen virtual, campo de visión,
-  píxeles por grado, IPD y avisos).
+  píxeles por grado, IPD y avisos), distorsión radial k1, k2 y su inversa, y
+  aberración cromática lateral por el número de Abbe.
+- `HeadsetRig.gd` — render estéreo: dos `SubViewport` con una `Camera3D` por ojo
+  (frustum asimétrico, `cull_mask` sin las capas del visor y del editor) y un tercero
+  2D con el shader que compone la imagen lado a lado predistorsionada; la muestra en el
+  cristal de la pantalla del visor y en el panel «Vista del visor».
 - Piezas en `parts/vr.json`; el bus I²C está en `electronics/I2CBus.gd` y las funciones
   `i2c_…` del programa en `control/McuIo.gd`.
 

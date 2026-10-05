@@ -1,7 +1,11 @@
 extends Node
 ## VrTests — Pruebas del visor VR casero, empezando por la Fase 0 (prerrequisitos).
 ## Ejecutar:  Godot --headless --path project -- mfvr
+## (sin --headless se añade el render real: bolas en direcciones conocidas de cada ojo;
+## con la variable MF_VR_DUMP=<carpeta> guarda las imágenes renderizadas)
 ##
+## Fase 2: render estéreo (ojos sobre el eje de cada lente, frustum con la distorsión,
+## la cuenta del shader píxel → dirección y su inversa, capas, simulación).
 ## Fase 1: pantalla y móvil, lentes (geometría, masa y óptica de lente delgada),
 ## carcasa y soporte de lentes (cajas, colisión y masa), ESP32 por USB, bus I²C
 ## (alimentación, SDA/SCL, GND común, direcciones) y registros del MPU-6050.
@@ -50,6 +54,12 @@ func run() -> void:
 	await _test_phone_mcu()
 	_test_optics()
 	_test_vr_properties_ui()
+	print("[TEST] Visor VR — Fase 2 (render estéreo)")
+	_test_rig_layout()
+	_test_rig_mapping()
+	await _test_rig_cameras()
+	await _test_rig_sim()
+	await _test_rig_render()
 	main._on_new()
 	print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -816,5 +826,326 @@ func _test_vr_properties_ui() -> void:
 	main._refresh_properties()
 	check(_find_text(main.prop_container, "Label", "conectada a ESP32"), "Propiedades: la IMU muestra el estado del bus I²C")
 	main.wires = []
+
+#endregion
+
+#region FASE 2: RENDER ESTÉREO ---------------------------------------------------
+
+const VR_EXAMPLE := "res://templates/12_gafas_vr.mforge"
+
+func _rig() -> HeadsetRig:
+	return main.headset_rig
+
+func _vr_layout(q := 1.0) -> Dictionary:
+	return HeadsetRig.compute_layout(main.parts_root, Callable(main, "_part_live_xform"), q)
+
+func _part_by_def(id: String) -> Array:
+	var out := []
+	for c in main.parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id == id:
+			out.append(c)
+	return out
+
+## Dirección (tangentes) con que el ojo verá una esquina de su mitad de pantalla,
+## calculada aparte (lente delgada + distorsión, canal azul = el más ampliado).
+func _corner_tan(du: float, dw: float, s: float, k1: float, k2: float, dl: float) -> Vector2:
+	return Optics.distort(Vector2(du, dw) * s * (1.0 + dl), k1, k2)
+
+func _test_rig_layout() -> void:
+	main._open_example(VR_EXAMPLE)
+	var lay := _vr_layout()
+	check(lay.get("ok", false) and lay["estereo"] and (lay["eyes"] as Array).size() == 2 and str(lay["eyes"][0]["lado"]) == "izquierda",
+		"Render: el ejemplo da dos ojos, el izquierdo primero")
+	check(absf(float(lay["ipd_m"]) - 0.063) < 1e-4, "Render: cámaras separadas 63 mm, como las lentes (%.2f mm)" % (float(lay["ipd_m"]) * 1000.0))
+	var scr: PartInstance = _part_by_def("pantalla_55")[0]
+	var sx: Transform3D = scr.global_transform
+	var n := sx.basis.y.normalized()
+	var worst := 0.0
+	for e in lay["eyes"]:
+		var lens: PartInstance = main._find_part(str(e["uid"]))
+		var ew: Vector3 = sx * (e["pos_local"] as Vector3)
+		worst = maxf(worst, ew.distance_to(lens.global_position + n * 0.015))
+	check(worst < 2e-4, "Render: cada ojo está sobre el eje de su lente, a 15 mm de ella (error %.3f mm)" % (worst * 1000.0))
+	var e0: Dictionary = lay["eyes"][0]
+	var s := 0.045 / (0.040 * 0.045 + 0.015 * 0.005)
+	var dl := 0.015 * 0.040 / ((0.040 * 0.045 + 0.015 * 0.005) * 2.0 * 57.0)
+	check(absf(float(e0["escala"]) - s) < 1e-4 and absf((e0["cromatica"] as Vector3).z - 1.0 - dl) < 1e-6 and absf(1.0 - (e0["cromatica"] as Vector3).x - dl) < 1e-6,
+		"Render: escala de la lente %.1f /m y ±%.2f %% para azul/rojo (acrílico, Abbe 57)" % [s, dl * 100.0])
+	# Ojo izquierdo: su mitad va de x = −60.9 mm a 0 (espectador) y el eje está en −31.5 mm.
+	var t_out := _corner_tan(-0.0294, 0.03425, s, 0.215, 0.215, dl)
+	var t_in := _corner_tan(0.0315, 0.03425, s, 0.215, 0.215, dl)
+	var ta := 0.0185 / 0.015
+	var tans: Vector4 = e0["tans"]
+	var px := 1.0 / ((1600.0 / 0.1218) / s)
+	check(absf(tans.x - t_out.x) < 2.0 * px and absf(tans.y - t_in.x) < 2.0 * px,
+		"Render: frustum horizontal del ojo izquierdo de %.3f a %.3f (esquinas de su mitad, con la distorsión)" % [tans.x, tans.y])
+	check(absf(tans.w - ta) < 1e-4 and absf(tans.z + ta) < 1e-4 and t_in.y > ta,
+		"Render: en vertical lo recorta el borde de la lente (tan = r/e = %.3f)" % ta)
+	var sz: Vector2i = e0["size"]
+	check(lay["comp_size"] == Vector2i(1600, 900) and absi(sz.y - int(ceil(2.0 * ta / px))) <= 1 and absi(sz.x - int(round((t_in.x - t_out.x) / px))) <= 2,
+		"Render: imagen de 1600×900 y %d×%d px por ojo (misma densidad que la pantalla en el centro)" % [sz.x, sz.y])
+	var eh := _vr_layout(0.5)
+	check(absi((eh["eyes"][0]["size"] as Vector2i).y - int(ceil(sz.y * 0.5))) <= 1, "Render: la calidad ½ divide la resolución de cada ojo")
+
+func _test_rig_mapping() -> void:
+	main._open_example(VR_EXAMPLE)
+	var lay := _vr_layout()
+	var a: Vector2 = lay["area"]
+	var e0: Dictionary = lay["eyes"][0]
+	var c: Vector2 = e0["centro"]
+	var uv_c := Vector2(c.x / a.x + 0.5, 0.5 - c.y / a.y)
+	var r0 := HeadsetRig.screen_to_eye(lay, uv_c)
+	check(int(r0["ojo"]) == 0 and (r0["t"] as Vector2).length() < 1e-6, "Shader: el píxel del eje de la lente se ve de frente (t = 0)")
+	var uv_10 := Vector2((c.x + 0.010) / a.x + 0.5, uv_c.y)
+	var s: float = e0["escala"]
+	var tg: Vector2 = HeadsetRig.screen_to_eye(lay, uv_10)["t"]
+	var lin := 0.010 * s
+	var want := lin * (1.0 + 0.215 * lin * lin + 0.215 * pow(lin, 4))
+	check(absf(tg.x - want) < 1e-5 and absf(tg.y) < 1e-6, "Shader: 10 mm a la derecha del eje → tan %.5f (lente %.4f + distorsión de cojín)" % [tg.x, lin])
+	var tr: Vector2 = HeadsetRig.screen_to_eye(lay, uv_10, 0)["t"]
+	var tb: Vector2 = HeadsetRig.screen_to_eye(lay, uv_10, 2)["t"]
+	check(tr.x < tg.x and tg.x < tb.x and tb.x / tg.x > (e0["cromatica"] as Vector3).z,
+		"Shader: el azul se ve más afuera que el verde y el rojo más adentro (aberración lateral)")
+	check(int(HeadsetRig.screen_to_eye(lay, Vector2(0.7, 0.5))["ojo"]) == 1 and int(HeadsetRig.screen_to_eye(lay, Vector2(0.3, 0.5))["ojo"]) == 0,
+		"Shader: la mitad izquierda es del ojo izquierdo y la derecha del derecho")
+	var worst := 0.0
+	for uv in [Vector2(0.1, 0.2), Vector2(0.4, 0.85), Vector2(0.62, 0.1), Vector2(0.93, 0.66)]:
+		for ch in range(3):
+			var r := HeadsetRig.screen_to_eye(lay, uv, ch)
+			var back := HeadsetRig.eye_to_screen(lay, int(r["ojo"]), r["t"], ch)
+			worst = maxf(worst, back.distance_to(uv))
+	check(worst < 1e-5, "Shader: píxel → dirección → píxel vuelve al mismo sitio (error %s)" % str(snappedf(worst, 1e-9)))
+	var tl: Vector2 = HeadsetRig.screen_to_eye(lay, uv_10, 1, false)["t"]
+	check(absf(tl.x - lin) < 1e-6, "Shader: sin predistorsión es la lente ideal (tan = s·x)")
+	# Predistorsión de barril: una recta vertical del ojo se dibuja curvada hacia el eje.
+	var mid := HeadsetRig.eye_to_screen(lay, 0, Vector2(0.8, 0.0))
+	var top := HeadsetRig.eye_to_screen(lay, 0, Vector2(0.8, 1.0))
+	var bot := HeadsetRig.eye_to_screen(lay, 0, Vector2(0.8, -1.0))
+	check(top.x < mid.x - 0.01 and absf(top.x - bot.x) < 1e-5,
+		"Shader: una recta vertical del ojo sale en barril en la pantalla (extremos %.1f px hacia el eje)" % ((mid.x - top.x) * 1600.0))
+	var t0 := Vector2(0.37, -0.52)
+	check(Optics.undistort(Optics.distort(t0, 0.215, 0.215), 0.215, 0.215).distance_to(t0) < 1e-6, "Óptica: la inversa de la distorsión es exacta")
+
+func _layers_of(n: Node) -> Array:
+	var out := []
+	for v in n.find_children("*", "VisualInstance3D", true, false):
+		if not out.has((v as VisualInstance3D).layers):
+			out.append((v as VisualInstance3D).layers)
+	return out
+
+func _test_rig_cameras() -> void:
+	main._open_example(VR_EXAMPLE)
+	var other: PartInstance = main._spawn("placa_100x100", "aluminio", Vector3(0.5, 0.0025, 0.0))
+	var rig := _rig()
+	rig.forced = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(rig.is_active() and (rig.eyes[0]["vp"] as SubViewport).render_target_update_mode == SubViewport.UPDATE_ALWAYS,
+		"Render: activo con el visor en escena (render de los ojos y de la pantalla)")
+	var cam: Camera3D = rig.eyes[0]["cam"]
+	var fwd := -cam.global_basis.z
+	check(cam.global_position.distance_to(rig.eye_world(0)) < 1e-5 and fwd.dot(Vector3(1, 0, 0)) > 0.9999 and cam.global_basis.y.dot(Vector3.UP) > 0.9999,
+		"Render: la cámara del ojo izquierdo en su sitio, mirando hacia delante del visor (+X)")
+	var t: Vector4 = rig.layout["eyes"][0]["tans"]
+	check(cam.projection == Camera3D.PROJECTION_FRUSTUM and absf(cam.size - HeadsetRig.NEAR * (t.w - t.z)) < 1e-7 and absf(cam.frustum_offset.x - HeadsetRig.NEAR * (t.x + t.y) * 0.5) < 1e-7,
+		"Render: frustum asimétrico con las tangentes del ojo")
+	check(cam.cull_mask & HeadsetRig.LAYER_VISOR == 0 and cam.cull_mask & HeadsetRig.LAYER_EDITOR == 0 and cam.cull_mask & 1 == 1,
+		"Render: los ojos no ven el visor ni las ayudas del editor")
+	var vis_ok := true
+	for c in main.parts_root.get_children():
+		if c is PartInstance and c != other:
+			vis_ok = vis_ok and _layers_of(c) == [HeadsetRig.LAYER_VISOR]
+	var wires_ok: bool = main._wire_nodes.size() == 6
+	for uid in main._wire_nodes:
+		wires_ok = wires_ok and _layers_of(main._wire_nodes[uid]) == [HeadsetRig.LAYER_VISOR]
+	check(vis_ok and wires_ok and _layers_of(other) == [1],
+		"Render: carcasa, pantalla, lentes, soporte, ESP32, IMU y sus cables en la capa del visor; la placa de delante, visible")
+	check(_layers_of(main.connections_root).all(func(m): return m == HeadsetRig.LAYER_EDITOR), "Render: marcadores de uniones en la capa del editor")
+	check(rig.glass_texture() == rig.screen_vp.get_texture(), "Render: la pantalla del visor muestra la imagen lado a lado")
+	# El visor girado 30° sobre Y: las cámaras lo siguen.
+	var R := Transform3D(Basis(Vector3.UP, deg_to_rad(30.0)), Vector3.ZERO)
+	for c in main.parts_root.get_children():
+		if c is PartInstance and c != other:
+			(c as PartInstance).global_transform = R * (c as PartInstance).global_transform
+	rig.refresh()
+	rig.update_cameras()
+	var fwd2 := -cam.global_basis.z
+	var want := Vector3(cos(deg_to_rad(30.0)), 0, -sin(deg_to_rad(30.0)))
+	check(fwd2.dot(want) > 0.9999 and absf(float(rig.layout["ipd_m"]) - 0.063) < 1e-4 and cam.global_position.distance_to(rig.eye_world(0)) < 1e-5,
+		"Render: con el visor girado 30° las cámaras giran con él (IPD igual)")
+	rig.forced = false
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(not rig.is_active() and rig.glass_texture() == PartVisuals.sbs_pattern() and (rig.eyes[1]["vp"] as SubViewport).render_target_update_mode == SubViewport.UPDATE_DISABLED,
+		"Render: sin panel ni simulación se apaga y la pantalla vuelve a la carta de ajuste")
+	# Una sola lente: imagen única en toda la pantalla.
+	var lens2: PartInstance = _part_by_def("lente_cardboard_37")[1]
+	main.connections = main.connections.filter(func(cc): return cc.a_uid != lens2.uid and cc.b_uid != lens2.uid)
+	main.parts_root.remove_child(lens2)
+	lens2.queue_free()
+	var mono := _vr_layout()
+	check(mono.get("ok", false) and not mono["estereo"] and (mono["eyes"] as Array).size() == 1, "Render: con una lente, un ojo e imagen única")
+
+func _glass_tex(root: Node) -> Texture2D:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		if mi.has_meta("pantalla_luz"):
+			return ((mi as MeshInstance3D).material_override as StandardMaterial3D).emission_texture
+	return null
+
+func _test_rig_sim() -> void:
+	main._open_example(VR_EXAMPLE)
+	var rig := _rig()
+	rig.forced = false
+	main._toggle_simulation()
+	await wait_phys(30)
+	await get_tree().process_frame
+	var scr: PartInstance = _part_by_def("pantalla_55")[0]
+	var roots: Array = main.circuit_rt._visual_roots(scr)
+	check(rig.is_active() and rig.screen_lit() and roots.size() == 2 and _glass_tex(roots[1]) == rig.screen_vp.get_texture(),
+		"Render: al simular con la pantalla a 5 V se enciende el render y la pantalla en vivo lo muestra")
+	var cam: Camera3D = rig.eyes[1]["cam"]
+	check(cam.global_position.distance_to(rig.eye_world(1)) < 1e-5 and rig.eye_world(1).distance_to(scr.global_transform * (rig.layout["eyes"][1]["pos_local"] as Vector3)) < 0.002,
+		"Render: durante la simulación las cámaras siguen al cuerpo del visor")
+	var esp: PartInstance = _part_by_def("esp32_devkit")[0]
+	check(_layers_of(main.circuit_rt._visual_roots(esp)[1]) == [HeadsetRig.LAYER_VISOR],
+		"Render: las piezas del visor siguen ocultas a los ojos durante la simulación")
+	main._toggle_simulation()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check(not rig.is_active() and rig.glass_texture() == PartVisuals.sbs_pattern(), "Render: al parar la simulación se apaga")
+	# Sin los 5 V (sin el cable v1) y sin panel, no se renderiza.
+	main._open_example(VR_EXAMPLE)
+	main.wires = main.wires.filter(func(w): return str(w["uid"]) != "v1")
+	main._redraw_wires()
+	main._toggle_simulation()
+	await wait_phys(20)
+	await get_tree().process_frame
+	check(not rig.is_active() and not rig.screen_lit(), "Render: con la pantalla sin alimentación no gasta en renderizar")
+	main.visor_panel.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	rig.refresh()
+	check(rig.is_active() and str(rig.info_label.text).contains("apagada"), "Render: con el panel abierto se ve lo que mostraría (y avisa de que está apagada)")
+	main.visor_panel.visible = false
+	main._toggle_simulation()
+	await get_tree().process_frame
+	var api: Dictionary = main.api_headset()
+	check(api.get("render", {}).has("ojos") and (api["render"]["ojos"] as Array).size() == 2 and JSON.stringify(api).find("inf") < 0,
+		"API: analyze_headset trae las cámaras de los ojos (posición, campo, resolución)")
+
+## Centroide (px) de una bola en el canal ch, en una ventana de la imagen: lo que ese
+## canal supera al fondo (mediana del borde de la ventana). Cada canal se mira solo:
+## con la corrección cromática los otros dos canales de la bola salen desplazados.
+func _blob(img: Image, center: Vector2, half: int, ch: int) -> Vector3:
+	var x0 := maxi(0, int(center.x) - half)
+	var x1 := mini(img.get_width(), int(center.x) + half)
+	var y0 := maxi(0, int(center.y) - half)
+	var y1 := mini(img.get_height(), int(center.y) + half)
+	var border := []
+	for x in range(x0, x1):
+		border.append(img.get_pixel(x, y0)[ch])
+		border.append(img.get_pixel(x, y1 - 1)[ch])
+	for y in range(y0, y1):
+		border.append(img.get_pixel(x0, y)[ch])
+		border.append(img.get_pixel(x1 - 1, y)[ch])
+	border.sort()
+	var bg: float = border[border.size() / 2]
+	var sum := Vector2.ZERO
+	var nn := 0.0
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			var d: float = img.get_pixel(x, y)[ch] - bg
+			if d > 0.15:
+				sum += Vector2(x + 0.5, y + 0.5) * d
+				nn += d
+	return Vector3(sum.x / nn, sum.y / nn, nn) if nn > 0.0 else Vector3(-1, -1, 0)
+
+func _ball(color: Color, r: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = 2.0 * r
+	mi.mesh = sm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = color
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	main.add_child(mi)
+	return mi
+
+func _render_frames() -> Image:
+	for i in range(4):
+		await RenderingServer.frame_post_draw
+	return _rig().screen_vp.get_texture().get_image()
+
+## Prueba de punta a punta (solo con ventana): una bola en una dirección conocida de
+## cada ojo debe salir en la pantalla donde dice la inversa del shader.
+func _test_rig_render() -> void:
+	if DisplayServer.get_name() == "headless":
+		print("  (render real omitido sin ventana: Godot --path project -- mfvr)")
+		return
+	main._open_example(VR_EXAMPLE)
+	var rig := _rig()
+	rig.quality = 2
+	rig.forced = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var lay: Dictionary = rig.layout
+	var cs: Vector2 = Vector2(lay["comp_size"])
+	var cb := (rig.eyes[0]["cam"] as Camera3D).global_basis
+	var t := Vector2(0.5, 0.25)
+	var ball := _ball(Color(0, 1, 0), 0.015)
+	ball.global_position = rig.eye_world(0) + cb * Vector3(t.x, t.y, -1.0)
+	var img: Image = await _render_frames()
+	var dump := OS.get_environment("MF_VR_DUMP")
+	if dump != "":
+		img.save_png(dump + "/sbs.png")
+		(rig.eyes[0]["vp"] as SubViewport).get_texture().get_image().save_png(dump + "/eye0.png")
+		get_viewport().get_texture().get_image().save_png(dump + "/main.png")
+	var want := HeadsetRig.eye_to_screen(lay, 0, t) * cs
+	var got := _blob(img, want, 60, 1)
+	check(got.z > 0.0 and Vector2(got.x, got.y).distance_to(want) < 2.0,
+		"Render real: bola a tan (0.5, 0.25) del ojo izquierdo en el píxel previsto (%.1f, %.1f), medido (%.1f, %.1f)" % [want.x, want.y, got.x, got.y])
+	# Ojo derecho: la misma bola desde su posición (paralaje de 63 mm).
+	var rel: Vector3 = cb.inverse() * (ball.global_position - rig.eye_world(1))
+	var tr := Vector2(rel.x, rel.y) / -rel.z
+	var want_r := HeadsetRig.eye_to_screen(lay, 1, tr) * cs
+	var got_r := _blob(img, want_r, 60, 1)
+	check(got_r.z > 0.0 and Vector2(got_r.x, got_r.y).distance_to(want_r) < 2.0,
+		"Render real: el ojo derecho la ve a tan (%.3f, %.3f) y sale en (%.1f, %.1f), medido (%.1f, %.1f)" % [tr.x, tr.y, want_r.x, want_r.y, got_r.x, got_r.y])
+	rig.predistort = false
+	rig.apply_settings()
+	var img2: Image = await _render_frames()
+	var want_lin := HeadsetRig.eye_to_screen(lay, 0, t, 1, false) * cs
+	var got_lin := _blob(img2, want_lin, 60, 1)
+	var cpx := HeadsetRig.eye_to_screen(lay, 0, Vector2.ZERO) * cs
+	check(got_lin.z > 0.0 and Vector2(got_lin.x, got_lin.y).distance_to(want_lin) < 2.0 and Vector2(got.x, got.y).distance_to(cpx) < want_lin.distance_to(cpx) - 10.0,
+		"Render real: sin predistorsión sale %.0f px más lejos del eje (la predistorsión la acerca, en barril)" % (want_lin.distance_to(cpx) - Vector2(got.x, got.y).distance_to(cpx)))
+	rig.predistort = true
+	rig.apply_settings()
+	# Aberración cromática: una bola roja y luego azul en la misma dirección, lejos del
+	# eje (sobre la pared gris): el rojo se dibuja más afuera y el azul más adentro.
+	var tc := Vector2(-0.55, 0.7)
+	ball.global_position = rig.eye_world(0) + cb * Vector3(tc.x, tc.y, -1.0)
+	(ball.material_override as StandardMaterial3D).albedo_color = Color(1, 0, 0)
+	var img_r: Image = await _render_frames()
+	(ball.material_override as StandardMaterial3D).albedo_color = Color(0, 0, 1)
+	var img_b: Image = await _render_frames()
+	if dump != "":
+		img_r.save_png(dump + "/sbs_r.png")
+		img_b.save_png(dump + "/sbs_b.png")
+	var w_r := HeadsetRig.eye_to_screen(lay, 0, tc, 0) * cs
+	var w_b := HeadsetRig.eye_to_screen(lay, 0, tc, 2) * cs
+	var g_r := _blob(img_r, w_r, 40, 0)
+	var g_b := _blob(img_b, w_b, 40, 2)
+	var sep_want := w_r.distance_to(w_b)
+	var sep_got := Vector2(g_r.x, g_r.y).distance_to(Vector2(g_b.x, g_b.y))
+	check(g_r.z > 0.0 and g_b.z > 0.0 and Vector2(g_r.x, g_r.y).distance_to(w_r) < 1.5 and Vector2(g_b.x, g_b.y).distance_to(w_b) < 1.5 and absf(sep_got - sep_want) < 0.8
+		and Vector2(g_r.x, g_r.y).distance_to(cpx) > Vector2(g_b.x, g_b.y).distance_to(cpx),
+		"Render real: corrección cromática, el rojo %.1f px más afuera que el azul (previsto %.1f px)" % [sep_got, sep_want])
+	ball.queue_free()
+	rig.forced = false
+	rig.quality = 1
 
 #endregion

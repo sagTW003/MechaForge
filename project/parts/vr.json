@@ -80,10 +80,11 @@
       "optica": {
         "tipo": "biconvexa",
         "indice": 1.49,
+        "abbe": 57,
         "k1": 0.215,
         "k2": 0.215
       },
-      "descripcion": "Eje óptico a lo largo de Y. Acrílico (PMMA, n = 1.49); k1 y k2 = distorsión radial de la lente (perfil por defecto de Godot)."
+      "descripcion": "Eje óptico a lo largo de Y. Acrílico (PMMA, n = 1.49, Abbe 57); k1 y k2 = distorsión radial de la lente (perfil por defecto de Godot)."
     },
     {
       "id": "lente_fresnel_50",
@@ -99,6 +100,7 @@
       "optica": {
         "tipo": "fresnel",
         "indice": 1.49,
+        "abbe": 57,
         "k1": 0.215,
         "k2": 0.215
       },

@@ -43,7 +43,7 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `list_parts` | Catálogo de piezas (`def_id`) y materiales disponibles |
 | `get_telemetry` | Posición/velocidad de piezas, consigna/medida/temperatura de motores, consumo |
 | `analyze_design` | Masa, centro de masa, estabilidad (margen de vuelco), esfuerzos, autonomía |
-| `analyze_headset` | Visor VR: por lente, distancia a la pantalla, imagen virtual (m, −1 si no hay) y aumento, campo de visión h × v, píxeles por grado, descentrado; distancia entre lentes (IPD) y avisos |
+| `analyze_headset` | Visor VR: por lente, distancia a la pantalla, imagen virtual (m, −1 si no hay) y aumento, campo de visión h × v, píxeles por grado, descentrado; distancia entre lentes (IPD) y avisos; en `render`, las cámaras de los ojos (posición, campo con la distorsión, resolución, tangentes del frustum) |
 | `add_part` | `{"def_id","material","pos":[x,y,z],"rot_deg":[x,y,z]}` (metros; el suelo es y=0) |
 | `connect_parts` | `{"a","b","union":"fija|bisagra|deslizadera|rotula|engranaje","eje":"X|Y|Z","motor":true}` |
 | `set_property` | `{"uid","material","dims_mm":{...},"pos":[...]}` |
@@ -128,7 +128,11 @@ dormido (escribe 0 en 0x6B), WHO_AM_I 0x75 = 0x68, acelerómetro en 0x3B/0x3D/0x
 Piezas del visor VR (categoría `vr`): `pantalla_55` (cara hacia +Y, 5 V), `movil_61`
 (pantalla e IMU propias), `lente_cardboard_37` y `lente_fresnel_50` (eje óptico Y),
 `soporte_lentes`, `carcasa_visor` y `esp32_devkit`. Proyecto de ejemplo «Gafas VR
-caseras». Para revisar un diseño de visor usa `analyze_headset`.
+caseras». Para revisar un diseño de visor usa `analyze_headset`. Render estéreo: una
+cámara por ojo sobre el eje de cada lente (a la distancia ojo–lente) y una imagen lado
+a lado predistorsionada en barril (k1, k2 de la lente) con corrección cromática (Abbe
+de la lente, `optica.abbe`); la pantalla la muestra encendida y el usuario la ve en
+«👓 Visor» (tecla V).
 
 Orientación con la IMU (filtro complementario):
 

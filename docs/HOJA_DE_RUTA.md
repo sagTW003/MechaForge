@@ -296,9 +296,28 @@ que faltaba estaba en el proyecto.
       resolver (recién abierto el proyecto) y la IMU no se inicializaba.
 - [x] Pruebas: `mfvr` (103) y el ejemplo en `mfejemplos`.
 
+### ✅ Fase 2 — Render estéreo
+- [x] **Cámaras por ojo** (`vr/HeadsetRig.gd`): en la posición del ojo, sobre el eje de
+      su lente a la distancia ojo–lente, orientadas con la pantalla en vivo (también al
+      simular). No ven el visor (capa 2: pantalla, lentes, lo unido con uniones fijas o
+      deslizaderas, cables entre ellas, piezas que envuelven un ojo) ni las ayudas del
+      editor (capa 3).
+- [x] **Frustum asimétrico** con las tangentes de la mitad de pantalla vistas a través
+      de la lente (con distorsión) y recortado por su borde; resolución con la densidad
+      de la pantalla en el centro, calidad ½, ¾ o 1:1.
+- [x] **Shader de predistorsión**: por píxel, dirección del ojo D(s·x) con k1, k2 y
+      escala por color según el número de Abbe (aberración cromática lateral); la
+      misma cuenta en GDScript (`screen_to_eye`, `eye_to_screen`) para las pruebas.
+- [x] **Imagen en la pantalla del visor** (cuando está encendida) y panel «Vista del
+      visor» (botón 👓 Visor, tecla V) con predistorsión y corrección cromática
+      opcionales y PNG. `analyze_headset` trae las cámaras (`render`).
+- [x] Corregido: la pantalla mostraba su imagen lavada (Godot suma por defecto el color
+      de emisión y la textura) y girada 180° (el PlaneMesh pone la textura al revés para
+      quien mira la pantalla).
+- [x] Pruebas: `mfvr` (136 sin ventana; con ventana, el render real: bolas en
+      direcciones conocidas a menos de 0.3 px de lo previsto y separación rojo–azul).
+
 ### Fases siguientes
-- [ ] Fase 2 — Render estéreo: cámaras por ojo unidas al visor, shader de distorsión
-      de lente y aberración cromática, vista lado a lado en la pantalla del visor.
 - [ ] Fase 3 — Bucle de la IMU a la cámara con una cabeza de prueba motorizada.
 - [ ] Fase 4 — Verificación óptica (distorsión residual, error de IPD) y ergonomía.
 - [ ] Fase 5 — Ejemplo «Gafas VR caseras», API, suite y documentación.

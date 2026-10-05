@@ -47,7 +47,7 @@ const TOOLS := [
 	{"name": "write_controller_script", "description": "Propone el programa del microcontrolador (líneas 'variable = expresión'; la última es la consigna). Las variables conservan su valor entre pasos (empiezan en 0); bajo 'inicio:' solo el primer paso, bajo 'bucle:' cada paso. Entradas: t, x, dt y sensores (IMU: imu1_ax/ay/az en g, imu1_gx/gy/gz en °/s).",
 		"input_schema": {"type": "object", "required": ["script"], "properties": {"script": {"type": "string"}}}},
 	{"name": "run_simulation", "description": "Inicia la simulación física.", "input_schema": {"type": "object", "properties": {}}},
-	{"name": "analyze_headset", "description": "Óptica del visor VR de la escena (pantalla + lentes): distancia lente–pantalla, imagen virtual, aumento, campo de visión, píxeles por grado, distancia entre lentes (IPD) y avisos.", "input_schema": {"type": "object", "properties": {}}},
+	{"name": "analyze_headset", "description": "Óptica del visor VR de la escena (pantalla + lentes): distancia lente–pantalla, imagen virtual, aumento, campo de visión, píxeles por grado, distancia entre lentes (IPD) y avisos; en «render», las cámaras de los ojos (posición, campo con la distorsión de la lente, resolución) de la imagen lado a lado.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "stop_simulation", "description": "Detiene la simulación y restaura el estado inicial.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "get_proposal_status", "description": "Estado de una propuesta: pending, applied o discarded.",
 		"input_schema": {"type": "object", "required": ["id"], "properties": {"id": {"type": "integer"}}}},

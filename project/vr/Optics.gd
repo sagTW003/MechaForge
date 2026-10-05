@@ -11,15 +11,52 @@ extends RefCounted
 ## limita el campo a tan α = r/e. Con dos lentes cada ojo ve su mitad de pantalla
 ## (imagen lado a lado): la mitad derecha del espectador es la de −X de la pantalla
 ## (la pantalla mira a +Y; su +Z es arriba).
+##
+## Fuera del eje la lente no es ideal: con distorsión de cojín el ojo ve en la
+## dirección D(t) = t·(1 + k1·|t|² + k2·|t|⁴) el punto que la lente delgada pondría en
+## t (modelo radial de Cardboard, t en tangentes del ángulo). Y como el índice cambia
+## con el color (número de Abbe V), la escala tan θ / x es algo mayor para el azul que
+## para el rojo: aberración cromática lateral.
 
 const EYE_RELIEF_MM := 15.0
 const IPD_MIN_MM := 54.0
 const IPD_MAX_MM := 74.0
+const ABBE_DEFAULT := 57.0      # PMMA (acrílico)
 
 ## Tangente del ángulo con que el ojo ve un punto a x (m) del eje óptico.
 static func view_tan(x: float, d: float, f: float, e: float) -> float:
 	var den := d * f + e * (f - d)
 	return x * f / den if den > 1e-12 else INF
+
+## Escala de la lente ideal: tan θ = s·x (x en m sobre la pantalla).
+static func tan_scale(d: float, f: float, e: float) -> float:
+	return view_tan(1.0, d, f, e)
+
+## Dirección (tangentes) con que el ojo ve el punto que la lente ideal pondría en t.
+static func distort(t: Vector2, k1: float, k2: float) -> Vector2:
+	var r2 := t.length_squared()
+	return t * (1.0 + k1 * r2 + k2 * r2 * r2)
+
+## Inversa de distort (radial, por Newton): qué t de la lente ideal acaba en te.
+static func undistort(te: Vector2, k1: float, k2: float) -> Vector2:
+	var re := te.length()
+	if re < 1e-12:
+		return te
+	var r := re
+	for i in range(40):
+		var r2 := r * r
+		var dr := (r * (1.0 + k1 * r2 + k2 * r2 * r2) - re) / (1.0 + 3.0 * k1 * r2 + 5.0 * k2 * r2 * r2)
+		r -= dr
+		if absf(dr) < 1e-13:
+			break
+	return te * (r / re)
+
+## Aberración cromática lateral: cambio relativo δ de la escala s para el azul (F,
+## 486 nm: s·(1 + δ)) y el rojo (C, 656 nm: s·(1 − δ)) respecto del verde. Con
+## 1/f ∝ n − 1, Δf/f = ∓1/(2V); y d ln s / d ln f = −e·d / (d·f + e·(f − d)).
+static func chroma_shift(d: float, f: float, e: float, abbe: float) -> float:
+	var den := d * f + e * (f - d)
+	return e * d / (den * 2.0 * abbe) if den > 1e-12 and abbe > 0.0 else 0.0
 
 static func image_distance(d: float, f: float) -> float:
 	return d * f / (f - d) if d < f else INF
@@ -31,7 +68,9 @@ static func eye_relief_m(lens: PartInstance) -> float:
 	return float(lens.estado.get("ojo_mm", EYE_RELIEF_MM)) / 1000.0
 
 ## Analiza el visor de la escena: cada lente con la pantalla que corta su eje.
-static func analyze(parts_root: Node) -> Dictionary:
+## xf (opcional) da la transformación de cada pieza (la de la simulación en vivo).
+static func analyze(parts_root: Node, xf := Callable()) -> Dictionary:
+	var gx := func(p: PartInstance) -> Transform3D: return xf.call(p) if xf.is_valid() else p.global_transform
 	var screens := []
 	var lenses := []
 	for c in parts_root.get_children():
@@ -46,14 +85,16 @@ static func analyze(parts_root: Node) -> Dictionary:
 	var hits := []
 	for L in lenses:
 		var lp := L as PartInstance
-		var c := lp.global_position
-		var a := lp.global_basis.y.normalized()
+		var lx: Transform3D = gx.call(lp)
+		var c := lx.origin
+		var a := lx.basis.y.normalized()
 		var best := {}
 		for S in screens:
 			var sp := S as PartInstance
-			var sb := sp.global_basis
+			var sx: Transform3D = gx.call(sp)
+			var sb := sx.basis
 			var n := sb.y.normalized()
-			var p0 := sp.global_position + n * PartLibrary.dims_m(sp.def).y * 0.5
+			var p0 := sx.origin + n * PartLibrary.dims_m(sp.def).y * 0.5
 			var an := a.dot(n)
 			var side := (c - p0).dot(n)
 			if absf(an) < 0.5 or side <= 0.0:
@@ -117,6 +158,11 @@ static func analyze(parts_root: Node) -> Dictionary:
 			"imagen_m": (v + e) if enfocado else INF,
 			"fov_h": fov_h, "fov_v": fov_v, "ppd": px_mm * mm_per_rad * PI / 180.0,
 			"desalineacion_mm": (u - center) * 1000.0, "altura_mm": w * 1000.0, "limita_lente": limited,
+			# En metros, para el render estéreo (HeadsetRig): corte del eje con la cara de
+			# la pantalla (u, w en sus ejes X y Z), su mitad (u0..u1), distancias y lente.
+			"u_m": u, "w_m": w, "u0_m": u0, "u1_m": u1, "d_m": d, "e_m": e, "f_m": f, "r_m": r,
+			"k1": float(lp.def.get("optica", {}).get("k1", 0.0)), "k2": float(lp.def.get("optica", {}).get("k2", 0.0)),
+			"abbe": float(lp.def.get("optica", {}).get("abbe", ABBE_DEFAULT)),
 		}
 		out_lenses.append(item)
 		var nom := "La lente %s" % lado if stereo else "La lente"

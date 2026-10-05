@@ -163,14 +163,19 @@ static func _screen(d: Vector3, def: Dictionary, phone: bool) -> Node3D:
 	glass.mesh = pm
 	var gm := StandardMaterial3D.new()
 	gm.albedo_color = Color(0.015, 0.015, 0.02)
-	gm.roughness = 0.08
-	gm.metallic_specular = 0.6
+	# Acabado antirreflejo: con mucho especular el estudio se reflejaba y lavaba la imagen.
+	gm.roughness = 0.3
+	gm.metallic_specular = 0.15
 	gm.emission_enabled = true
 	gm.emission = Color(1, 1, 1)
+	# Color × textura (por defecto Godot los suma y la imagen salía lavada en blanco).
+	gm.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 	gm.emission_texture = sbs_pattern()
 	gm.emission_energy_multiplier = 1.0 if phone else 0.0
 	glass.material_override = gm
-	glass.position = Vector3(0, d.y * 0.5 + (0.0005 if phone else 0.0002), 0)
+	# El PlaneMesh pone la u de la textura hacia +X y la v hacia +Z; para el espectador
+	# (derecha en −X, arriba en +Z) la imagen saldría girada: medio giro sobre la normal.
+	glass.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0, d.y * 0.5 + (0.0005 if phone else 0.0002), 0))
 	glass.set_meta("pantalla_luz", true)
 	n.add_child(glass)
 	return n

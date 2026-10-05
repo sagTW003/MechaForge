@@ -117,6 +117,10 @@ var ai_attach_dialog: FileDialog
 var _ai_last: Dictionary = {}       # última petición: para reenviarla sin imágenes
 var notes_panel: FloatingPanel
 var notes_edit: TextEdit
+## Render estéreo del visor VR y su panel «Vista del visor».
+var headset_rig: HeadsetRig
+var visor_panel: FloatingPanel
+var visor_view: TextureRect
 var tool_server: ToolServer
 var _proposal_seq: int = 0
 var _proposal_ids: Array = []          # ids de propuestas incluidas en ai_pending
@@ -231,6 +235,10 @@ func _ready() -> void:
 	probes = ProbeInteractionSystem.new()
 	probes.main = self
 	add_child(probes)
+	headset_rig = HeadsetRig.new()
+	headset_rig.name = "RenderVisor"
+	headset_rig.main = self
+	add_child(headset_rig)
 
 	_build_ui()
 	GraphicsProfiles.apply_auto(world_env.environment, get_viewport())
@@ -1136,6 +1144,7 @@ func _build_ui() -> void:
 	_build_music_panel()
 	_build_ai_panel()
 	_build_notes_panel()
+	_build_visor_panel()
 	graphics_panel = GraphicsPanel.new(work_env, camera)
 	ui_layer.add_child(graphics_panel)
 	graphics_panel.set_collapsed(true)
@@ -1404,6 +1413,84 @@ func _build_notes_panel() -> void:
 	row.add_child(_button("Cerrar", func(): notes_panel.visible = false))
 	vb.add_child(row)
 	notes_panel.visible = false
+
+# --- Vista del visor VR (render estéreo) --------------------------------------------------
+
+func _build_visor_panel() -> void:
+	visor_panel = FloatingPanel.new("Vista del visor")
+	ui_layer.add_child(visor_panel)
+	visor_panel.position = Vector2(300, 110)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(576, 0)
+	visor_panel.add_content(vb)
+	visor_view = TextureRect.new()
+	visor_view.texture = headset_rig.screen_vp.get_texture()
+	visor_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	visor_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	visor_view.custom_minimum_size = Vector2(576, 324)
+	visor_view.tooltip_text = "Lo que muestra la pantalla del visor: una imagen por ojo, predistorsionada para que la lente la vea recta."
+	vb.add_child(visor_view)
+	var info := _label("")
+	info.add_theme_font_size_override("font_size", 11)
+	info.add_theme_color_override("font_color", Color(0.72, 0.74, 0.78))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.custom_minimum_size = Vector2(566, 0)
+	vb.add_child(info)
+	headset_rig.info_label = info
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	var pre := CheckBox.new()
+	pre.text = "Predistorsión de la lente"
+	pre.button_pressed = headset_rig.predistort
+	pre.tooltip_text = "Barril con los k1 y k2 de la lente: la lente (de cojín) devuelve la imagen recta."
+	pre.toggled.connect(func(v):
+		headset_rig.predistort = v
+		headset_rig.apply_settings())
+	row.add_child(pre)
+	var chr := CheckBox.new()
+	chr.text = "Corrección cromática"
+	chr.button_pressed = headset_rig.chroma
+	chr.tooltip_text = "Cada color con su escala (número de Abbe del acrílico): sin ella el borde de la imagen se ve con flecos rojos y azules."
+	chr.toggled.connect(func(v):
+		headset_rig.chroma = v
+		headset_rig.apply_settings())
+	row.add_child(chr)
+	var q := OptionButton.new()
+	q.focus_mode = Control.FOCUS_NONE
+	q.tooltip_text = "Resolución del render de cada ojo (1:1 = la de la pantalla en el centro de la lente)"
+	for n in HeadsetRig.QUALITY_NAMES:
+		q.add_item(n)
+	q.select(headset_rig.quality)
+	q.item_selected.connect(func(i):
+		headset_rig.quality = i
+		headset_rig.refresh())
+	row.add_child(q)
+	row.add_child(_button("Guardar PNG", _save_visor_png))
+	row.add_child(_button("Cerrar", func(): visor_panel.visible = false))
+	vb.add_child(row)
+	visor_panel.visible = false
+
+func _toggle_visor_panel() -> void:
+	if visor_panel == null:
+		return
+	visor_panel.visible = not visor_panel.visible or visor_panel.is_collapsed()
+	visor_panel.set_collapsed(false)
+	visor_panel.move_to_front()
+	if visor_panel.visible:
+		headset_rig.refresh()
+	call_deferred("_clamp_panels")
+
+func _save_visor_png() -> void:
+	if not headset_rig.is_active():
+		Config.notify("No hay imagen del visor: hace falta una pantalla con sus lentes.", 3.0)
+		return
+	var img := headset_rig.screen_vp.get_texture().get_image()
+	if img == null or img.is_empty():
+		return
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://capturas"))
+	var path := "user://capturas/visor_%s.png" % Time.get_datetime_string_from_system().replace(":", "-")
+	img.save_png(path)
+	Config.notify("Imagen del visor guardada en %s" % ProjectSettings.globalize_path(path), 5.0)
 
 func _toggle_notes_panel() -> void:
 	if notes_panel == null:
@@ -1854,6 +1941,8 @@ func api_headset() -> Dictionary:
 			it["imagen_m"] = -1.0          # sin imagen virtual (JSON no admite infinito)
 		if is_inf(float(it["aumento"])):
 			it["aumento"] = -1.0
+	if r.get("ok", false):
+		r["render"] = headset_rig.describe()
 	return r
 
 ## Análisis de diseño como datos (estabilidad, esfuerzos, masa, consumo).
@@ -2329,6 +2418,9 @@ func _build_topbar() -> Control:
 	hb.add_child(lab_btn)
 	hb.add_child(_button("🤖  IA", _toggle_ai_panel))
 	hb.add_child(_button("🎵  Música", _toggle_music_panel))
+	var visor_btn := _button("👓  Visor", _toggle_visor_panel)
+	visor_btn.tooltip_text = "Vista del visor VR: render estéreo desde los ojos, con la predistorsión de las lentes (V)"
+	hb.add_child(visor_btn)
 	return panel
 
 func _build_left_panel() -> void:
@@ -2702,6 +2794,7 @@ CONSTRUCCIÓN
 [M]                   Copia simétrica (plano YZ)
 [Ctrl+Z] / [Ctrl+Y]   Deshacer / Rehacer
 [G]                   Alternar snapping a la rejilla
+[V]                   Vista del visor VR (render estéreo de las gafas)
 
 SIMULACIÓN Y UNIONES
 [Espacio]             Iniciar / detener la simulación
@@ -3476,6 +3569,8 @@ func _handle_key(k: InputEventKey) -> void:
 			_paste()
 		KEY_M when not ctrl and not editing_locked:
 			_mirror_selected()
+		KEY_V when not ctrl:
+			_toggle_visor_panel()
 		KEY_LEFT when not editing_locked:
 			_nudge(Vector3(-1, 0, 0))
 		KEY_RIGHT when not editing_locked:

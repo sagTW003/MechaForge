@@ -544,6 +544,32 @@ bucle:
   0x3B–0x48. Las llamadas se resuelven antes de evaluar la expresión: el programa nunca
   recibe objetos de la aplicación.
 
+### Gafas VR caseras: render estéreo
+
+![Render estéreo del visor](docs/demo_vr_fase2.png)
+*Simulando las gafas con unas piezas delante: la pantalla del visor muestra, a través de las lentes, la imagen lado a lado de la «Vista del visor» (botón 👓 Visor o tecla V), predistorsionada en barril para que la lente la vea recta.*
+
+- **Una cámara por ojo** en la posición real del ojo: sobre el eje de su lente, a la
+  distancia ojo–lente, mirando a la pantalla. Se mueve con el visor (también durante la
+  simulación) y no ve el propio visor (carcasa, pantalla, lentes, lo unido a ellas con
+  uniones fijas o deslizaderas y sus cables) ni las ayudas del editor.
+- **Frustum asimétrico por ojo**: cubre lo que ese ojo ve de su mitad de pantalla a
+  través de la lente, con la distorsión, recortado por el borde de la lente; el render
+  tiene la misma densidad de píxeles que la pantalla en el centro (calidad ½, ¾ o 1:1).
+- **Predistorsión de la lente**: para cada píxel de la pantalla, el shader calcula la
+  dirección con que lo verá el ojo, D(t) = t·(1 + k1·|t|² + k2·|t|⁴) con t = s·x de la
+  lente delgada, y toma ese color del render del ojo. Sale en barril, y la lente (de
+  cojín) lo devuelve recto.
+- **Corrección cromática**: la escala s cambia con el color según el número de Abbe del
+  acrílico (57): ±0.28 % para azul y rojo con la pantalla a 40 mm y el ojo a 15 mm.
+  Cada canal se toma en su dirección: en el borde de la imagen, rojo y azul quedan unos
+  2 px separados en la pantalla.
+- La pantalla del visor muestra la imagen mientras está encendida (el móvil siempre, el
+  LCD con sus 5 V); el panel la enseña aunque esté apagada y la guarda en PNG.
+- Verificado con un render real: una bola en una dirección conocida de cada ojo sale a
+  menos de 0.3 px del píxel que da la inversa del shader, y la separación rojo–azul
+  medida coincide con la prevista.
+
 ![Seguidor de línea](docs/demo_seguidor.png)
 *Carro seguidor de línea: dos sensores IR, control diferencial de velocidad y el programa del microcontrolador.*
 
@@ -630,7 +656,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros) | `mfvr` |
+| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real) | `mfvr` |
 
 ## Arquitectura
 
