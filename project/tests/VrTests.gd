@@ -4,6 +4,8 @@ extends Node
 ## (sin --headless se añade el render real: bolas en direcciones conocidas de cada ojo;
 ## con la variable MF_VR_DUMP=<carpeta> guarda las imágenes renderizadas)
 ##
+## Fase 4: verificación óptica (distorsión y color residuales, desalineación, prisma
+## por la IPD del render y del usuario), ergonomía, holguras y vista a través de la lente.
 ## Fase 3: perfiles de consigna, cabeza de prueba, base de la IMU, latencia y deriva,
 ## y el ejemplo de la cabeza motorizada (seguimiento real frente a estimado).
 ## Fase 2: render estéreo (ojos sobre el eje de cada lente, frustum con la distorsión,
@@ -35,6 +37,12 @@ func wait_phys(n: int) -> void:
 		await get_tree().physics_frame
 
 func run() -> void:
+	if "fase4" in OS.get_cmdline_user_args():
+		await _run_phase4()
+		main._on_new()
+		print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
+		get_tree().quit(1 if fail > 0 else 0)
+		return
 	if "fase3" in OS.get_cmdline_user_args():
 		await _run_phase3()
 		main._on_new()
@@ -69,6 +77,7 @@ func run() -> void:
 	await _test_rig_sim()
 	await _test_rig_render()
 	await _run_phase3()
+	await _run_phase4()
 	main._on_new()
 	print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -1401,5 +1410,212 @@ func _test_tracking_ui() -> void:
 	check(rig.track_mode == HeadsetRig.Track.REAL and rig.tracking.size() == 0, "Proyecto: uno nuevo vuelve al seguimiento real y sin datos")
 	main._open_example(HEAD_EXAMPLE)
 	check(rig.track_mode == HeadsetRig.Track.IMU and main.visor_track_opt.selected == HeadsetRig.Track.IMU, "Proyecto: el ejemplo de la cabeza abre en modo IMU (también en el panel)")
+
+#endregion
+
+#region FASE 4: VERIFICACIÓN ÓPTICA Y ERGONOMÍA ----------------------------------
+
+func _run_phase4() -> void:
+	print("[TEST] Visor VR — Fase 4 (verificación óptica, ergonomía y holguras)")
+	_test_check_design()
+	_test_check_predistort_off()
+	_test_check_render_ipd()
+	_test_check_user_ipd()
+	_test_check_cardboard()
+	_test_check_interference()
+	_test_eyeview_math()
+	_test_check_ui_api()
+	await _test_eyeview_render()
+	_reset_check()
+
+func _reset_check() -> void:
+	var rig := _rig()
+	rig.profile_mode = HeadsetRig.Profile.DISENO
+	rig.profile_manual = {"ipd_mm": 63.0, "dist_mm": 41.7, "k1": 0.215, "k2": 0.215}
+	rig.user_ipd_mm = 63.0
+	rig.predistort = true
+	rig.chroma = true
+	rig.set_view_mode(0)
+
+## Informe del visor del ejemplo 12 con los ajustes dados.
+func _check(profile := HeadsetRig.Profile.DISENO, user_ipd := 63.0, manual := {}) -> Dictionary:
+	var rig := _rig()
+	rig.profile_mode = profile
+	if not manual.is_empty():
+		rig.profile_manual = manual
+	rig.user_ipd_mm = user_ipd
+	rig.relayout()
+	return HeadsetCheck.report(main, rig)
+
+func _test_check_design() -> void:
+	main._open_example(VR_EXAMPLE)
+	_reset_check()
+	var r := _check()
+	var o: Dictionary = r["optica"]
+	var worst := 0.0
+	for e in o["ojos"]:
+		worst = maxf(worst, maxf(float(e["distorsion_max_arcmin"]), maxf(float(e["cromatica_max_arcmin"]),
+			maxf(absf(float(e["desalineacion_h_arcmin"])), absf(float(e["desalineacion_v_arcmin"]))))))
+	check(r.get("ok", false) and worst < 0.5 and absf(float(o["convergencia_prisma"])) < 0.01 and absf(float(o["vertical_prisma"])) < 0.01,
+		"Verificación: con el perfil del diseño la imagen llega recta, alineada y sin flecos de color (peor %.2f′)" % worst)
+	check(int(o["ojos"][0]["muestras"]) > 200, "Verificación: se mide sobre %d direcciones del campo de cada ojo" % int(o["ojos"][0]["muestras"]))
+	# Ergonomía, calculada aparte.
+	var mass := 0.0
+	var acc := Vector3.ZERO
+	for c in main.parts_root.get_children():
+		var p := c as PartInstance
+		mass += p.mass_kg()
+		acc += (p.global_transform * p.com_local()) * p.mass_kg()
+	var com := acc / mass
+	var eye_mid := (HeadsetCheck.physical_eye(main, _rig().layout, 0) + HeadsetCheck.physical_eye(main, _rig().layout, 1)) * 0.5
+	var dfwd := (com - (eye_mid + Vector3(HeadsetCheck.FACE_OFFSET, 0, 0))).dot(Vector3(1, 0, 0))
+	var g: Dictionary = r["ergonomia"]
+	check(absf(float(g["masa_g"]) - mass * 1000.0) < 0.01 and absf(float(g["delante_de_la_cara_mm"]) - dfwd * 1000.0) < 0.05
+		and absf(float(g["par_Nm"]) - mass * 9.80665 * dfwd) < 1e-4 and str(g["valoracion_masa"]) == "ligero",
+		"Ergonomía: %.0f g, centro de masa %.1f mm por delante de la cara, par %.3f N·m" % [g["masa_g"], g["delante_de_la_cara_mm"], g["par_Nm"]])
+	var h: Dictionary = r["holguras"]
+	var t := float(PartLibrary.lens_geometry(_part_by_def("lente_cardboard_37")[0].def)["t"])
+	var l0: Dictionary = h["lentes"][0]
+	check(absf(float(l0["lente_pantalla_mm"]) - (40.0 - t * 500.0)) < 0.05 and absf(float(l0["pestanas_mm"]) - (15.0 - t * 500.0)) < 0.05,
+		"Holguras: lente a %.1f mm de la pantalla y %.1f mm de las pestañas (canto de %.1f mm)" % [l0["lente_pantalla_mm"], l0["pestanas_mm"], t * 1000.0])
+	var states := {}
+	for p in h["pares"]:
+		states[str(p["a"]) + "|" + str(p["b"])] = str(p["estado"])
+		states[str(p["b"]) + "|" + str(p["a"])] = str(p["estado"])
+	var scr_name := str(_part_by_def("pantalla_55")[0].def["nombre"])
+	var shell_name := str(_part_by_def("carcasa_visor")[0].def["nombre"])
+	var holder_name := str(_part_by_def("soporte_lentes")[0].def["nombre"])
+	check(states.get(scr_name + "|" + shell_name, "") == "en contacto" and states.get("lente izquierda|" + holder_name, "") == "en su guía"
+		and not states.values().has("interferencia") and (r["avisos"] as Array).is_empty(),
+		"Holguras: la pantalla apoya en la carcasa, las lentes en su guía, sin interferencias ni avisos")
+
+func _test_check_predistort_off() -> void:
+	_rig().predistort = false
+	var r := _check()
+	_rig().predistort = true
+	var e: Dictionary = r["optica"]["ojos"][0]
+	check(float(e["distorsion_max_arcmin"]) > 60.0 and float(e["distorsion_borde_pct"]) > 5.0 and str(r["avisos"]).contains("cojín"),
+		"Verificación: sin predistorsión el ojo ve cojín (%.0f′, %+.1f %% en el borde)" % [e["distorsion_max_arcmin"], e["distorsion_borde_pct"]])
+
+func _test_check_render_ipd() -> void:
+	var s := 0.045 / (0.040 * 0.045 + 0.015 * 0.005)
+	var r := _check(HeadsetRig.Profile.MANUAL, 63.0, {"ipd_mm": 60.0, "dist_mm": 1000.0 / s, "k1": 0.215, "k2": 0.215})
+	var o: Dictionary = r["optica"]
+	var th := atan(Optics.distort(Vector2(s * 0.0015, 0.0), 0.215, 0.215).x)
+	var want := 100.0 * tan(2.0 * th)
+	check(absf(float(o["convergencia_prisma"]) - want) < 0.01 * want and str(r["avisos"]).contains("converger"),
+		"Verificación: render con IPD 60 y lentes a 63 mm → las imágenes piden converger %.2f Δ (previsto %.2f Δ)" % [o["convergencia_prisma"], want])
+	check(float(o["ojos"][0]["distorsion_max_arcmin"]) > 5.0,
+		"Verificación: además, la imagen descentrada 1.5 mm de la lente se deforma de forma asimétrica (%.0f′ en el borde)" % float(o["ojos"][0]["distorsion_max_arcmin"]))
+
+func _test_check_user_ipd() -> void:
+	var r := _check(HeadsetRig.Profile.DISENO, 58.0)
+	var o: Dictionary = r["optica"]
+	var L := 0.375
+	var th := atan(Optics.distort(Vector2(-0.0025 / L, 0.0), 0.215, 0.215).x)
+	var want := 100.0 * tan(2.0 * th)
+	check(absf(float(o["convergencia_prisma"]) - want) < 0.01 * absf(want) and str(r["avisos"]).contains("divergir"),
+		"Verificación: usuario con IPD 58 y lentes a 63 mm (imagen a 0.375 m) → divergencia de %.2f Δ (previsto %.2f Δ)" % [-float(o["convergencia_prisma"]), -want])
+
+func _test_check_cardboard() -> void:
+	var r := _check(HeadsetRig.Profile.CARDBOARD_V1)
+	var e: Dictionary = r["optica"]["ojos"][0]
+	check(float(e["distorsion_max_arcmin"]) > 5.0 and not (r["avisos"] as Array).is_empty(),
+		"Verificación: el perfil de Cardboard v1 no casa con estas lentes (distorsión residual %.0f′, %d avisos)" % [e["distorsion_max_arcmin"], (r["avisos"] as Array).size()])
+	_reset_check()
+
+func _test_check_interference() -> void:
+	var scr: PartInstance = _part_by_def("pantalla_55")[0]
+	var x0 := scr.position
+	scr.position += Vector3(0.002, 0, 0)
+	var r := _check()
+	scr.position = x0
+	var found := -1.0
+	for p in r["holguras"]["pares"]:
+		if str(p["estado"]) == "interferencia" and (str(p["a"]).contains("Pantalla") or str(p["b"]).contains("Pantalla")):
+			found = -float(p["holgura_mm"])
+	check(absf(found - 2.0) < 0.3 and str(r["avisos"]).contains("Interferencia"), "Holguras: la pantalla metida 2 mm en la pared de la carcasa da una interferencia de %.2f mm" % found)
+
+func _test_eyeview_math() -> void:
+	_reset_check()
+	var lay := _check()
+	lay = _rig().layout
+	var worst := 0.0
+	for t in [Vector2(0.0, 0.0), Vector2(0.4, -0.3), Vector2(-0.7, 0.5), Vector2(0.9, 0.2)]:
+		for ch in range(3):
+			var uv := HeadsetRig.eye_view_to_screen(lay, 0, t, ch, 0.063)
+			var back: Vector2 = HeadsetRig.screen_to_eye(lay, uv, ch)["t"]
+			worst = maxf(worst, back.distance_to(t))
+	check(worst < 1e-5, "Vista a través de la lente: lo que el ojo ve en t es lo que el render puso en t (error %s)" % str(snappedf(worst, 1e-8)))
+	var uv58 := HeadsetRig.eye_view_to_screen(lay, 0, Vector2.ZERO, 1, 0.058)
+	var t58: Vector2 = HeadsetRig.screen_to_eye(lay, uv58, 1)["t"]
+	check(t58.x > 0.005, "Vista a través de la lente: con la IPD del usuario menor, el ojo izquierdo mira por la parte de la nariz de la lente")
+
+func _test_check_ui_api() -> void:
+	_reset_check()
+	main._toggle_check_panel()
+	check(main.check_panel.visible and main.check_text.get_parsed_text().contains("Ergonomía") and main.check_text.get_parsed_text().contains("Sin avisos"),
+		"Panel: «Verificación del visor» muestra óptica, ergonomía y holguras")
+	main.check_profile_opt.select(HeadsetRig.Profile.MANUAL)
+	main.check_profile_opt.item_selected.emit(HeadsetRig.Profile.MANUAL)
+	check(main.check_manual.visible and _rig().profile_mode == HeadsetRig.Profile.MANUAL, "Panel: el perfil manual muestra IPD, distancia, k1 y k2")
+	var extra: Dictionary = main._project_extra()
+	check(int(extra["visor"]["perfil"]) == HeadsetRig.Profile.MANUAL and extra["visor"].has("ipd_usuario_mm"), "Proyecto: guarda el perfil del render y la IPD del usuario")
+	main.check_panel.visible = false
+	_reset_check()
+	var api: Dictionary = main.api_headset_check()
+	var js := JSON.stringify(api)
+	check(api.get("ok", false) and api.has("optica") and api.has("ergonomia") and js.find("inf") < 0 and js.find("nan") < 0,
+		"API: check_headset devuelve la verificación en JSON válido")
+
+## Render real (con ventana): la bola en la dirección t de la cámara del ojo izquierdo
+## se ve, a través de la lente real, en la misma dirección (con predistorsión) o
+## desplazada hacia fuera en cojín (sin ella).
+func _test_eyeview_render() -> void:
+	if DisplayServer.get_name() == "headless":
+		print("  (vista a través de la lente real omitida sin ventana)")
+		return
+	main._open_example(VR_EXAMPLE)
+	_reset_check()
+	var rig := _rig()
+	rig.quality = 2
+	rig.forced = true
+	rig.set_view_mode(1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var lay: Dictionary = rig.layout
+	var ph: Dictionary = lay["eyes"][0]["fisico"]
+	var ft: Vector4 = ph["tans"]
+	var sz := Vector2(ph["size"])
+	var cb := (rig.eyes[0]["cam"] as Camera3D).global_basis
+	var t := Vector2(0.5, 0.25)
+	var ball := _ball(Color(0, 1, 0), 0.015)
+	ball.global_position = rig.eye_world(0) + cb * Vector3(t.x, t.y, -1.0)
+	var to_px := func(tt: Vector2) -> Vector2: return Vector2((tt.x - ft.x) / (ft.y - ft.x), (ft.w - tt.y) / (ft.w - ft.z)) * sz
+	for i in range(5):
+		await RenderingServer.frame_post_draw
+	var img := rig.eyeview_vp.get_texture().get_image()
+	if OS.get_environment("MF_VR_DUMP") != "":
+		img.save_png(OS.get_environment("MF_VR_DUMP") + "/eyeview.png")
+		rig.screen_vp.get_texture().get_image().save_png(OS.get_environment("MF_VR_DUMP") + "/eyeview_sbs.png")
+		print("    eyeview ", rig.eyeview_vp.size, " modo ", rig.eyeview_vp.render_target_update_mode, " vista ", rig.view_mode, " activo ", rig.is_active())
+	var want: Vector2 = to_px.call(t)
+	var got := _blob(img, want, 50, 1)
+	check(got.z > 0.0 and Vector2(got.x, got.y).distance_to(want) < 2.0,
+		"Vista a través de la lente (render real): la bola se ve en su dirección, píxel (%.1f, %.1f), medido (%.1f, %.1f)" % [want.x, want.y, got.x, got.y])
+	rig.predistort = false
+	rig.apply_settings()
+	for i in range(5):
+		await RenderingServer.frame_post_draw
+	var img2 := rig.eyeview_vp.get_texture().get_image()
+	var want2: Vector2 = to_px.call(HeadsetCheck.seen(lay, 0, t, 1, 0.063, false)[0])
+	var got2 := _blob(img2, want2, 50, 1)
+	check(got2.z > 0.0 and Vector2(got2.x, got2.y).distance_to(want2) < 2.0 and want2.distance_to(to_px.call(Vector2.ZERO)) > want.distance_to(to_px.call(Vector2.ZERO)) + 5.0,
+		"Vista a través de la lente (render real): sin predistorsión se ve más afuera (cojín), en (%.1f, %.1f) como prevé el modelo" % [got2.x, got2.y])
+	rig.predistort = true
+	ball.queue_free()
+	rig.forced = false
+	rig.quality = 1
+	rig.set_view_mode(0)
 
 #endregion

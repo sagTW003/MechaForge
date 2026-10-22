@@ -35,6 +35,9 @@
   seguimiento IMU: las cámaras siguen la orientación que estima el programa.
 - `HeadTracking.gd` — registro de la orientación real frente a la estimada: errores,
   deriva de la guiñada, latencia del filtro y CSV.
+- `HeadsetCheck.gd` — verificación del visor: distorsión, color y desalineación
+  residuales según el perfil del render frente a las lentes reales, prisma entre los
+  ojos con la IPD del usuario, ergonomía y holguras.
 - Piezas en `parts/vr.json`; el bus I²C está en `electronics/I2CBus.gd` y las funciones
   `i2c_…` del programa en `control/McuIo.gd`.
 

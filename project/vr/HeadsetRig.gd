@@ -25,6 +25,13 @@ extends Node
 ## y sin posición (3 grados de libertad: giran alrededor del punto medio de los ojos
 ## del arranque), como un visor casero con un MPU-6050. Cada paso de simulación se
 ## registra la real frente a la estimada (HeadTracking).
+##
+## Perfil del render: lo que el programa supone de las lentes (distancia entre ellas,
+## distancia a la pantalla y distorsión k1, k2). «Del diseño» toma las del montaje; un
+## perfil manual o de Cardboard puede no coincidir con las lentes reales, y entonces
+## la imagen queda desalineada o con distorsión residual (HeadsetCheck lo mide). La
+## «vista a través de la lente» aplica a la imagen de la pantalla el modelo de la lente
+## REAL y el ojo del usuario (su distancia entre ojos): lo que este percibe.
 
 const LAYER_VISOR := 1 << 1        # capa 2: piezas del visor
 const LAYER_EDITOR := 1 << 2       # capa 3: uniones, gizmo, terminales, vista previa de la IA
@@ -40,6 +47,15 @@ enum Track { REAL, IMU }
 const TRACK_NAMES := ["Real (pose del visor)", "IMU (orientación del programa)"]
 const EST_VARS := ["roll", "pitch", "yaw"]
 const AXIS_NAMES := ["Alabeo", "Cabeceo", "Guiñada", "Error de la vista"]
+enum Profile { DISENO, MANUAL, CARDBOARD_V1, CARDBOARD_V2 }
+const PROFILE_NAMES := ["Del diseño (automático)", "Manual", "Cardboard v1 (2014)", "Cardboard v2 (2015)"]
+## Perfiles de visor de Google Cardboard: distancia entre lentes, de la pantalla a las
+## lentes (escala tan = x / distancia) y distorsión.
+const PROFILE_PRESETS := {
+	Profile.CARDBOARD_V1: {"ipd_mm": 60.0, "dist_mm": 42.0, "k1": 0.441, "k2": 0.156},
+	Profile.CARDBOARD_V2: {"ipd_mm": 64.0, "dist_mm": 39.0, "k1": 0.34, "k2": 0.55},
+}
+const VIEW_NAMES := ["Pantalla (lado a lado)", "Ojo izquierdo (a través de la lente)", "Ojo derecho (a través de la lente)"]
 
 var main: Node
 var forced := false                # render activo sin panel ni simulación (pruebas, capturas)
@@ -51,6 +67,13 @@ var screen_vp: SubViewport         # imagen lado a lado de la pantalla
 var eyes: Array = []               # [{vp, cam}]: ojo izquierdo y derecho
 var info_label: Label              # estado en el panel «Vista del visor»
 var track_mode := Track.REAL
+var profile_mode := Profile.DISENO
+var profile_manual := {"ipd_mm": 63.0, "dist_mm": 41.7, "k1": 0.215, "k2": 0.215}
+var user_ipd_mm := 63.0            # distancia entre los ojos del usuario
+var view_mode := 0                 # 0 pantalla, 1 ojo izquierdo, 2 ojo derecho (VIEW_NAMES)
+var eyeview_vp: SubViewport        # lo que ve un ojo a través de su lente
+var _ev_rect: ColorRect
+var _ev_mat: ShaderMaterial
 var link_ms := 20.0                # retardo del enlace (USB/BLE), el render y la pantalla
 var tracking := HeadTracking.new()
 var track_graph: LiveGraph         # gráfica del panel (real frente a estimada)
@@ -102,6 +125,38 @@ func _ready() -> void:
 	_rect.material = _mat
 	screen_vp.add_child(_rect)
 	add_child(screen_vp)
+	eyeview_vp = SubViewport.new()
+	eyeview_vp.name = "VistaOjo"
+	eyeview_vp.disable_3d = true
+	eyeview_vp.size = Vector2i(64, 64)
+	eyeview_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_ev_rect = ColorRect.new()
+	_ev_mat = ShaderMaterial.new()
+	var esh := Shader.new()
+	esh.code = EYE_SHADER
+	_ev_mat.shader = esh
+	_ev_mat.set_shader_parameter("screen_tex", screen_vp.get_texture())
+	_ev_rect.material = _ev_mat
+	eyeview_vp.add_child(_ev_rect)
+	add_child(eyeview_vp)
+
+## Parámetros del perfil del render (vacío = los del diseño).
+func render_profile() -> Dictionary:
+	match profile_mode:
+		Profile.MANUAL:
+			return profile_manual.duplicate()
+		Profile.CARDBOARD_V1, Profile.CARDBOARD_V2:
+			return (PROFILE_PRESETS[profile_mode] as Dictionary).duplicate()
+	return {}
+
+## Textura que enseña el panel: la pantalla o lo que ve un ojo a través de su lente.
+func view_texture() -> Texture2D:
+	return screen_vp.get_texture() if view_mode == 0 else eyeview_vp.get_texture()
+
+func set_view_mode(m: int) -> void:
+	view_mode = clampi(m, 0, 2)
+	_apply_eyeview()
+	eyeview_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if _active and view_mode != 0 else SubViewport.UPDATE_DISABLED
 
 func is_active() -> bool:
 	return _active
@@ -304,7 +359,7 @@ func refresh() -> void:
 	if not running:
 		_layout_locked = false
 	if not (_layout_locked and layout.get("ok", false)):
-		layout = compute_layout(main.parts_root, Callable(main, "_part_live_xform"), QUALITY[quality])
+		layout = compute_layout(main.parts_root, Callable(main, "_part_live_xform"), QUALITY[quality], render_profile())
 		_layout_locked = running and layout.get("ok", false)
 	if info_label:
 		info_label.text = status_text()
@@ -322,8 +377,45 @@ func refresh() -> void:
 		screen_vp.size = cs
 	_rect.size = Vector2(cs)
 	apply_settings()
+	_apply_eyeview()
 	_update_layers()
 	_update_glass()
+
+## Otro proyecto: la disposición y las piezas ocultas eran las del anterior (se
+## recalculan en el siguiente fotograma; si no, los ojos veían el visor nuevo y su propia
+## pantalla, en un espejo infinito).
+func invalidate() -> void:
+	layout = {}
+	_hidden = {}
+	_glass_uid = ""
+	_layout_locked = false
+
+## Fuerza un recálculo de la disposición (tras cambiar el perfil o la IPD del usuario).
+func relayout() -> void:
+	_layout_locked = false
+	refresh()
+
+## Vista a través de la lente: la lente REAL del ojo elegido y el ojo del usuario.
+func _apply_eyeview() -> void:
+	if view_mode == 0 or not layout.get("ok", false):
+		return
+	var E: Array = layout["eyes"]
+	var i := mini(view_mode - 1, E.size() - 1)
+	var e: Dictionary = E[i]
+	var ph: Dictionary = e["fisico"]
+	var sz: Vector2i = ph["size"]
+	if eyeview_vp.size != sz:
+		eyeview_vp.size = sz
+	_ev_rect.size = Vector2(sz)
+	_ev_mat.set_shader_parameter("area", layout["area"])
+	_ev_mat.set_shader_parameter("center", ph["centro"])
+	_ev_mat.set_shader_parameter("scale", ph["escala"])
+	_ev_mat.set_shader_parameter("k", ph["k"])
+	_ev_mat.set_shader_parameter("chroma", ph["cromatica"])
+	_ev_mat.set_shader_parameter("tans", ph["tans"])
+	_ev_mat.set_shader_parameter("aperture", ph["ta"])
+	_ev_mat.set_shader_parameter("shift", eye_shift(layout, i, user_ipd_mm / 1000.0))
+	_ev_mat.set_shader_parameter("half_x", ph["mitad_x"])
 
 ## Pasa al shader la disposición y las opciones (predistorsión, color).
 func apply_settings() -> void:
@@ -382,6 +474,7 @@ func _set_active(on: bool) -> void:
 	for e in eyes:
 		(e["vp"] as SubViewport).render_target_update_mode = mode
 	screen_vp.render_target_update_mode = mode
+	eyeview_vp.render_target_update_mode = mode if view_mode != 0 else SubViewport.UPDATE_DISABLED
 	if on:
 		update_cameras()
 	_update_glass()
@@ -401,7 +494,12 @@ func screen_lit() -> bool:
 ## de la pantalla, el eje de su lente sobre la pantalla, la escala y la distorsión de
 ## la lente, la escala de cada color, el frustum (tangentes izquierda, derecha, abajo,
 ## arriba) y el tamaño de su render. q escala la resolución.
-static func compute_layout(parts_root: Node, xf: Callable, q: float = 1.0) -> Dictionary:
+##
+## «prof» (perfil del render, ver render_profile) cambia lo que supone el render: el eje
+## de cada lente (a ±ipd/2 del centro de la pantalla), la escala (1 / distancia) y la
+## distorsión. Lo del montaje real queda en «fisico» de cada ojo: eje, escala, k, color,
+## borde de la lente (tan), distancia de la imagen al ojo, campo y tamaño de su vista.
+static func compute_layout(parts_root: Node, xf: Callable, q: float = 1.0, prof: Dictionary = {}) -> Dictionary:
 	var r := Optics.analyze(parts_root, xf)
 	if not r.get("ok", false):
 		return {"ok": false, "motivo": str(r.get("motivo", ""))}
@@ -431,38 +529,34 @@ static func compute_layout(parts_root: Node, xf: Callable, q: float = 1.0) -> Di
 		# Su mitad de pantalla: del borde a la línea central (o toda si hay una lente).
 		var x0 := -float(it["u1_m"])
 		var x1 := -float(it["u0_m"])
-		var lo := Vector2(INF, INF)
-		var hi := Vector2(-INF, -INF)
-		var n := 48
-		for j in range(n + 1):
-			var a := float(j) / n
-			for pt in [Vector2(lerpf(x0, x1, a), -ah / 2.0), Vector2(lerpf(x0, x1, a), ah / 2.0),
-					Vector2(x0, lerpf(-ah / 2.0, ah / 2.0, a)), Vector2(x1, lerpf(-ah / 2.0, ah / 2.0, a))]:
-				for cs in [1.0 - dl, 1.0 + dl]:
-					var t := Optics.distort(((pt as Vector2) - cv) * s * float(cs), k.x, k.y)
-					lo = lo.min(t)
-					hi = hi.max(t)
 		# Más allá del borde de la lente el ojo no ve la pantalla.
 		var ta := float(it["r_m"]) / e
-		lo = lo.max(Vector2(-ta, -ta))
-		hi = hi.min(Vector2(ta, ta))
-		if hi.x - lo.x < 1e-3 or hi.y - lo.y < 1e-3:
-			continue
-		# Resolución: la misma densidad que la pantalla en el centro (píxeles por tangente).
 		var ppt := px_m / s * q
-		var wpx := (hi.x - lo.x) * ppt
-		var hpx := (hi.y - lo.y) * ppt
-		var kk := minf(1.0, MAX_EYE_PX / maxf(wpx, hpx))
-		var size := Vector2i(maxi(16, int(ceil(wpx * kk))), maxi(16, int(ceil(hpx * kk))))
-		# La cámara fija el alto; el ancho angular sale del tamaño entero del render.
-		var span := (hi.y - lo.y) * float(size.x) / float(size.y)
-		var cx := (lo.x + hi.x) * 0.5
-		var tans := Vector4(cx - span * 0.5, cx + span * 0.5, lo.y, hi.y)
+		var fis := _frustum(cv, s, k, dl, x0, x1, ah, ta, ppt)
+		if fis.is_empty():
+			continue
+		# Lo que supone el render (perfil): eje, escala y distorsión.
+		var cv_r := cv
+		var s_r := s
+		var k_r := k
+		if not prof.is_empty():
+			var side := -1.0 if str(it["lado"]) == "izquierda" else (1.0 if str(it["lado"]) == "derecha" else 0.0)
+			cv_r = Vector2(side * float(prof.get("ipd_mm", 63.0)) / 2000.0, 0.0)
+			s_r = 1000.0 / maxf(1.0, float(prof.get("dist_mm", 40.0)))
+			k_r = Vector2(float(prof.get("k1", 0.0)), float(prof.get("k2", 0.0)))
+		var ren := _frustum(cv_r, s_r, k_r, dl, x0, x1, ah, ta, px_m / s_r * q)
+		if ren.is_empty():
+			continue
+		var tans: Vector4 = ren[0]
+		var v := Optics.image_distance(d, f)
 		out.append({
-			"uid": it["uid"], "lado": it["lado"], "pos_local": Vector3(u, front + d + e, w),
-			"centro": cv, "escala": s, "k": k, "cromatica": Vector3(1.0 - dl, 1.0, 1.0 + dl),
-			"tans": tans, "size": size,
+			"uid": it["uid"], "lado": it["lado"], "pos_local": Vector3(-cv_r.x, front + d + e, cv_r.y if not prof.is_empty() else w),
+			"centro": cv_r, "escala": s_r, "k": k_r, "cromatica": Vector3(1.0 - dl, 1.0, 1.0 + dl),
+			"tans": tans, "size": ren[1],
 			"fov_h": rad_to_deg(atan(tans.y) - atan(tans.x)), "fov_v": rad_to_deg(atan(tans.w) - atan(tans.z)),
+			"fisico": {"centro": cv, "escala": s, "k": k, "cromatica": Vector3(1.0 - dl, 1.0, 1.0 + dl),
+				"ta": ta, "L": (v + e) if d < f else INF, "tans": fis[0], "size": fis[1], "mitad_x": Vector2(x0, x1),
+				"d_m": d, "e_m": e, "f_m": f},
 		})
 	if out.is_empty():
 		return {"ok": false, "motivo": "Las lentes no dejan ver la pantalla."}
@@ -477,6 +571,57 @@ static func compute_layout(parts_root: Node, xf: Callable, q: float = 1.0) -> Di
 	if stereo:
 		lay["ipd_m"] = ((out[0]["pos_local"] as Vector3) - (out[1]["pos_local"] as Vector3)).length()
 	return lay
+
+## Frustum de un ojo (tangentes izquierda, derecha, abajo, arriba) y tamaño de su render:
+## la mitad de pantalla [x0, x1] × [−ah/2, ah/2] vista con eje cv, escala s, distorsión
+## k y los dos colores extremos (1 ± dl), recortada por el borde de la lente (ta). ppt
+## son los píxeles por unidad de tangente. Vacío si no se ve nada.
+static func _frustum(cv: Vector2, s: float, k: Vector2, dl: float, x0: float, x1: float, ah: float, ta: float, ppt: float) -> Array:
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var n := 48
+	for j in range(n + 1):
+		var a := float(j) / n
+		for pt in [Vector2(lerpf(x0, x1, a), -ah / 2.0), Vector2(lerpf(x0, x1, a), ah / 2.0),
+				Vector2(x0, lerpf(-ah / 2.0, ah / 2.0, a)), Vector2(x1, lerpf(-ah / 2.0, ah / 2.0, a))]:
+			for cs in [1.0 - dl, 1.0 + dl]:
+				var t := Optics.distort(((pt as Vector2) - cv) * s * float(cs), k.x, k.y)
+				lo = lo.min(t)
+				hi = hi.max(t)
+	lo = lo.max(Vector2(-ta, -ta))
+	hi = hi.min(Vector2(ta, ta))
+	if hi.x - lo.x < 1e-3 or hi.y - lo.y < 1e-3:
+		return []
+	# Resolución: la misma densidad que la pantalla en el centro (píxeles por tangente).
+	var wpx := (hi.x - lo.x) * ppt
+	var hpx := (hi.y - lo.y) * ppt
+	var kk := minf(1.0, MAX_EYE_PX / maxf(wpx, hpx))
+	var size := Vector2i(maxi(16, int(ceil(wpx * kk))), maxi(16, int(ceil(hpx * kk))))
+	# La cámara fija el alto; el ancho angular sale del tamaño entero del render.
+	var span := (hi.y - lo.y) * float(size.x) / float(size.y)
+	var cx := (lo.x + hi.x) * 0.5
+	return [Vector4(cx - span * 0.5, cx + span * 0.5, lo.y, hi.y), size]
+
+## Desvío (tangentes) con que el ojo del usuario, fuera del eje de su lente, ve la imagen
+## virtual a la distancia L: c_ojo / L (en el infinito, nada).
+static func eye_shift(lay: Dictionary, i: int, user_ipd_m: float) -> Vector2:
+	var e: Dictionary = lay["eyes"][i]
+	var ph: Dictionary = e["fisico"]
+	var L: float = ph["L"]
+	if is_inf(L) or L <= 0.0:
+		return Vector2.ZERO
+	var side := -1.0 if str(e["lado"]) == "izquierda" else (1.0 if str(e["lado"]) == "derecha" else 0.0)
+	var c_eye := Vector2(side * user_ipd_m * 0.5, 0.0) - (ph["centro"] as Vector2)
+	return c_eye / L
+
+## Lo mismo que la vista a través de la lente: punto de la pantalla (uv) que el ojo i del
+## usuario ve en la dirección t, en el canal c, con la lente real.
+static func eye_view_to_screen(lay: Dictionary, i: int, t: Vector2, c: int = 1, user_ipd_m: float = 0.063) -> Vector2:
+	var a: Vector2 = lay["area"]
+	var ph: Dictionary = lay["eyes"][i]["fisico"]
+	var tl := Optics.undistort(t, ph["k"].x, ph["k"].y)
+	var p: Vector2 = (ph["centro"] as Vector2) + (tl + eye_shift(lay, i, user_ipd_m)) / (float(ph["escala"]) * (ph["cromatica"] as Vector3)[c])
+	return Vector2(p.x / a.x + 0.5, 0.5 - p.y / a.y)
 
 ## Lo mismo que el shader: el píxel uv (0..1, origen arriba a la izquierda) de la imagen
 ## lado a lado lo ve el ojo «ojo» en la dirección «t» (tangentes, x a la derecha, y
@@ -676,12 +821,63 @@ func describe() -> Dictionary:
 			"resolucion": [e["size"].x, e["size"].y], "tangentes": [t.x, t.y, t.z, t.w]})
 	var cs: Vector2i = lay["comp_size"]
 	var out := {"activo": _active, "imagen_px": [cs.x, cs.y], "estereo": lay["estereo"],
-		"predistorsion": predistort, "cromatica": chroma, "ojos": ojos}
+		"predistorsion": predistort, "cromatica": chroma, "ojos": ojos,
+		"perfil": PROFILE_NAMES[profile_mode], "perfil_valores": render_profile()}
 	if lay.has("ipd_m"):
 		out["ipd_camaras_mm"] = float(lay["ipd_m"]) * 1000.0
 	return out
 
 #endregion
+
+const EYE_SHADER := """
+shader_type canvas_item;
+render_mode unshaded;
+
+// Lo que ve un ojo a través de su lente REAL (HeadsetRig): para cada dirección t del
+// campo del ojo, la lente la lleva a la tangente t_l = undistort(t); el punto de la
+// pantalla es eje + (t_l + desvío del ojo) / (escala de ese color); fuera del borde de
+// la lente o de su mitad de pantalla, negro.
+uniform sampler2D screen_tex : filter_linear, repeat_disable;
+uniform vec2 area = vec2(0.1218, 0.0685);
+uniform vec2 center;
+uniform float scale = 24.0;
+uniform vec2 k;
+uniform vec3 chroma = vec3(1.0);
+uniform vec4 tans = vec4(-1.0, 1.0, -1.0, 1.0);
+uniform float aperture = 1.2;
+uniform vec2 shift;
+uniform vec2 half_x = vec2(-0.06, 0.0);
+
+float undist(float re) {
+	float r = re;
+	for (int i = 0; i < 8; i++) {
+		float r2 = r * r;
+		r -= (r * (1.0 + k.x * r2 + k.y * r2 * r2) - re) / (1.0 + 3.0 * k.x * r2 + 5.0 * k.y * r2 * r2);
+	}
+	return r;
+}
+
+vec3 screen_at(vec2 p) {
+	if (p.x < half_x.x || p.x > half_x.y || abs(p.y) > area.y * 0.5) {
+		return vec3(0.0);
+	}
+	vec2 uv = vec2(p.x / area.x + 0.5, 0.5 - p.y / area.y);
+	return textureLod(screen_tex, uv, 0.0).rgb;
+}
+
+void fragment() {
+	vec2 t = vec2(mix(tans.x, tans.y, UV.x), mix(tans.w, tans.z, UV.y));
+	float re = length(t);
+	if (re > aperture) {
+		COLOR = vec4(0.0, 0.0, 0.0, 1.0);
+	} else {
+		vec2 tl = re > 1e-6 ? t * (undist(re) / re) : t;
+		vec2 q = tl + shift;
+		COLOR = vec4(screen_at(center + q / (scale * chroma.r)).r, screen_at(center + q / (scale * chroma.g)).g,
+			screen_at(center + q / (scale * chroma.b)).b, 1.0);
+	}
+}
+"""
 
 const SHADER := """
 shader_type canvas_item;

@@ -47,6 +47,7 @@ const TOOLS := [
 	{"name": "write_controller_script", "description": "Propone el programa del microcontrolador (líneas 'variable = expresión'; la última es la consigna). Las variables conservan su valor entre pasos (empiezan en 0); bajo 'inicio:' solo el primer paso, bajo 'bucle:' cada paso. Entradas: t, x, dt y sensores (IMU: imu1_ax/ay/az en g, imu1_gx/gy/gz en °/s).",
 		"input_schema": {"type": "object", "required": ["script"], "properties": {"script": {"type": "string"}}}},
 	{"name": "run_simulation", "description": "Inicia la simulación física.", "input_schema": {"type": "object", "properties": {}}},
+	{"name": "check_headset", "description": "Verificación del visor VR: por ojo, desalineación de la imagen, distorsión residual y aberración cromática residual (minutos de arco) según el perfil del render frente a las lentes reales; convergencia y desnivel entre los ojos (Δ) con la IPD del usuario; masa, centro de masa respecto de la cara y par; holguras de las lentes y contactos o interferencias entre piezas; avisos.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "analyze_headset", "description": "Óptica del visor VR de la escena (pantalla + lentes): distancia lente–pantalla, imagen virtual, aumento, campo de visión, píxeles por grado, distancia entre lentes (IPD) y avisos; en «render», las cámaras de los ojos (posición, campo con la distorsión de la lente, resolución) de la imagen lado a lado; en «seguimiento», la orientación estimada por el programa con la IMU frente a la real (error RMS por eje, deriva de la guiñada, latencia y error de la vista).", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "stop_simulation", "description": "Detiene la simulación y restaura el estado inicial.", "input_schema": {"type": "object", "properties": {}}},
 	{"name": "get_proposal_status", "description": "Estado de una propuesta: pending, applied o discarded.",
@@ -109,6 +110,7 @@ func call_tool(name: String, p: Dictionary) -> Dictionary:
 		"get_telemetry": return host.api_telemetry(str(p.get("uid", "")))
 		"analyze_design": return host.api_analyze()
 		"analyze_headset": return host.api_headset()
+		"check_headset": return host.api_headset_check()
 		"run_simulation": return host.api_run(true)
 		"stop_simulation": return host.api_run(false)
 		"get_proposal_status": return host.api_proposal_status(int(p.get("id", -1)))

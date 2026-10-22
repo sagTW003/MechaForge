@@ -126,6 +126,14 @@ var visor_chroma_chk: CheckBox
 var visor_quality_opt: OptionButton
 var visor_track_opt: OptionButton
 var visor_axis_opt: OptionButton
+var visor_view_opt: OptionButton
+## Panel «Verificación del visor» (HeadsetCheck).
+var check_panel: FloatingPanel
+var check_text: RichTextLabel
+var check_profile_opt: OptionButton
+var check_manual: GridContainer
+var check_manual_spins: Dictionary = {}
+var check_ipd_spin: SpinBox
 var visor_link_spin: SpinBox
 var tool_server: ToolServer
 var _proposal_seq: int = 0
@@ -1151,6 +1159,7 @@ func _build_ui() -> void:
 	_build_ai_panel()
 	_build_notes_panel()
 	_build_visor_panel()
+	_build_check_panel()
 	graphics_panel = GraphicsPanel.new(work_env, camera)
 	ui_layer.add_child(graphics_panel)
 	graphics_panel.set_collapsed(true)
@@ -1429,6 +1438,21 @@ func _build_visor_panel() -> void:
 	var vb := VBoxContainer.new()
 	vb.custom_minimum_size = Vector2(576, 0)
 	visor_panel.add_content(vb)
+	var vrow := HBoxContainer.new()
+	vrow.add_child(_label("Vista:"))
+	visor_view_opt = OptionButton.new()
+	visor_view_opt.focus_mode = Control.FOCUS_NONE
+	visor_view_opt.tooltip_text = "La pantalla del visor, o lo que ve cada ojo a través de su lente real (con la distancia entre ojos del usuario)"
+	for n in HeadsetRig.VIEW_NAMES:
+		visor_view_opt.add_item(n)
+	visor_view_opt.item_selected.connect(func(i):
+		headset_rig.set_view_mode(i)
+		visor_view.texture = headset_rig.view_texture())
+	vrow.add_child(visor_view_opt)
+	var chk := _button("Verificar…", _toggle_check_panel)
+	chk.tooltip_text = "Verificación óptica y ergonomía: distorsión residual, desalineación de las imágenes, IPD, peso, centro de masa y holguras"
+	vrow.add_child(chk)
+	vb.add_child(vrow)
 	visor_view = TextureRect.new()
 	visor_view.texture = headset_rig.screen_vp.get_texture()
 	visor_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1533,14 +1557,123 @@ func _build_visor_panel() -> void:
 func _apply_visor_settings(vs: Dictionary) -> void:
 	if headset_rig == null:
 		return
+	headset_rig.invalidate()
 	headset_rig.track_mode = int(vs.get("seguimiento", HeadsetRig.Track.REAL))
 	headset_rig.link_ms = float(vs.get("retardo_ms", 20.0))
 	headset_rig.predistort = bool(vs.get("predistorsion", true))
 	headset_rig.chroma = bool(vs.get("cromatica", true))
 	headset_rig.quality = int(vs.get("calidad", 1))
+	headset_rig.profile_mode = int(vs.get("perfil", HeadsetRig.Profile.DISENO))
+	var pm = vs.get("perfil_manual", null)
+	if typeof(pm) == TYPE_DICTIONARY:
+		for k in headset_rig.profile_manual:
+			headset_rig.profile_manual[k] = float((pm as Dictionary).get(k, headset_rig.profile_manual[k]))
+	headset_rig.user_ipd_mm = float(vs.get("ipd_usuario_mm", 63.0))
+	headset_rig.set_view_mode(0)
 	headset_rig.tracking.clear()
 	headset_rig.apply_settings()
 	_sync_visor_panel()
+
+# --- Verificación del visor (óptica y ergonomía) --------------------------------------------
+
+func _build_check_panel() -> void:
+	check_panel = FloatingPanel.new("Verificación del visor")
+	ui_layer.add_child(check_panel)
+	check_panel.position = Vector2(360, 140)
+	var vb := VBoxContainer.new()
+	vb.custom_minimum_size = Vector2(560, 0)
+	check_panel.add_content(vb)
+	var hint := _label("El perfil del render es lo que el programa supone de las lentes; si no coincide con las lentes reales, la imagen sale desalineada o curvada. La IPD del usuario es la distancia entre sus ojos.")
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", Color(0.6, 0.62, 0.66))
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(550, 0)
+	vb.add_child(hint)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	row.add_child(_label("Perfil del render:"))
+	check_profile_opt = OptionButton.new()
+	check_profile_opt.focus_mode = Control.FOCUS_NONE
+	for n in HeadsetRig.PROFILE_NAMES:
+		check_profile_opt.add_item(n)
+	check_profile_opt.item_selected.connect(func(i):
+		headset_rig.profile_mode = i
+		Config.project_dirty = true
+		_on_check_changed())
+	row.add_child(check_profile_opt)
+	row.add_child(_label("IPD del usuario (mm):"))
+	check_ipd_spin = _spin(50, 76, 0.5, headset_rig.user_ipd_mm)
+	check_ipd_spin.value_changed.connect(func(v):
+		headset_rig.user_ipd_mm = v
+		Config.project_dirty = true
+		_on_check_changed())
+	row.add_child(check_ipd_spin)
+	vb.add_child(row)
+	check_manual = GridContainer.new()
+	check_manual.columns = 8
+	for k in [["ipd_mm", "IPD (mm)", 50.0, 80.0, 0.5], ["dist_mm", "Distancia (mm)", 20.0, 80.0, 0.1], ["k1", "k1", -1.0, 2.0, 0.005], ["k2", "k2", -1.0, 2.0, 0.005]]:
+		check_manual.add_child(_label(k[1]))
+		var sp := _spin(k[2], k[3], k[4], float(headset_rig.profile_manual[k[0]]))
+		var key: String = k[0]
+		sp.value_changed.connect(func(v):
+			headset_rig.profile_manual[key] = v
+			Config.project_dirty = true
+			_on_check_changed())
+		check_manual_spins[key] = sp
+		check_manual.add_child(sp)
+	vb.add_child(check_manual)
+	check_text = RichTextLabel.new()
+	check_text.bbcode_enabled = true
+	check_text.fit_content = true
+	check_text.scroll_active = false
+	check_text.custom_minimum_size = Vector2(550, 120)
+	check_text.add_theme_font_size_override("normal_font_size", 12)
+	check_text.add_theme_font_size_override("bold_font_size", 13)
+	vb.add_child(check_text)
+	var brow := HBoxContainer.new()
+	brow.add_child(_button("Actualizar", _refresh_check))
+	brow.add_child(_button("Copiar", func():
+		DisplayServer.clipboard_set(check_text.get_parsed_text())
+		Config.notify("Informe del visor copiado al portapapeles.", 2.5)))
+	brow.add_child(_button("Cerrar", func(): check_panel.visible = false))
+	vb.add_child(brow)
+	check_panel.visible = false
+
+func _toggle_check_panel() -> void:
+	if check_panel == null:
+		return
+	check_panel.visible = not check_panel.visible or check_panel.is_collapsed()
+	check_panel.set_collapsed(false)
+	check_panel.move_to_front()
+	if check_panel.visible:
+		_sync_check_panel()
+		_refresh_check()
+	call_deferred("_clamp_panels")
+
+## Cambió el perfil o la IPD: nueva disposición del render y nuevo informe.
+func _on_check_changed() -> void:
+	check_manual.visible = headset_rig.profile_mode == HeadsetRig.Profile.MANUAL
+	headset_rig.relayout()
+	_refresh_check()
+
+func _refresh_check() -> void:
+	if check_text == null:
+		return
+	check_text.text = HeadsetCheck.report_bbcode(HeadsetCheck.report(self, headset_rig))
+
+func _sync_check_panel() -> void:
+	if check_profile_opt == null:
+		return
+	check_profile_opt.select(headset_rig.profile_mode)
+	check_ipd_spin.set_value_no_signal(headset_rig.user_ipd_mm)
+	for k in check_manual_spins:
+		(check_manual_spins[k] as SpinBox).set_value_no_signal(float(headset_rig.profile_manual[k]))
+	check_manual.visible = headset_rig.profile_mode == HeadsetRig.Profile.MANUAL
+
+## Verificación del visor como datos (API check_headset), sin infinitos.
+func api_headset_check() -> Dictionary:
+	var r := HeadsetCheck.report(self, headset_rig)
+	return JSON.parse_string(JSON.stringify(r).replace("inf", "-1").replace("nan", "-1")) if r.get("ok", false) else r
 
 ## Pone los controles del panel del visor como los ajustes de headset_rig.
 func _sync_visor_panel() -> void:
@@ -1551,6 +1684,9 @@ func _sync_visor_panel() -> void:
 	visor_quality_opt.select(headset_rig.quality)
 	visor_track_opt.select(headset_rig.track_mode)
 	visor_link_spin.set_value_no_signal(headset_rig.link_ms)
+	visor_view_opt.select(headset_rig.view_mode)
+	visor_view.texture = headset_rig.view_texture()
+	_sync_check_panel()
 
 func _export_tracking_csv() -> void:
 	if headset_rig.tracking.size() == 0:
@@ -4145,7 +4281,9 @@ func _project_extra() -> Dictionary:
 		extra["notas"] = notes_edit.text
 	if _has_headset():
 		extra["visor"] = {"seguimiento": headset_rig.track_mode, "retardo_ms": headset_rig.link_ms,
-			"predistorsion": headset_rig.predistort, "cromatica": headset_rig.chroma, "calidad": headset_rig.quality}
+			"predistorsion": headset_rig.predistort, "cromatica": headset_rig.chroma, "calidad": headset_rig.quality,
+			"perfil": headset_rig.profile_mode, "perfil_manual": headset_rig.profile_manual.duplicate(),
+			"ipd_usuario_mm": headset_rig.user_ipd_mm}
 	return extra
 
 func _has_headset() -> bool:

@@ -344,8 +344,27 @@ que faltaba estaba en el proyecto.
 - [x] Pruebas: `mfvr` (fase 3, también sola con `-- mfvr fase3`) y el ejemplo en
       `mfejemplos`.
 
+### ✅ Fase 4 — Verificación óptica y ergonomía
+- [x] **Perfil del render** (`HeadsetRig`): del diseño, manual o Cardboard v1/v2; la
+      disposición guarda aparte lo que supone el render y lo del montaje real
+      («fisico»).
+- [x] **Vista a través de la lente**: un shader aplica a la imagen de la pantalla la
+      lente real (inversa de la distorsión por Newton, escala de cada color) y el ojo
+      del usuario fuera del eje (desvío c_ojo / L).
+- [x] **Verificación** (`vr/HeadsetCheck.gd`): desalineación, distorsión y color
+      residuales por ojo; convergencia y desnivel entre ojos en Δ (con la IPD del
+      render y la del usuario); masa, centro de masa respecto de la cara y par;
+      holguras de las lentes y contactos o interferencias entre piezas (distancia con
+      signo entre formas de colisión). Panel «Verificación del visor» y herramienta
+      `check_headset`.
+- [x] Corregido: al abrir otro proyecto con el render activo, el visor ocultaba las
+      piezas del anterior durante unos fotogramas y los ojos veían su propia pantalla
+      (espejo infinito). Ángulos con atan2 en doble precisión (el acos en float32
+      daba 2′ de error).
+- [x] Pruebas: `mfvr` (fase 4, también sola con `-- mfvr fase4`; con ventana, la vista
+      a través de la lente renderizada).
+
 ### Fases siguientes
-- [ ] Fase 4 — Verificación óptica (distorsión residual, error de IPD) y ergonomía.
 - [ ] Fase 5 — Ejemplo «Gafas VR caseras», API, suite y documentación.
 
 ## ✅ Elección de la cámara del seguimiento de manos

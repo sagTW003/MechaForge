@@ -43,6 +43,7 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `list_parts` | Catálogo de piezas (`def_id`) y materiales disponibles |
 | `get_telemetry` | Posición/velocidad de piezas, consigna/medida/temperatura de motores, consumo |
 | `analyze_design` | Masa, centro de masa, estabilidad (margen de vuelco), esfuerzos, autonomía |
+| `check_headset` | Verificación del visor VR: por ojo, desalineación, distorsión y aberración cromática residuales (′) según el perfil del render frente a las lentes; convergencia y desnivel entre ojos (Δ) con la IPD del usuario; masa, centro de masa respecto de la cara y par; holguras y contactos o interferencias; avisos |
 | `analyze_headset` | Visor VR: por lente, distancia a la pantalla, imagen virtual (m, −1 si no hay) y aumento, campo de visión h × v, píxeles por grado, descentrado; distancia entre lentes (IPD) y avisos; en `render`, las cámaras de los ojos (posición, campo con la distorsión, resolución, tangentes del frustum) |
 | `add_part` | `{"def_id","material","pos":[x,y,z],"rot_deg":[x,y,z]}` (metros; el suelo es y=0) |
 | `connect_parts` | `{"a","b","union":"fija|bisagra|deslizadera|rotula|engranaje","eje":"X|Y|Z","motor":true}` |
@@ -139,7 +140,9 @@ deriva de la guiñada, la latencia y el error de la vista. Banco de pruebas: pie
 `cabeza_prueba` y bisagras con perfil de consigna (senoidal o cuadrado; servo ideal
 para seguirlo exacto); ejemplo «Gafas VR en cabeza de prueba». Las piezas unidas con
 uniones fijas (y con deslizaderas «bloqueadas al simular», como el ajuste de IPD)
-forman un solo cuerpo rígido en la simulación.
+forman un solo cuerpo rígido en la simulación. Para revisar un diseño de visor
+terminado usa `check_headset` (el perfil del render y la IPD del usuario se eligen en
+«Verificación del visor» y se guardan con el proyecto).
 
 Orientación con la IMU (filtro complementario):
 

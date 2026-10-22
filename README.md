@@ -605,6 +605,36 @@ bucle:
 - **Ajustes bloqueados**: una deslizadera marcada «bloqueada al simular» (el ajuste
   de distancia entre lentes) va fija durante la simulación; en edición marca su
   recorrido.
+
+### Gafas VR caseras: verificación óptica y ergonomía
+
+![Verificación del visor](docs/demo_vr_fase4.png)
+*A la derecha, lo que ve el ojo izquierdo a través de su lente: la rejilla del suelo sale recta (la predistorsión y la lente se compensan); el borde en cojín es el de la media pantalla visto por la lente. A la izquierda, la «Verificación del visor».*
+
+- **Vista a través de la lente** (panel 👓 Visor, «Vista»): aplica a la imagen de la
+  pantalla el modelo de la lente REAL (lente delgada, distorsión, color) y el ojo del
+  usuario: lo que este percibe, por ojo.
+- **Perfil del render** (lo que el programa supone de las lentes): del diseño, manual
+  (distancia entre lentes, distancia a la pantalla, k1 y k2) o los de Google Cardboard
+  v1 y v2. Si no coincide con el montaje, las imágenes salen desalineadas o curvadas.
+- **Verificación del visor** (botón «Verificar…» y herramienta `check_headset`):
+  - por ojo, desalineación de la imagen, distorsión residual (RMS, máxima y en el
+    borde: + cojín, − barril) y aberración cromática residual, en minutos de arco,
+    sobre unas 370 direcciones del campo;
+  - entre los dos ojos, la convergencia (o divergencia, que se tolera mucho peor) y el
+    desnivel vertical que piden las imágenes, en dioptrías prismáticas, contando la
+    IPD del usuario: con la imagen virtual a L del ojo, una diferencia entre la IPD de
+    las lentes y la del usuario desvía cada ojo (IPD_lentes − IPD_usuario)/(2L);
+  - ergonomía: masa del visor, centro de masa respecto del apoyo en la cara (frente y
+    nariz) y el par que tira hacia delante;
+  - holguras: de cada lente a la pantalla y a las pestañas, y los contactos o
+    interferencias entre las piezas (distancia entre sus formas de colisión).
+- En el ejemplo, con el perfil del diseño: 0′ de error residual y sin avisos; 205 g,
+  centro de masa 30 mm por delante de la cara (0.06 N·m); lentes a 35.4 mm de la
+  pantalla y 10.4 mm de las pestañas. Sin predistorsión el ojo ve un cojín de +32 % en
+  el borde (471′); con el render a 63 mm y un usuario de 58 mm, divergencia de 1.33 Δ;
+  con el render a 60 mm y las lentes a 63 mm, convergencia de 7.2 Δ y además 54′ de
+  distorsión asimétrica; el perfil de Cardboard v1 deja 206′.
 - **Uniones fijas rígidas**: en Jolt las uniones fijas entre cuerpos dinámicos se
   comportaban como resortes (una viga de 0.6 kg sobre un servo de 32 g cedía 8°);
   ahora las piezas unidas con uniones fijas forman un solo cuerpo.
@@ -695,7 +725,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; `-- mfvr fase3` solo esta parte) | `mfvr` |
+| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; verificación óptica, ergonomía y holguras; `-- mfvr fase3` o `fase4` solo esa parte) | `mfvr` |
 
 ## Arquitectura
 
