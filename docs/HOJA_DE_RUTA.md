@@ -317,8 +317,34 @@ que faltaba estaba en el proyecto.
 - [x] Pruebas: `mfvr` (136 sin ventana; con ventana, el render real: bolas en
       direcciones conocidas a menos de 0.3 px de lo previsto y separación rojo–azul).
 
+### ✅ Fase 3 — Seguimiento de la cabeza con la IMU
+- [x] **Cabeza de prueba** (`cabeza_prueba`, forma «cabeza»): elipsoide impreso con
+      masa, centro de masa, inercia y colisión convexa propias.
+- [x] **Perfiles de consigna** en las bisagras con control (senoidal o cuadrado, con
+      rampa de arranque) y **servo ideal** (la pieza sigue el perfil exacto como
+      cuerpo cinemático; Jolt le da la velocidad de su movimiento). Las uniones con
+      perfil no las recibe el programa (`m1…`).
+- [x] **Ejemplo «Gafas VR en cabeza de prueba»** (13.º): tres servos apilados
+      (guiñada, cabeceo, alabeo) y las gafas fijas en la cabeza.
+- [x] **Firmware** con la cinemática de los ángulos de Euler (también en el ejemplo 12).
+- [x] **Cámaras movidas por la IMU** (`HeadsetRig`, modo IMU): orientación estimada,
+      retardo del enlace y la pantalla, 3 grados de libertad.
+- [x] **Real frente a estimada** (`vr/HeadTracking.gd`): RMS y máximo por eje, deriva
+      de la guiñada con la latencia compensada, latencia del filtro por correlación
+      (sin contar sesgo ni deriva), error de la vista, gráfica en el panel y CSV;
+      en `analyze_headset`. La muestra se toma justo después de leer los sensores.
+- [x] Corregido: las uniones fijas entre cuerpos dinámicos eran blandas en Jolt (una
+      viga de 0.6 kg sobre un servo de 32 g cedía 8°, sin depender de las
+      iteraciones del solver): las piezas unidas con uniones fijas forman ahora un
+      solo cuerpo (masa, centro de masa e inercia por Steiner). Los sensores y la
+      telemetría usan la transformación de su pieza dentro del cuerpo.
+- [x] **Deslizaderas de ajuste bloqueadas al simular** (las lentes resbalaban por su
+      guía al girar la cabeza) y óptica del visor fija durante la simulación (la de
+      su arranque).
+- [x] Pruebas: `mfvr` (fase 3, también sola con `-- mfvr fase3`) y el ejemplo en
+      `mfejemplos`.
+
 ### Fases siguientes
-- [ ] Fase 3 — Bucle de la IMU a la cámara con una cabeza de prueba motorizada.
 - [ ] Fase 4 — Verificación óptica (distorsión residual, error de IPD) y ergonomía.
 - [ ] Fase 5 — Ejemplo «Gafas VR caseras», API, suite y documentación.
 

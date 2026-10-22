@@ -351,6 +351,10 @@ func make_collision_shapes() -> Array:
 			bs.size = b["s"]
 			out_b.append({"shape": bs, "xf": Transform3D(Basis.IDENTITY, b["c"])})
 		return out_b
+	if def.get("forma", "") == "cabeza":
+		var ch := ConvexPolygonShape3D.new()
+		ch.points = PartLibrary.ellipsoid_points(PartLibrary.dims_m(def) * 0.5)
+		return [{"shape": ch, "xf": Transform3D.IDENTITY}]
 	if def.get("forma", "") == "custom" and def.has("_mesh") and collision_mode() != "caja":
 		var out := []
 		for pts in MeshImporter.convex_hulls(def, collision_mode() == "multiple"):

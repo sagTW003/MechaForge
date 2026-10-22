@@ -149,10 +149,13 @@ Pulsa **▶ Simular** (o `Espacio`) para activar la física (Jolt, 120 Hz). Las
 piezas se vuelven cuerpos rígidos con su masa real, gravedad, fricción y
 colisiones. Con **🔗 Conectar** unes dos piezas mediante:
 
-- **Fija** — soldadura rígida.
+- **Fija** — soldadura rígida: las piezas unidas así forman un solo cuerpo rígido
+  (con la masa, el centro de masa y la inercia del conjunto).
 - **Bisagra** — giro sobre un eje, con límites opcionales y **motor** (curva
   torque–velocidad de motor DC: velocidad objetivo, torque de arranque, velocidad
-  sin carga).
+  sin carga). Con control, la consigna puede seguir un **perfil** (senoidal o en
+  escalones) y, en posición, ser un **servo ideal** que lo sigue exacto (banco de
+  pruebas).
 - **Deslizadera** — desplazamiento lineal sobre un eje, con límites.
 - **Rótula** — giro libre en los tres ejes.
 - **Engranaje** — acoplamiento cinemático por relación de transmisión.
@@ -432,7 +435,7 @@ arquitectura y cómo enlazar los eventos, en
 
 ### Proyectos de ejemplo (menú «Ejemplos»)
 
-Doce proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
+Trece proyectos completos, listos para pulsar ▶ Simular (se abren como proyecto sin
 título; guárdalos con «Guardar como…»):
 
 | Ejemplo | Qué muestra |
@@ -449,6 +452,7 @@ título; guárdalos con «Guardar como…»):
 | Multímetro en protoboard | Tensión en el LED y en la resistencia, continuidad, corriente en serie |
 | Arduino Nano y NE555 (DIP) | Integrados que cruzan el canal; 555 astable y salidas `d2`/`d13` del programa |
 | Gafas VR caseras | Carcasa impresa, pantalla, lentes en deslizaderas (IPD 63 mm) y ESP32 que lee el MPU-6050 por I²C con un filtro complementario |
+| Gafas VR en cabeza de prueba | Las gafas sobre una cabeza impresa que mueven tres servos; las cámaras del visor siguen la orientación que estima la IMU, con gráficas de real frente a estimada |
 
 Los ejemplos son archivos `.mforge` en `project/templates/`: **añadir un proyecto
 al menú = copiar ahí un `.mforge`** (con `"nombre"` y `"descripcion"`). Se regeneran
@@ -570,6 +574,41 @@ bucle:
   menos de 0.3 px del píxel que da la inversa del shader, y la separación rojo–azul
   medida coincide con la prevista.
 
+### Gafas VR caseras: seguimiento de la cabeza con la IMU
+
+![Seguimiento con la IMU](docs/demo_vr_fase3.png)
+*Ejemplo «Gafas VR en cabeza de prueba»: tres servos mueven la cabeza, la ESP32 estima la orientación con el MPU-6050 y las cámaras del visor la siguen; la gráfica compara la guiñada real con la estimada.*
+
+- **Cabeza de prueba** (pieza `cabeza_prueba`): maniquí impreso, elipsoide de
+  190 × 230 × 150 mm con masa, centro de masa e inercia propias (577 g impreso al
+  10 %) y los ojos marcados donde caen los del visor.
+- **Banco de pruebas**: las bisagras con control pueden seguir un **perfil de
+  consigna** (senoidal o en escalones: centro, amplitud, frecuencia y desfase, con
+  una rampa de 1 s al arrancar). Marcadas como **servo ideal**, la pieza que mueven
+  sigue el perfil exacto (cuerpo cinemático, con la velocidad de su movimiento para
+  la IMU), como un banco de precisión. Las uniones con perfil no las mueve el
+  programa.
+- **Firmware de ejemplo**: filtro complementario que integra el giroscopio con la
+  cinemática de los ángulos de Euler y corrige alabeo y cabeceo con el acelerómetro.
+- **Seguimiento con la IMU** (panel 👓 Visor): las cámaras pueden seguir la pose real
+  o la orientación que calcula el programa (`roll`, `pitch`, `yaw`), con el retardo
+  del enlace y la pantalla (20 ms por defecto) y sin posición (3 grados de libertad).
+- **Real frente a estimada**: gráfica de cada eje o del error de la vista, error RMS
+  y máximo, deriva de la guiñada (°/min), latencia del filtro (el retardo con que la
+  estimada mejor se superpone a la real) y CSV. También en `analyze_headset`.
+- En el ejemplo: RMS de 0.8° / 1.2° / 0.9° (alabeo, cabeceo, guiñada), latencia del
+  filtro de unos 9 ms y error de la vista de 1.9° RMS con 20 ms de enlace (3.8° con
+  80 ms). Con solo guiñada, la deriva medida es el sesgo del giroscopio en z
+  (−12.5 frente a −12.7 °/min); con la IMU ideal, nula (0.03 °/min). Con el movimiento
+  combinado, los errores de alabeo y cabeceo del filtro se cuelan en la guiñada:
+  deriva propia del firmware, no del sensor.
+- **Ajustes bloqueados**: una deslizadera marcada «bloqueada al simular» (el ajuste
+  de distancia entre lentes) va fija durante la simulación; en edición marca su
+  recorrido.
+- **Uniones fijas rígidas**: en Jolt las uniones fijas entre cuerpos dinámicos se
+  comportaban como resortes (una viga de 0.6 kg sobre un servo de 32 g cedía 8°);
+  ahora las piezas unidas con uniones fijas forman un solo cuerpo.
+
 ![Seguidor de línea](docs/demo_seguidor.png)
 *Carro seguidor de línea: dos sensores IR, control diferencial de velocidad y el programa del microcontrolador.*
 
@@ -656,7 +695,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real) | `mfvr` |
+| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; `-- mfvr fase3` solo esta parte) | `mfvr` |
 
 ## Arquitectura
 

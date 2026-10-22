@@ -4,6 +4,8 @@ extends Node
 ## (sin --headless se añade el render real: bolas en direcciones conocidas de cada ojo;
 ## con la variable MF_VR_DUMP=<carpeta> guarda las imágenes renderizadas)
 ##
+## Fase 3: perfiles de consigna, cabeza de prueba, base de la IMU, latencia y deriva,
+## y el ejemplo de la cabeza motorizada (seguimiento real frente a estimado).
 ## Fase 2: render estéreo (ojos sobre el eje de cada lente, frustum con la distorsión,
 ## la cuenta del shader píxel → dirección y su inversa, capas, simulación).
 ## Fase 1: pantalla y móvil, lentes (geometría, masa y óptica de lente delgada),
@@ -33,6 +35,12 @@ func wait_phys(n: int) -> void:
 		await get_tree().physics_frame
 
 func run() -> void:
+	if "fase3" in OS.get_cmdline_user_args():
+		await _run_phase3()
+		main._on_new()
+		print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
+		get_tree().quit(1 if fail > 0 else 0)
+		return
 	print("[TEST] Visor VR — Fase 0 (microcontrolador, IMU, materiales, mallas)")
 	_test_mcu_memory()
 	_test_materials()
@@ -60,11 +68,23 @@ func run() -> void:
 	await _test_rig_cameras()
 	await _test_rig_sim()
 	await _test_rig_render()
+	await _run_phase3()
 	main._on_new()
 	print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
 
 #region MICROCONTROLADOR --------------------------------------------------------
+
+func _run_phase3() -> void:
+	print("[TEST] Visor VR — Fase 3 (cabeza de prueba y seguimiento con la IMU)")
+	_test_profiles()
+	_test_imu_basis()
+	_test_head_part()
+	_test_latency_estimator()
+	await _test_fixed_fusion()
+	await _test_head_motion()
+	await _test_head_tracking_variants()
+	await _test_tracking_ui()
 
 func _test_mcu_memory() -> void:
 	main._on_new()
@@ -1147,5 +1167,239 @@ func _test_rig_render() -> void:
 	ball.queue_free()
 	rig.forced = false
 	rig.quality = 1
+
+#endregion
+
+#region FASE 3: SEGUIMIENTO CON LA IMU -------------------------------------------
+
+const HEAD_EXAMPLE := "res://templates/13_visor_cabeza.mforge"
+
+func _test_profiles() -> void:
+	var c := Connection.new()
+	c.tipo = Connection.Tipo.BISAGRA
+	c.control_mode = Connection.ControlMode.POSICION
+	c.profile = Connection.Profile.SENO
+	c.profile_amp = 30.0; c.profile_freq = 0.5; c.profile_phase_deg = 90.0; c.profile_center = 5.0
+	var v0 := rad_to_deg(c.profile_value(0.0))
+	var v1 := rad_to_deg(c.profile_value(0.5))
+	check(absf(v0 - 35.0) < 1e-4 and absf(v1 - 5.0) < 1e-4, "Perfil senoidal: centro + amplitud·sen(2πft + desfase) (%.2f°, %.2f°)" % [v0, v1])
+	c.profile = Connection.Profile.CUADRADA
+	c.profile_phase_deg = 0.0
+	check(absf(rad_to_deg(c.profile_value(0.2)) - 35.0) < 1e-4 and absf(rad_to_deg(c.profile_value(1.2)) + 25.0) < 1e-4,
+		"Perfil cuadrado: escalones de ±amplitud alrededor del centro")
+	var d := Connection.from_dict(c.to_dict())
+	check(d.profile == c.profile and d.profile_amp == 30.0 and d.profile_freq == 0.5 and d.profile_center == 5.0, "Perfil: se guarda y se recupera con el proyecto")
+	check(not c.mcu_driven(), "Perfil: una bisagra con perfil no la mueve el microcontrolador")
+	main._on_new()
+	var a: PartInstance = main._spawn("servo", "abs", Vector3(0, 0.02, 0))
+	var b: PartInstance = main._spawn("servo", "abs", Vector3(0, 0.06, 0))
+	var h1 := Connection.new(); h1.a_uid = a.uid; h1.b_uid = b.uid; h1.control_mode = Connection.ControlMode.POSICION
+	var h2 := Connection.new(); h2.a_uid = a.uid; h2.b_uid = b.uid; h2.control_mode = Connection.ControlMode.POSICION
+	h2.profile = Connection.Profile.SENO
+	main.connections = [h1, h2]
+	check(main._controlled_connections() == [h1], "Perfil: el programa solo recibe las uniones con control y sin perfil (m1…)")
+	main.connections = []
+
+func _test_imu_basis() -> void:
+	var worst := 0.0
+	for rpy in [Vector3(0, 0, 0), Vector3(12, -7, 33), Vector3(-25, 18, -140), Vector3(40, -60, 170), Vector3(-5, 3, 95)]:
+		var back := Sensors.imu_angles(Sensors.imu_basis(rpy))
+		var dz := wrapf(back.z - rpy.z, -180.0, 180.0)
+		worst = maxf(worst, maxf(absf(back.x - rpy.x), maxf(absf(back.y - rpy.y), absf(dz))))
+	check(worst < 1e-3, "IMU: la base de la pieza a partir de los ángulos es la inversa de imu_angles (error %s°)" % str(snappedf(worst, 1e-7)))
+	var b := Sensors.imu_basis(Vector3(0, 0, 30))
+	var p := Sensors.imu_basis(Vector3(0, 20, 0))
+	var r := Sensors.imu_basis(Vector3(15, 0, 0))
+	check(b.x.z < -0.49 and p.x.y < -0.34 and r.z.y < -0.25 and Sensors.imu_basis(Vector3.ZERO).is_equal_approx(Basis.IDENTITY),
+		"IMU: guiñada + gira el frente a la izquierda, cabeceo + lo baja y alabeo + baja el lado derecho")
+
+func _test_head_part() -> void:
+	main._on_new()
+	var head: PartInstance = main._spawn("cabeza_prueba", "pla", Vector3(0, 0.2, 0))
+	var mm := PartLibrary.mass_model(head.def)
+	var v := 4.0 / 3.0 * PI * 0.095 * 0.115 * 0.075
+	check(absf(float(mm["volumen"]) - v) < 1e-9 and absf(float(mm["area"]) - 0.1127) < 0.002,
+		"Cabeza de prueba: elipsoide de %.2f L y %.3f m² de superficie" % [v * 1000.0, float(mm["area"])])
+	head.estado["impresion"] = {"relleno": 0.1, "paredes_mm": 1.2}
+	var m := head.mass_kg()
+	var area := float(mm["area"])
+	var want := 1240.0 * (area * 0.0012 + 0.1 * (v - area * 0.0012))
+	var it := head.inertia_local()
+	check(absf(m - want) < 1e-6 and absf(it.x - m * (0.115 * 0.115 + 0.075 * 0.075) / 5.0) < 1e-7 and it.z > it.x and it.x > it.y,
+		"Cabeza de prueba: impresa al 10 %% pesa %.0f g, con la inercia de un elipsoide" % (m * 1000.0))
+	var shapes := head.make_collision_shapes()
+	var pts: PackedVector3Array = (shapes[0]["shape"] as ConvexPolygonShape3D).points
+	var on := true
+	for q in pts:
+		on = on and absf(pow(q.x / 0.095, 2) + pow(q.y / 0.115, 2) + pow(q.z / 0.075, 2) - 1.0) < 1e-4
+	check(shapes.size() == 1 and pts.size() > 100 and on, "Cabeza de prueba: colisión convexa sobre la superficie del elipsoide (%d puntos)" % pts.size())
+
+func _test_latency_estimator() -> void:
+	var tr := HeadTracking.new()
+	var tau := 0.037
+	var w := [TAU * 0.3, TAU * 0.2, TAU * 0.25]
+	var amp := [20.0, 10.0, 30.0]
+	for i in range(1200):
+		var t := i / 120.0
+		var real := Vector3(amp[0] * sin(w[0] * t), amp[1] * sin(w[1] * t + 1.0), amp[2] * sin(w[2] * t))
+		var td := t - tau
+		var est := Vector3(amp[0] * sin(w[0] * td), amp[1] * sin(w[1] * td + 1.0) + 0.4, amp[2] * sin(w[2] * td) + 0.5 * t)
+		tr.add(t, real, est, 0.0)
+	var s := tr.stats()
+	check(absf(float(s["latencia_ms"]) - 37.0) < 0.5, "Seguimiento: la latencia de una señal retrasada 37 ms sale %.2f ms (con sesgo y deriva)" % float(s["latencia_ms"]))
+	check(absf(float(s["deriva_guinada_deg_min"]) - 30.0) < 1.5, "Seguimiento: deriva de 0.5 °/s → %.1f °/min" % float(s["deriva_guinada_deg_min"]))
+	var c := tr.csv().split("\n")
+	check(c[0].begins_with("tiempo_s,alabeo_real,alabeo_est") and c.size() == 1202, "Seguimiento: CSV con cabecera y una fila por muestra")
+	check(tr.est_at(0.5 + 1.0 / 240.0).distance_to((tr.est_at(0.5) + tr.est_at(0.5 + 1.0 / 120.0)) * 0.5) < 1e-4, "Seguimiento: orientación estimada interpolada entre muestras")
+
+## Simula el ejemplo de la cabeza «secs» segundos (retardo del enlace link_ms).
+func _run_head(secs: float, link_ms := 20.0, ideal := false, yaw_only := false) -> void:
+	main._open_example(HEAD_EXAMPLE)
+	_rig().link_ms = link_ms
+	if yaw_only:
+		for c in main.connections:
+			if (c as Connection).profile != Connection.Profile.NINGUNO and (c as Connection).axis != 1:
+				(c as Connection).profile_amp = 0.0
+	if ideal:
+		for c in main.parts_root.get_children():
+			if c is PartInstance and (c as PartInstance).def_id == "imu":
+				(c as PartInstance).estado["imu"] = {"ideal": true}
+	main._toggle_simulation()
+	await wait_phys(int(secs * 120.0))
+
+func _test_head_motion() -> void:
+	await _run_head(9.0)
+	var rig := _rig()
+	check(main.mcu_enabled and main.mcu_target_uid == "" and main.mcu_last_vars.has("yaw"),
+		"Banco: el programa corre en la ESP32 (las uniones con perfil no son suyas) y calcula roll, pitch y yaw")
+	var worst := 0.0
+	for c in main.connections:
+		if (c as Connection).profile != Connection.Profile.NINGUNO:
+			var sp := rad_to_deg((c as Connection).profile_value(main.simulator.sim_time()))
+			worst = maxf(worst, absf(rad_to_deg(main.simulator.control_measure(c.uid)) - sp))
+	check(worst < 0.01, "Banco: los tres servos ideales siguen su perfil senoidal (error %.4f°)" % worst)
+	var holder: PartInstance = _part_by_def("soporte_lentes")[0]
+	var slip := 0.0
+	for ln in _part_by_def("lente_cardboard_37"):
+		var r0: Transform3D = holder.global_transform.affine_inverse() * (ln as PartInstance).global_transform
+		var r1: Transform3D = main._part_live_xform(holder).affine_inverse() * main._part_live_xform(ln)
+		slip = maxf(slip, r0.origin.distance_to(r1.origin))
+	check(slip < 0.001 and absf(float(rig.layout["ipd_m"]) - 0.063) < 1e-4,
+		"Banco: con el ajuste de IPD bloqueado las lentes no resbalan al girar la cabeza (%.2f mm) y la óptica no cambia" % (slip * 1000.0))
+	var s := rig.tracking.stats()
+	var rng: Array = s.get("recorrido_deg", [0, 0, 0])
+	check(rig.tracking.size() > 1000 and absf(float(rng[2]) - 70.0) < 4.0 and float(rng[1]) > 20.0 and float(rng[0]) > 12.0,
+		"Banco: la cabeza gira de verdad (recorrido real: alabeo %.0f°, cabeceo %.0f°, guiñada %.0f°)" % [rng[0], rng[1], rng[2]])
+	var rms: Array = s["rms_deg"]
+	print("    seguimiento: ", JSON.stringify(s))
+	check(float(rms[0]) < 2.0 and float(rms[1]) < 2.0 and float(rms[2]) < 3.0,
+		"Seguimiento: el filtro complementario sigue la cabeza (RMS alabeo %.2f°, cabeceo %.2f°, guiñada %.2f°)" % [rms[0], rms[1], rms[2]])
+	var lat := float(s["latencia_ms"])
+	check(lat >= 0.0 and lat < 40.0, "Seguimiento: latencia del filtro %.1f ms (muestreo de la IMU a 100 Hz y filtro)" % lat)
+	# Con la estimación perfecta (los ángulos reales), las cámaras quedarían como las reales.
+	var imu: PartInstance = main._find_part(rig._imu_uid)
+	var scr: PartInstance = main._find_part(str(rig.layout["screen_uid"]))
+	var real := Sensors.imu_angles(main._part_live_xform(imu).basis)
+	real.z -= float(rig._ref["yaw0"])
+	var cb_true := HeadsetRig.camera_basis(main._part_live_xform(scr).basis)
+	var ang := rad_to_deg((cb_true.inverse() * rig._imu_camera_basis(real)).get_rotation_quaternion().get_angle())
+	check(ang < 0.05, "Seguimiento: con los ángulos reales la vista IMU coincide con la real (%.3f°)" % ang)
+	rig.update_cameras()
+	var cam: Camera3D = rig.eyes[0]["cam"]
+	var used := rig._imu_camera_basis(rig.tracking.est_at(main.simulator.sim_time() - 0.02))
+	var c0: Vector3 = rig._ref["c0"]
+	var mid := ((rig.eyes[0]["cam"] as Camera3D).global_position + (rig.eyes[1]["cam"] as Camera3D).global_position) * 0.5
+	check(rig.imu_driving() and rad_to_deg((cam.global_basis.inverse() * used).get_rotation_quaternion().get_angle()) < 0.01 and mid.distance_to(c0) < 1e-4,
+		"Seguimiento: en modo IMU las cámaras usan la estimación de hace 20 ms y giran sobre los ojos del arranque (3 GdL)")
+	var verr := float(s["error_vista_rms_deg"])
+	check(verr > 0.0 and verr < 4.0, "Seguimiento: error de la vista %.2f° RMS (máx %.2f°)" % [verr, float(s["error_vista_max_deg"])])
+	_stats_link20 = verr
+	main._toggle_simulation()
+	await get_tree().process_frame
+	var api: Dictionary = main.api_headset()
+	check(api.get("seguimiento", {}).get("modo", "") == "imu" and api["seguimiento"].has("rms_deg") and JSON.stringify(api).find("inf") < 0 and JSON.stringify(api).find("nan") < 0,
+		"API: analyze_headset trae el seguimiento (modo IMU, errores, deriva y latencia)")
+
+var _stats_link20 := 0.0
+
+## Uniones fijas: las piezas forman un solo cuerpo rígido (Jolt resolvía las uniones
+## fijas entre cuerpos dinámicos como resortes: una viga de 0.6 kg sobre un servo de
+## 32 g cedía 8°).
+func _test_fixed_fusion() -> void:
+	main._on_new()
+	var base: PartInstance = main._spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))
+	base.anchored = true
+	var s1: PartInstance = main._spawn("servo", "abs", Vector3(0, 0.027, 0))
+	var beam: PartInstance = main._spawn("perfil_2020_400", "acero", Vector3(0.2, 0.056, 0), Vector3(0, 0, PI / 2.0))
+	main._tpl_fix(base, s1, s1.position)
+	main._tpl_fix(s1, beam, s1.position + Vector3(0, 0.029, 0))
+	var b0 := beam.global_basis
+	main._toggle_simulation()
+	await wait_phys(60)
+	var droop := rad_to_deg((b0.inverse() * main._part_live_xform(beam).basis).get_rotation_quaternion().get_angle())
+	check(main.simulator.get_body(beam.uid) == main.simulator.get_body(base.uid) and droop < 0.01,
+		"Uniones fijas: base, servo y viga en voladizo forman un solo cuerpo rígido (cede %.4f°)" % droop)
+	main._toggle_simulation()
+	# Conjunto libre: masa, centro de masa e inercia de las piezas (Steiner).
+	main._on_new()
+	var a: PartInstance = main._spawn("placa_100x100", "acero", Vector3(0, 0.3, 0))
+	var b: PartInstance = main._spawn("placa_100x100", "aluminio", Vector3(0.1, 0.3, 0))
+	main._tpl_fix(a, b, Vector3(0.05, 0.3, 0))
+	main._toggle_simulation()
+	await get_tree().physics_frame
+	var body: RigidBody3D = main.simulator.get_body(a.uid)
+	var ma := a.mass_kg()
+	var mb := b.mass_kg()
+	var com := Simulator.body_com(body)
+	var want := (Vector3(0, 0.3, 0) * ma + Vector3(0.1, 0.3, 0) * mb) / (ma + mb)
+	var izz := (ma + mb) * (0.1 * 0.1 + 0.005 * 0.005) / 12.0 + ma * pow(want.x, 2) + mb * pow(0.1 - want.x, 2)
+	check(main.simulator.get_body(b.uid) == body and absf(body.mass - ma - mb) < 1e-6 and com.distance_to(want) < 0.002 and absf(body.inertia.z - izz) < 1e-6,
+		"Uniones fijas: el conjunto tiene la masa (%.0f g), el centro de masa y la inercia de sus piezas" % ((ma + mb) * 1000.0))
+	check(main._part_live_xform(b).origin.distance_to(Vector3(0.1, 0.3, 0)) < 0.002 and main.simulator.telemetry(b.uid)["pos"].distance_to(main._part_live_xform(b).origin) < 1e-5,
+		"Uniones fijas: cada pieza del conjunto conserva su posición (transformación y telemetría)")
+	main._toggle_simulation()
+
+func _test_head_tracking_variants() -> void:
+	await _run_head(6.0, 80.0)
+	var s80 := _rig().tracking.stats()
+	main._toggle_simulation()
+	check(float(s80["error_vista_rms_deg"]) > _stats_link20 + 0.5,
+		"Seguimiento: con 80 ms de retardo el error de la vista sube de %.2f° a %.2f° RMS" % [_stats_link20, float(s80["error_vista_rms_deg"])])
+	# Solo guiñada con la IMU real: sin acoplamiento con alabeo y cabeceo, la deriva de
+	# la guiñada es el sesgo del giroscopio en z (el de esta IMU, que sale de su uid).
+	await _run_head(8.0, 20.0, false, true)
+	var sy := _rig().tracking.stats()
+	var gb: Vector3 = main.mcu_sensors._imu_state[_rig()._imu_uid]["gb"]
+	main._toggle_simulation()
+	var drift := float(sy["deriva_guinada_deg_min"])
+	check(absf(drift - gb.z * 60.0) < 0.1 * absf(gb.z * 60.0) + 0.5,
+		"Seguimiento: solo guiñada, la deriva (%+.2f °/min) es el sesgo del giroscopio en z (%+.2f °/min)" % [drift, gb.z * 60.0])
+	# IMU ideal y solo guiñada: sin sesgo ni acoplamiento con alabeo y cabeceo, no hay
+	# deriva (con el movimiento combinado, los errores de alabeo y cabeceo del filtro
+	# se cuelan en la guiñada: es una deriva real del firmware, no del sensor).
+	await _run_head(8.0, 20.0, true, true)
+	var si := _rig().tracking.stats()
+	main._toggle_simulation()
+	var rms: Array = si["rms_deg"]
+	print("    ideal, solo guiñada: ", JSON.stringify(si))
+	check(absf(float(si["deriva_guinada_deg_min"])) < 1.0 and float(rms[2]) < 0.5 and float(rms[0]) < 0.5 and float(rms[1]) < 0.5,
+		"Seguimiento: IMU ideal y solo guiñada: sin deriva (%+.2f °/min), RMS alabeo %.2f°, cabeceo %.2f°, guiñada %.2f°" % [float(si["deriva_guinada_deg_min"]), rms[0], rms[1], rms[2]])
+
+func _test_tracking_ui() -> void:
+	await _run_head(3.0)
+	var rig := _rig()
+	main.visor_panel.visible = true
+	rig.graph_axis = 2
+	rig.update_tracking_ui()
+	check(rig.track_graph._series.size() == 2 and (rig.track_graph._series[0]["valores"] as Array).size() > 50 and rig.track_label.text.contains("Deriva de la guiñada"),
+		"Panel: gráfica real frente a estimada (guiñada) y resumen del seguimiento")
+	main._toggle_simulation()
+	main.visor_panel.visible = false
+	var extra: Dictionary = main._project_extra()
+	check(extra.get("visor", {}).get("seguimiento", -1) == HeadsetRig.Track.IMU, "Proyecto: guarda el modo de seguimiento del visor")
+	main._on_new()
+	check(rig.track_mode == HeadsetRig.Track.REAL and rig.tracking.size() == 0, "Proyecto: uno nuevo vuelve al seguimiento real y sin datos")
+	main._open_example(HEAD_EXAMPLE)
+	check(rig.track_mode == HeadsetRig.Track.IMU and main.visor_track_opt.selected == HeadsetRig.Track.IMU, "Proyecto: el ejemplo de la cabeza abre en modo IMU (también en el panel)")
 
 #endregion

@@ -17,6 +17,9 @@ var _sim_root: Node3D
 var _running: bool = false
 
 var _bodies: Dictionary = {}          # uid -> RigidBody3D
+var _kin_drives: Array = []           # servos ideales, en orden de la cadena (ver _setup_ideal_servos)
+## Los perfiles de consigna arrancan con una rampa suave (sin el salto de un desfase).
+const PROFILE_RAMP_S := 1.0
 ## Piezas insertadas en una protoboard: comparten el cuerpo de la placa (cuerpo
 ## compuesto rígido); aquí se guarda su transformación relativa a ese cuerpo.
 var _body_offset: Dictionary = {}     # uid -> Transform3D
@@ -111,8 +114,10 @@ func start(connections: Array) -> void:
 	_connections = connections
 	_build_ground()
 	# 1) Crear un cuerpo rígido por pieza. Las insertadas en una protoboard se
-	# funden después en el cuerpo de la placa (jerarquía rígida padre-hijo).
+	# funden después en el cuerpo de la placa (jerarquía rígida padre-hijo), y las
+	# unidas con uniones fijas forman un solo cuerpo (ver _fixed_groups).
 	var inserted := []
+	var free_parts := []
 	for child in _parts_root.get_children():
 		if child is PartInstance and not child.is_queued_for_deletion():
 			var part := child as PartInstance
@@ -122,7 +127,14 @@ func start(connections: Array) -> void:
 			if part.inserted_in != "":
 				inserted.append(part)
 			else:
-				_bodies[part.uid] = _make_body(part)
+				free_parts.append(part)
+	for g in _fixed_groups(free_parts):
+		var gb := _make_group_body(g)
+		for gp in g:
+			_bodies[(gp as PartInstance).uid] = gb
+	for part in free_parts:
+		if not _bodies.has(part.uid):
+			_bodies[part.uid] = _make_body(part)
 	for part in inserted:
 		var host: RigidBody3D = _bodies.get(part.inserted_in)
 		if host == null:
@@ -148,6 +160,7 @@ func start(connections: Array) -> void:
 		for u in [conn.a_uid, conn.b_uid]:
 			if _bodies.has(u):
 				(_bodies[u] as RigidBody3D).can_sleep = false
+	_setup_ideal_servos()
 	# 2b) Engranajes: grupo rígido de cada rueda (piezas unidas con uniones fijas),
 	# para usar la inercia real del conjunto en la restricción de engrane.
 	for jd in _joints:
@@ -197,6 +210,7 @@ func stop() -> void:
 		if is_instance_valid(j["joint"]):
 			_discard(j["joint"])
 	_joints.clear()
+	_kin_drives.clear()
 	for uid in _bodies:
 		if is_instance_valid(_bodies[uid]):
 			_discard(_bodies[uid])
@@ -239,6 +253,144 @@ func _build_ground() -> void:
 	_ground.physics_material_override = pm
 	_ground.collision_layer = WORLD_LAYER
 	_sim_root.add_child(_ground)
+
+## Piezas unidas con uniones fijas: cada grupo (de 2 o más) va en UN cuerpo rígido.
+## Jolt resuelve las uniones fijas entre cuerpos dinámicos como un resorte cuya
+## rigidez depende de las masas (una viga de 0.6 kg sobre un soporte de 32 g cedía 8°,
+## y los motores de una bisagra montada sobre una pieza fija no sostenían su carga);
+## un solo cuerpo es rígido de verdad. Las deslizaderas bloqueadas (ajustes) cuentan
+## como fijas. El sensor de fuerza (mide sus propios contactos) y las piezas sin
+## colisión (marcas como la cinta de la pista) conservan su cuerpo.
+func _fixed_groups(parts: Array) -> Array:
+	var parent := {}
+	var by_uid := {}
+	for p in parts:
+		var pi := p as PartInstance
+		if pi.def_id == "sensor_fuerza" or pi.def.get("sin_colision", false):
+			continue
+		parent[pi.uid] = pi.uid
+		by_uid[pi.uid] = pi
+	var find := func(u: String) -> String:
+		var r := u
+		while parent[r] != r:
+			r = parent[r]
+		return r
+	for c in _connections:
+		var conn := c as Connection
+		var rigid := conn.tipo == Connection.Tipo.FIJA or (conn.tipo == Connection.Tipo.DESLIZADERA and conn.slide_locked)
+		if not rigid or not parent.has(conn.a_uid) or not parent.has(conn.b_uid):
+			continue
+		var ra: String = find.call(conn.a_uid)
+		var rb: String = find.call(conn.b_uid)
+		if ra != rb:
+			parent[rb] = ra
+	var groups := {}
+	for u in parent:
+		var r: String = find.call(u)
+		if not groups.has(r):
+			groups[r] = []
+		groups[r].append(by_uid[u])
+	var out := []
+	for r in groups:
+		if (groups[r] as Array).size() >= 2:
+			out.append(groups[r])
+	return out
+
+## Un cuerpo para un grupo de piezas fijas entre sí: el de la pieza anclada (o la más
+## pesada) más las formas y la vista de las demás en su sitio, con la masa, el centro
+## de masa y la inercia del conjunto (teorema de Steiner; sin productos de inercia).
+func _make_group_body(group: Array) -> RigidBody3D:
+	var root: PartInstance = group[0]
+	for p in group:
+		var pi := p as PartInstance
+		if pi.anchored and not root.anchored:
+			root = pi
+		elif pi.anchored == root.anchored and pi.mass_kg() > root.mass_kg():
+			root = pi
+	var body := _make_body(root)
+	var rx := root.global_transform
+	var items := [{"part": root, "rel": Transform3D.IDENTITY}]
+	var uids := [root.uid]
+	for p in group:
+		var part := p as PartInstance
+		if part == root:
+			continue
+		var rel := rx.affine_inverse() * part.global_transform
+		for sd in part.make_collision_shapes():
+			var cs := CollisionShape3D.new()
+			cs.shape = sd["shape"]
+			cs.transform = rel * (sd["xf"] as Transform3D)
+			body.add_child(cs)
+		var vis := part.make_visual_clone()
+		vis.name = "Visual_%s" % part.uid
+		vis.transform = rel * vis.transform
+		body.add_child(vis)
+		_body_offset[part.uid] = rel
+		items.append({"part": part, "rel": rel})
+		uids.append(part.uid)
+		var dm := PartLibrary.dims_m(part.def)
+		if minf(dm.x, minf(dm.y, dm.z)) < 0.03:
+			body.continuous_cd = true
+	if not root.anchored:
+		var mp := group_mass(items)
+		body.mass = maxf(0.001, float(mp["mass"]))
+		body.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+		body.center_of_mass = mp["com"]
+		var it: Vector3 = mp["inertia"]
+		if it.x > 0.0 and it.y > 0.0 and it.z > 0.0:
+			body.inertia = it
+	body.set_meta("piezas", uids)
+	return body
+
+## Masa, centro de masa e inercia (diagonal, ejes del cuerpo) de piezas en un cuerpo:
+## items = [{part, rel}] con rel la transformación de cada pieza en el cuerpo.
+static func group_mass(items: Array) -> Dictionary:
+	var total := 0.0
+	var acc := Vector3.ZERO
+	var parts := []
+	for it in items:
+		var p: PartInstance = it["part"]
+		var rel: Transform3D = it["rel"]
+		var m := maxf(0.0001, p.mass_kg())
+		var c: Vector3 = rel * p.com_local()
+		parts.append({"m": m, "c": c, "R": rel.basis.orthonormalized(), "I": part_inertia(p, m)})
+		total += m
+		acc += c * m
+	var com := acc / total
+	var diag := Vector3.ZERO
+	for q in parts:
+		var R: Basis = q["R"]
+		var I: Vector3 = q["I"]
+		var r: Vector3 = (q["c"] as Vector3) - com
+		var m: float = q["m"]
+		for k in range(3):
+			# (R·diag(I)·Rᵀ)_kk = Σ_j R_kj² I_j ; Steiner: m(|r|² − r_k²).
+			var rot := 0.0
+			for j in range(3):
+				var rkj: float = R[j][k]
+				rot += rkj * rkj * I[j]
+			diag[k] += rot + m * (r.length_squared() - r[k] * r[k])
+	return {"mass": total, "com": com, "inertia": diag}
+
+## Inercia diagonal de una pieza (kg·m², sus ejes, respecto de su centro de masa): la
+## propia si tiene geometría propia; si no, la de su forma (caja, cilindro, esfera).
+static func part_inertia(p: PartInstance, m: float) -> Vector3:
+	var it := p.inertia_local()
+	if it != Vector3.ZERO:
+		return it
+	var d := PartLibrary.dims_m(p.def)
+	match str(p.def.get("forma", "caja")):
+		"cilindro", "tubo":
+			var r := d.x * 0.5
+			var ri := 0.0
+			if str(p.def.get("forma", "")) == "tubo":
+				ri = maxf(0.0, r - float(p.def.get("dimensiones_mm", {}).get("espesor", 2.0)) / 1000.0)
+			var side := m * (3.0 * (r * r + ri * ri) + d.y * d.y) / 12.0
+			return Vector3(side, m * (r * r + ri * ri) * 0.5, side)
+		"esfera":
+			return Vector3.ONE * 0.4 * m * pow(d.x * 0.5, 2)
+		_:
+			return Vector3(d.y * d.y + d.z * d.z, d.x * d.x + d.z * d.z, d.x * d.x + d.y * d.y) * m / 12.0
 
 func _make_body(part: PartInstance) -> RigidBody3D:
 	var body := RigidBody3D.new()
@@ -419,8 +571,11 @@ func _axis_basis_z(dir: Vector3) -> Basis:
 
 func _physics_process(delta: float) -> void:
 	_sim_time += delta
+	_drive_ideal_servos()
 	for jd in _joints:
 		var conn: Connection = jd["conn"]
+		if jd.get("ideal", false):
+			continue
 		if conn.tipo == Connection.Tipo.BISAGRA and conn.motor_enabled:
 			_update_control(jd, delta)
 			_drive_motor(jd)
@@ -438,6 +593,69 @@ func _physics_process(delta: float) -> void:
 		_elec_accum = 0.0
 		_compute_electrical()
 
+## Servos ideales (bisagras de posición con perfil marcado «ideal»): su pieza B pasa a
+## cuerpo cinemático y sigue el perfil exacto respecto de la A. Solo si la A está
+## quieta (anclada) o es a su vez cinemática: se ordenan por la cadena (una cabeza de
+## prueba sobre tres servos apilados). Jolt da a los cuerpos cinemáticos la velocidad
+## de su movimiento, así que la IMU mide giros y aceleraciones reales.
+func _setup_ideal_servos() -> void:
+	_kin_drives.clear()
+	var pending := []
+	for jd in _joints:
+		var c: Connection = jd["conn"]
+		if c.tipo == Connection.Tipo.BISAGRA and c.profile != Connection.Profile.NINGUNO and c.profile_ideal \
+				and c.control_mode == Connection.ControlMode.POSICION and jd["a"] != jd["b"]:
+			pending.append(jd)
+	var driven := {}
+	var progress := true
+	while progress and not pending.is_empty():
+		progress = false
+		for jd in pending.duplicate():
+			var a: RigidBody3D = jd["a"]
+			var b: RigidBody3D = jd["b"]
+			if not (a.freeze or driven.has(a)):
+				continue
+			pending.erase(jd)
+			progress = true
+			if b.freeze or driven.has(b):
+				continue                      # B anclada o ya movida por otro servo
+			b.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+			b.freeze = true
+			driven[b] = true
+			var conn: Connection = jd["conn"]
+			var a0 := a.global_transform
+			jd["ideal"] = true
+			_kin_drives.append({"conn": conn, "a": a, "b": b, "rel0": a0.affine_inverse() * b.global_transform,
+				"anchor": a0.affine_inverse() * conn.anchor, "axis": (a0.basis.inverse() * conn.axis_vector()).normalized()})
+	for jd in pending:
+		push_warning("Servo ideal sobre una pieza que no está fija ni movida por otro servo ideal: se usa el PID (%s)." % (jd["conn"] as Connection).uid)
+
+## Consigna del perfil con la rampa de arranque (suave: smoothstep en PROFILE_RAMP_S).
+static func profile_setpoint(conn: Connection, t: float) -> float:
+	return conn.profile_value(t) * smoothstep(0.0, PROFILE_RAMP_S, t)
+
+## Coloca cada pieza movida por un servo ideal en su ángulo del perfil (al final del
+## paso que empieza): B = A · giro(eje, θ) alrededor del anclaje · B0 relativo a A0.
+func _drive_ideal_servos() -> void:
+	var targets := {}
+	for kd in _kin_drives:
+		var conn: Connection = kd["conn"]
+		var th := profile_setpoint(conn, _sim_time)
+		if conn.limit_enabled:
+			th = clampf(th, conn.limit_lower, conn.limit_upper)
+		if conn.motor_type == Connection.MotorType.SERVO:
+			th = clampf(th, deg_to_rad(conn.servo_min_deg), deg_to_rad(conn.servo_max_deg))
+		conn.ctrl_setpoint = th
+		var anchor: Vector3 = kd["anchor"]
+		var rel := Transform3D(Basis(kd["axis"], th), anchor) * Transform3D(Basis.IDENTITY, -anchor) * (kd["rel0"] as Transform3D)
+		var a: RigidBody3D = kd["a"]
+		var b: RigidBody3D = kd["b"]
+		var bx: Transform3D = (targets.get(a, a.global_transform) as Transform3D) * rel
+		b.global_transform = bx
+		targets[b] = bx
+		_ctrl_angle[conn.uid] = th
+		_ctrl_meas[conn.uid] = th
+
 ## Aplica el controlador PID a una bisagra motorizada (posición o velocidad).
 func _update_control(jd: Dictionary, delta: float) -> void:
 	var conn: Connection = jd["conn"]
@@ -453,6 +671,9 @@ func _update_control(jd: Dictionary, delta: float) -> void:
 	var pid: int = _pid_ids.get(conn.uid, -1)
 	if pid < 0:
 		return
+	# Perfil de consigna (banco de pruebas): manda sobre el valor fijo.
+	if conn.profile != Connection.Profile.NINGUNO:
+		conn.ctrl_setpoint = profile_setpoint(conn, _sim_time)
 	# Consigna efectiva según el tipo de motor.
 	var setpoint := conn.ctrl_setpoint
 	if conn.motor_type == Connection.MotorType.STEPPER:
@@ -775,10 +996,14 @@ func telemetry(uid: String) -> Dictionary:
 	var b: RigidBody3D = _bodies.get(uid)
 	if b == null or not is_instance_valid(b):
 		return {}
+	# Posición y velocidad de la propia pieza (en un cuerpo de varias piezas, la de su
+	# punto: v + ω × r).
+	var p: Vector3 = (part_transform(uid) as Transform3D).origin
+	var v := b.linear_velocity + b.angular_velocity.cross(p - body_com(b))
 	return {
-		"pos": b.global_position,
-		"vel": b.linear_velocity,
-		"speed": b.linear_velocity.length(),
+		"pos": p,
+		"vel": v,
+		"speed": v.length(),
 		"ang_vel": b.angular_velocity,
 		"ang_speed": b.angular_velocity.length(),
 		"mass": b.mass,

@@ -1,0 +1,916 @@
+{
+	"app_version": "0.1.0",
+	"bateria": {
+		"capacidad_mah": 2200.0,
+		"voltaje": 12.0
+	},
+	"cables": [
+		{
+			"a_key": "p1956706_74484:5V",
+			"b_key": "p1955033_41829:5V",
+			"color": "auto",
+			"tipo": "power",
+			"uid": "v1"
+		},
+		{
+			"a_key": "p1956706_74484:GND",
+			"b_key": "p1955033_41829:GND",
+			"color": "auto",
+			"tipo": "gnd",
+			"uid": "v2"
+		},
+		{
+			"a_key": "p1956706_74484:3V3",
+			"b_key": "p1958558_48966:VCC",
+			"color": "naranja",
+			"tipo": "power",
+			"uid": "v3"
+		},
+		{
+			"a_key": "p1956706_74484:GND2",
+			"b_key": "p1958558_48966:GND",
+			"color": "negro",
+			"tipo": "gnd",
+			"uid": "v4"
+		},
+		{
+			"a_key": "p1956706_74484:GPIO22",
+			"b_key": "p1958558_48966:SCL",
+			"color": "amarillo",
+			"tipo": "signal",
+			"uid": "v5"
+		},
+		{
+			"a_key": "p1956706_74484:GPIO21",
+			"b_key": "p1958558_48966:SDA",
+			"color": "azul",
+			"tipo": "signal",
+			"uid": "v6"
+		}
+	],
+	"creado": "2026-10-22T20:19:09",
+	"descripcion": "Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia).",
+	"entorno": 0,
+	"formato": "mechaforge",
+	"grid_mm": 10.0,
+	"microcontrolador": {
+		"activo": true,
+		"script": "# ESP32 + MPU-6050 por I²C (dirección 0x68): despierta el sensor, lee sus\n# registros y estima la orientación (grados) con un filtro complementario:\n# integra el giroscopio con la cinemática de los ángulos de Euler y corrige\n# el alabeo y el cabeceo con la gravedad que mide el acelerómetro.\ninicio:\n  ok = i2c_escribir(0x68, 0x6B, 0)\n  quien = i2c_leer(0x68, 0x75)\nbucle:\n  ax = i2c16(0x68, 0x3B) / 16384.0\n  ay = i2c16(0x68, 0x3D) / 16384.0\n  az = i2c16(0x68, 0x3F) / 16384.0\n  gx = i2c16(0x68, 0x43) / 131.0\n  gy = i2c16(0x68, 0x45) / 131.0\n  gz = i2c16(0x68, 0x47) / 131.0\n  r = roll * pi / 180\n  p = pitch * pi / 180\n  giro = sin(r) * gy + cos(r) * gz\n  roll = 0.98 * (roll + (gx + giro * tan(p)) * dt) + 0.02 * atan2(ay, az) * 180 / pi\n  pitch = 0.98 * (pitch + (cos(r) * gy - sin(r) * gz) * dt) + 0.02 * atan2(-ax, sqrt(ay * ay + az * az)) * 180 / pi\n  yaw = yaw + giro / cos(p) * dt",
+		"union": -1
+	},
+	"nombre": "Gafas VR en cabeza de prueba",
+	"piezas": [
+		{
+			"def_id": "placa_base_200x200",
+			"dims_mm": {
+				"x": 200.0,
+				"y": 8.0,
+				"z": 200.0
+			},
+			"fijo": true,
+			"material": "acero",
+			"pos": [
+				-0.115000002086163,
+				0.00400000018998981,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1940072_73663"
+		},
+		{
+			"def_id": "perfil_2020_200",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 200.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "aluminio",
+			"pos": [
+				-0.115000002086163,
+				0.108000002801418,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1946313_73671"
+		},
+		{
+			"def_id": "servo",
+			"dims_mm": {
+				"x": 40.0,
+				"y": 38.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				-0.115000002086163,
+				0.226999998092651,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1952963_7741"
+		},
+		{
+			"def_id": "servo",
+			"dims_mm": {
+				"x": 40.0,
+				"y": 38.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				-0.115000002086163,
+				0.266999989748001,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1953239_95037"
+		},
+		{
+			"def_id": "servo",
+			"dims_mm": {
+				"x": 40.0,
+				"y": 38.0,
+				"z": 20.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				-0.115000002086163,
+				0.307000011205673,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1953423_58123"
+		},
+		{
+			"def_id": "cabeza_prueba",
+			"dims_mm": {
+				"x": 190.0,
+				"y": 230.0,
+				"z": 150.0
+			},
+			"estado": {
+				"impresion": {
+					"paredes_mm": 1.2,
+					"relleno": 0.1
+				}
+			},
+			"fijo": false,
+			"material": "pla",
+			"pos": [
+				-0.115000002086163,
+				0.442999988794327,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1953627_40132"
+		},
+		{
+			"def_id": "carcasa_visor",
+			"dims_mm": {
+				"espesor": 2.5,
+				"x": 65.0,
+				"y": 95.0,
+				"z": 160.0
+			},
+			"fijo": false,
+			"material": "pla",
+			"pos": [
+				0.0,
+				0.453000009059906,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1954819_78195"
+		},
+		{
+			"def_id": "pantalla_55",
+			"dims_mm": {
+				"x": 126.0,
+				"y": 6.0,
+				"z": 73.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.0270000007003546,
+				0.453000009059906,
+				0.0
+			],
+			"rot": [
+				-1.57079637050629,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p1955033_41829"
+		},
+		{
+			"def_id": "soporte_lentes",
+			"dims_mm": {
+				"x": 140.0,
+				"y": 3.0,
+				"z": 50.0
+			},
+			"fijo": false,
+			"material": "pla",
+			"pos": [
+				-0.0160000007599592,
+				0.453000009059906,
+				0.0
+			],
+			"rot": [
+				-1.57079637050629,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p1956361_31344"
+		},
+		{
+			"def_id": "lente_cardboard_37",
+			"dims_mm": {
+				"borde": 1.0,
+				"diametro": 37.0,
+				"focal": 45.0
+			},
+			"fijo": false,
+			"material": "acrilico",
+			"pos": [
+				-0.0160000007599592,
+				0.453000009059906,
+				0.0315000005066395
+			],
+			"rot": [
+				-1.57079637050629,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p1956509_75703"
+		},
+		{
+			"def_id": "lente_cardboard_37",
+			"dims_mm": {
+				"borde": 1.0,
+				"diametro": 37.0,
+				"focal": 45.0
+			},
+			"fijo": false,
+			"material": "acrilico",
+			"pos": [
+				-0.0160000007599592,
+				0.453000009059906,
+				-0.0315000005066395
+			],
+			"rot": [
+				-1.57079637050629,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p1956605_27758"
+		},
+		{
+			"def_id": "esp32_devkit",
+			"dims_mm": {
+				"x": 54.4,
+				"y": 10.0,
+				"z": 27.9
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				0.00499999988824129,
+				0.505500018596649,
+				-0.0450000017881393
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1956706_74484"
+		},
+		{
+			"def_id": "imu",
+			"dims_mm": {
+				"x": 25.0,
+				"y": 8.0,
+				"z": 18.0
+			},
+			"fijo": false,
+			"material": "abs",
+			"pos": [
+				-0.00499999988824129,
+				0.504499971866608,
+				0.0299999993294477
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p1958558_48966"
+		}
+	],
+	"uniones": [
+		{
+			"a": "p1940072_73663",
+			"anchor": [
+				-0.115000002086163,
+				0.108000002801418,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1946313_73671",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1954756_81186"
+		},
+		{
+			"a": "p1946313_73671",
+			"anchor": [
+				-0.115000002086163,
+				0.226999998092651,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1952963_7741",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1954769_33588"
+		},
+		{
+			"a": "p1952963_7741",
+			"anchor": [
+				-0.115000002086163,
+				0.246999993920326,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1953239_95037",
+			"bloqueada": false,
+			"control_mode": 1,
+			"ctrl_kd": 0.3,
+			"ctrl_ki": 2.0,
+			"ctrl_kp": 12.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": true,
+			"limit_lower": -1.22173047639603,
+			"limit_upper": 1.22173047639603,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 9.0,
+			"motor_stall_torque": 2.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 2,
+			"perfil": 1,
+			"perfil_amp": 35.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.2,
+			"perfil_ideal": true,
+			"servo_max_deg": 90.0,
+			"servo_min_deg": -90.0,
+			"servo_sec_per_60": 0.12,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1954777_91629"
+		},
+		{
+			"a": "p1953239_95037",
+			"anchor": [
+				-0.115000002086163,
+				0.287000000476837,
+				0.0
+			],
+			"axis": 2,
+			"b": "p1953423_58123",
+			"bloqueada": false,
+			"control_mode": 1,
+			"ctrl_kd": 0.3,
+			"ctrl_ki": 2.0,
+			"ctrl_kp": 12.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": true,
+			"limit_lower": -0.698131700797732,
+			"limit_upper": 0.698131700797732,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 9.0,
+			"motor_stall_torque": 2.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 2,
+			"perfil": 1,
+			"perfil_amp": 15.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 90.0,
+			"perfil_freq": 0.3,
+			"perfil_ideal": true,
+			"servo_max_deg": 90.0,
+			"servo_min_deg": -90.0,
+			"servo_sec_per_60": 0.12,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1954788_55529"
+		},
+		{
+			"a": "p1953423_58123",
+			"anchor": [
+				-0.115000002086163,
+				0.326999992132187,
+				0.0
+			],
+			"axis": 0,
+			"b": "p1953627_40132",
+			"bloqueada": false,
+			"control_mode": 1,
+			"ctrl_kd": 0.3,
+			"ctrl_ki": 2.0,
+			"ctrl_kp": 12.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": true,
+			"limit_lower": -0.610865238198015,
+			"limit_upper": 0.610865238198015,
+			"microsteps": 1,
+			"motor_enabled": true,
+			"motor_noload_speed": 9.0,
+			"motor_stall_torque": 2.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 2,
+			"perfil": 1,
+			"perfil_amp": 10.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 45.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": true,
+			"servo_max_deg": 90.0,
+			"servo_min_deg": -90.0,
+			"servo_sec_per_60": 0.12,
+			"step_deg": 1.8,
+			"tipo": 1,
+			"uid": "c1954798_25686"
+		},
+		{
+			"a": "p1954819_78195",
+			"anchor": [
+				0.0270000007003546,
+				0.453000009059906,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1955033_41829",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1961811_17189"
+		},
+		{
+			"a": "p1954819_78195",
+			"anchor": [
+				-0.0160000007599592,
+				0.453000009059906,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1956361_31344",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1961827_76985"
+		},
+		{
+			"a": "p1954819_78195",
+			"anchor": [
+				0.00499999988824129,
+				0.505500018596649,
+				-0.0450000017881393
+			],
+			"axis": 1,
+			"b": "p1956706_74484",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1961836_70022"
+		},
+		{
+			"a": "p1954819_78195",
+			"anchor": [
+				-0.00499999988824129,
+				0.504499971866608,
+				0.0299999993294477
+			],
+			"axis": 1,
+			"b": "p1958558_48966",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c1961842_23024"
+		},
+		{
+			"a": "p1956361_31344",
+			"anchor": [
+				-0.0160000007599592,
+				0.453000009059906,
+				0.0315000005066395
+			],
+			"axis": 2,
+			"b": "p1956509_75703",
+			"bloqueada": true,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": true,
+			"limit_lower": -0.009,
+			"limit_upper": 0.009,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 2,
+			"uid": "c1961851_70687"
+		},
+		{
+			"a": "p1956361_31344",
+			"anchor": [
+				-0.0160000007599592,
+				0.453000009059906,
+				-0.0315000005066395
+			],
+			"axis": 2,
+			"b": "p1956605_27758",
+			"bloqueada": true,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": true,
+			"limit_lower": -0.009,
+			"limit_upper": 0.009,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 2,
+			"uid": "c1961858_85937"
+		},
+		{
+			"a": "p1953627_40132",
+			"anchor": [
+				0.0,
+				0.453000009059906,
+				0.0
+			],
+			"axis": 1,
+			"b": "p1954819_78195",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c2042078_84482"
+		}
+	],
+	"version": 3,
+	"visor": {
+		"calidad": 1,
+		"cromatica": true,
+		"predistorsion": true,
+		"retardo_ms": 20.0,
+		"seguimiento": 1
+	},
+	"vista": {
+		"distancia": 0.85,
+		"objetivo": [
+			-0.0500000007450581,
+			0.330000013113022,
+			0.0
+		],
+		"pitch": -0.20943951023932,
+		"yaw": -2.18166156499291
+	}
+}

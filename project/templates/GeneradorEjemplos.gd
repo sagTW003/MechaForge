@@ -32,6 +32,8 @@ const EJEMPLOS := [
 		"Integrados DIP que cruzan el canal central: el Nano (USB) alimenta los rieles, el 555 astable hace parpadear el LED rojo y el programa (d2, d13) el LED verde. Pulsa ▶ Simular."],
 	["12_gafas_vr", "Gafas VR caseras",
 		"Carcasa impresa en PLA con pantalla de 5.5\", dos lentes de f = 45 mm en deslizaderas (distancia entre ojos de 63 mm) y una ESP32 que lee el MPU-6050 por I²C y estima la orientación con un filtro complementario. Selecciona una lente para ver su óptica."],
+	["13_visor_cabeza", "Gafas VR en cabeza de prueba",
+		"Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia)."],
 ]
 
 func run() -> void:
@@ -250,17 +252,24 @@ func _ej_arduino_555() -> void:
 ## Visor VR (adelante = +X, la cara en −X). La pantalla, el soporte y las lentes usan
 ## la misma orientación: su +Y mira hacia el ojo (−X), su +X a −Z y su +Z arriba.
 func _ej_gafas_vr() -> void:
-	var yc := 0.0475
+	_anchor(_headset(0.0))
+	_program(VR_PROGRAM)
+	_view(Vector3(-0.005, 0.055, 0.0), 0.4, 62, -24, 0)
+
+## Gafas completas (carcasa, pantalla, soporte con dos lentes en deslizaderas, ESP32 e
+## IMU con sus cables), subidas «lift» metros. Devuelve la carcasa.
+func _headset(lift: float) -> PartInstance:
+	var yc := 0.0475 + lift
 	var face := Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0)).get_euler()
-	var shell := _anchor(_sp("carcasa_visor", "pla", Vector3(0, yc, 0)))
+	var shell := _sp("carcasa_visor", "pla", Vector3(0, yc, 0))
 	var scr := _sp("pantalla_55", "abs", Vector3(0.027, yc, 0), face)
 	var holder := _sp("soporte_lentes", "pla", Vector3(-0.016, yc, 0), face)
 	var lenses := []
 	for z in [0.0315, -0.0315]:
 		lenses.append(_sp("lente_cardboard_37", "acrilico", Vector3(-0.016, yc, z), face))
 	# Electrónica sobre el techo: los cables de la pantalla bajan por el pasacables.
-	var esp := _sp("esp32_devkit", "abs", Vector3(0.005, 0.1, -0.045))
-	var imu := _sp("imu", "abs", Vector3(-0.005, 0.099, 0.03))
+	var esp := _sp("esp32_devkit", "abs", Vector3(0.005, 0.1 + lift, -0.045))
+	var imu := _sp("imu", "abs", Vector3(-0.005, 0.099 + lift, 0.03))
 	for q in [scr, holder, esp, imu]:
 		main._tpl_fix(shell, q, q.position)
 	for ln in lenses:
@@ -268,6 +277,7 @@ func _ej_gafas_vr() -> void:
 		c.a_uid = holder.uid; c.b_uid = ln.uid
 		c.tipo = Connection.Tipo.DESLIZADERA; c.axis = 2; c.anchor = ln.position
 		c.limit_enabled = true; c.limit_lower = -0.009; c.limit_upper = 0.009
+		c.slide_locked = true               # el ajuste de IPD no se mueve al usar las gafas
 		main.connections.append(c)
 	var k := func(p: PartInstance, t: String) -> String: return main._key(p.uid, t)
 	main.wires = [
@@ -279,11 +289,56 @@ func _ej_gafas_vr() -> void:
 		{"uid": "v6", "a_key": k.call(esp, "GPIO21"), "b_key": k.call(imu, "SDA"), "tipo": "signal", "color": "azul"},
 	]
 	main._redraw_wires()
-	_program(VR_PROGRAM)
-	_view(Vector3(-0.005, 0.055, 0.0), 0.4, 62, -24, 0)
+	return shell
 
-const VR_PROGRAM := """# ESP32 + MPU-6050 por I²C (dirección 0x68): despierta el sensor,
-# lee sus registros y estima la orientación con un filtro complementario.
+## Banco de pruebas: la cabeza impresa sobre tres servos apilados (guiñada sobre el
+## poste, cabeceo y alabeo) que siguen perfiles senoidales, con las gafas puestas: los
+## ojos de la cabeza coinciden con los del visor (15 mm detrás de las lentes).
+func _ej_visor_cabeza() -> void:
+	var hx := -0.115                     # centro de la cabeza (los ojos, 84 mm delante)
+	var base := _anchor(_sp("placa_base_200x200", "acero", Vector3(hx, 0.004, 0)))
+	var post := _sp("perfil_2020_200", "aluminio", Vector3(hx, 0.108, 0))
+	var s_yaw := _sp("servo", "abs", Vector3(hx, 0.227, 0))
+	var s_pitch := _sp("servo", "abs", Vector3(hx, 0.267, 0))
+	var s_roll := _sp("servo", "abs", Vector3(hx, 0.307, 0))
+	var head := _sp("cabeza_prueba", "pla", Vector3(hx, 0.443, 0))
+	head.estado["impresion"] = {"relleno": 0.1, "paredes_mm": 1.2}
+	main._tpl_fix(base, post, post.position)
+	main._tpl_fix(post, s_yaw, s_yaw.position)
+	_servo(_hinge(s_yaw, s_pitch, Vector3(hx, 0.247, 0), 1), 35.0, 0.2, 0.0, 70.0)
+	_servo(_hinge(s_pitch, s_roll, Vector3(hx, 0.287, 0), 2), 15.0, 0.3, 90.0, 40.0)
+	_servo(_hinge(s_roll, head, Vector3(hx, 0.327, 0), 0), 10.0, 0.25, 45.0, 35.0)
+	var shell := _headset(0.4055)
+	main._tpl_fix(head, shell, shell.position)
+	_program(VR_PROGRAM)
+	main.headset_rig.track_mode = HeadsetRig.Track.IMU
+	_view(Vector3(-0.05, 0.33, 0.0), 0.85, -125, -12, 0)
+
+## Servo de posición del banco: perfil senoidal (amplitud °, frecuencia Hz, desfase °),
+## límites ±lim° y servo ideal (el banco sigue el perfil exacto: en Jolt, un motor
+## entre dos piezas que se mueven no sostiene bien una carga encima).
+func _servo(c: Connection, amp: float, freq: float, phase: float, lim: float) -> void:
+	c.motor_enabled = true
+	c.motor_type = Connection.MotorType.SERVO
+	c.motor_stall_torque = 2.5
+	c.motor_noload_speed = 9.0
+	c.servo_min_deg = -90.0
+	c.servo_max_deg = 90.0
+	c.servo_sec_per_60 = 0.12
+	c.control_mode = Connection.ControlMode.POSICION
+	c.ctrl_kp = 12.0; c.ctrl_ki = 2.0; c.ctrl_kd = 0.3
+	c.limit_enabled = true; c.limit_lower = deg_to_rad(-lim); c.limit_upper = deg_to_rad(lim)
+	c.profile = Connection.Profile.SENO
+	c.profile_amp = amp; c.profile_freq = freq; c.profile_phase_deg = phase
+	c.profile_ideal = true
+
+## Firmware del visor: filtro complementario con la cinemática de los ángulos de Euler
+## (el giroscopio da velocidades en ejes del chip; con el visor inclinado no son las
+## derivadas de alabeo, cabeceo y guiñada).
+const VR_PROGRAM := """# ESP32 + MPU-6050 por I²C (dirección 0x68): despierta el sensor, lee sus
+# registros y estima la orientación (grados) con un filtro complementario:
+# integra el giroscopio con la cinemática de los ángulos de Euler y corrige
+# el alabeo y el cabeceo con la gravedad que mide el acelerómetro.
 inicio:
   ok = i2c_escribir(0x68, 0x6B, 0)
   quien = i2c_leer(0x68, 0x75)
@@ -294,9 +349,12 @@ bucle:
   gx = i2c16(0x68, 0x43) / 131.0
   gy = i2c16(0x68, 0x45) / 131.0
   gz = i2c16(0x68, 0x47) / 131.0
-  roll = 0.98 * (roll + gx * dt) + 0.02 * atan2(ay, az) * 180 / pi
-  pitch = 0.98 * (pitch + gy * dt) + 0.02 * atan2(-ax, sqrt(ay * ay + az * az)) * 180 / pi
-  yaw = yaw + gz * dt"""
+  r = roll * pi / 180
+  p = pitch * pi / 180
+  giro = sin(r) * gy + cos(r) * gz
+  roll = 0.98 * (roll + (gx + giro * tan(p)) * dt) + 0.02 * atan2(ay, az) * 180 / pi
+  pitch = 0.98 * (pitch + (cos(r) * gy - sin(r) * gz) * dt) + 0.02 * atan2(-ax, sqrt(ay * ay + az * az)) * 180 / pi
+  yaw = yaw + giro / cos(p) * dt"""
 
 func _ej_grua() -> void:
 	var base := _anchor(_sp("placa_base_200x200", "acero", Vector3(0, 0.004, 0)))

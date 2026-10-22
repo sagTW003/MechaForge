@@ -110,7 +110,9 @@ func read(parts_root: Node, sim: Simulator, space: PhysicsDirectSpaceState3D) ->
 		var v: String = s["var"]
 		if body == null:
 			continue
-		var xf := body.global_transform
+		# La transformación de la pieza (en un cuerpo de varias piezas fijas no es la
+		# del cuerpo).
+		var xf: Transform3D = sim.part_transform(part.uid)
 		var half := PartLibrary.dims_m(part.def) * 0.5
 		match s["kind"]:
 			"dist":
@@ -188,6 +190,26 @@ static func imu_angles(b: Basis) -> Vector3:
 		rad_to_deg(atan2(-bz.y, by.y)),                 # roll
 		rad_to_deg(-asin(clampf(bx.y, -1.0, 1.0))),     # pitch
 		rad_to_deg(atan2(-bx.z, bx.x)))                 # yaw
+
+## Inversa de imu_angles: base de la pieza (x adelante, y arriba, z a la derecha, en
+## el mundo) con alabeo, cabeceo y guiñada (°) dados. En ejes del chip (x adelante,
+## y izquierda, z arriba) es Rz(guiñada)·Ry(cabeceo)·Rx(alabeo).
+static func imu_basis(rpy: Vector3) -> Basis:
+	var r := deg_to_rad(rpy.x)
+	var p := deg_to_rad(rpy.y)
+	var y := deg_to_rad(rpy.z)
+	var cr := cos(r)
+	var sr := sin(r)
+	var cp := cos(p)
+	var sp := sin(p)
+	var cy := cos(y)
+	var sy := sin(y)
+	var c1 := Vector3(cy * cp, sy * cp, -sp)
+	var c2 := Vector3(cy * sp * sr - sy * cr, sy * sp * sr + cy * cr, cp * sr)
+	var c3 := Vector3(cy * sp * cr + sy * sr, sy * sp * cr - cy * sr, cp * cr)
+	# Del chip al mundo de Godot: (x, y, z) → (x, z, −y).
+	var g := func(v: Vector3) -> Vector3: return Vector3(v.x, v.z, -v.y)
+	return Basis(g.call(c1), g.call(c3), -g.call(c2))
 
 ## Parámetros en uso de una IMU: los de la pieza más lo escrito por registros.
 func params_for(part: PartInstance) -> Dictionary:

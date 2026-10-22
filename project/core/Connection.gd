@@ -31,6 +31,11 @@ var motor_target_speed: float = 3.0    # rad/s (sentido y magnitud objetivo)
 var motor_stall_torque: float = 0.5    # N·m a velocidad 0
 var motor_noload_speed: float = 6.0    # rad/s sin carga
 
+# Deslizadera de ajuste: bloqueada al simular (un tornillo o la fricción la fijan donde
+# se dejó, como el ajuste de distancia entre ojos de un visor). En la simulación va
+# como una unión fija; en edición marca el recorrido del ajuste.
+var slide_locked: bool = false
+
 # Engranaje: relación de transmisión (ω_b = -ratio * ω_a).
 var gear_ratio: float = 1.0
 ## Dientes de los engranajes (si >0, la relación = Z1/Z2).
@@ -92,8 +97,38 @@ var elec_duty: float = 1.0
 
 const CONTROL_NOMBRE := ["Ninguno", "Posición (PID)", "Velocidad (PID)"]
 
+# --- Perfil de consigna (banco de pruebas): la consigna sigue una función del
+# tiempo de simulación en vez del valor fijo o del programa del microcontrolador.
+# Amplitud y centro en grados (posición) o rad/s (velocidad); frecuencia en Hz.
+enum Profile { NINGUNO, SENO, CUADRADA }
+const PROFILE_NOMBRE := ["Fija", "Senoidal", "Cuadrada (escalones)"]
+var profile: int = Profile.NINGUNO
+var profile_amp: float = 20.0
+var profile_freq: float = 0.25
+var profile_phase_deg: float = 0.0
+var profile_center: float = 0.0
+## Servo ideal: la unión sigue el perfil exactamente (las piezas que mueve van como
+## cuerpos cinemáticos), como el banco de precisión de un laboratorio. Sin él, el perfil
+## es la consigna del PID y el motor real la sigue con su par y su velocidad.
+var profile_ideal: bool = false
+
 func _init() -> void:
 	uid = "c%d_%d" % [Time.get_ticks_usec(), randi() % 100000]
+
+## ¿Recibe la consigna del microcontrolador? (bisagra con control y sin perfil).
+func mcu_driven() -> bool:
+	return tipo == Tipo.BISAGRA and control_mode != ControlMode.NINGUNO and profile == Profile.NINGUNO
+
+## Consigna del perfil en el instante t (rad en posición, rad/s en velocidad).
+func profile_value(t: float) -> float:
+	var ph := TAU * profile_freq * t + deg_to_rad(profile_phase_deg)
+	var v := profile_center
+	match profile:
+		Profile.SENO:
+			v += profile_amp * sin(ph)
+		Profile.CUADRADA:
+			v += profile_amp * (1.0 if sin(ph) >= 0.0 else -1.0)
+	return deg_to_rad(v) if control_mode == ControlMode.POSICION else v
 
 func axis_vector() -> Vector3:
 	match axis:
@@ -120,6 +155,9 @@ func to_dict() -> Dictionary:
 		"gear_backlash_deg": gear_backlash_deg, "gear_efficiency": gear_efficiency,
 		"step_deg": step_deg, "microsteps": microsteps,
 		"servo_min_deg": servo_min_deg, "servo_max_deg": servo_max_deg, "servo_sec_per_60": servo_sec_per_60,
+		"perfil": profile, "perfil_amp": profile_amp, "perfil_freq": profile_freq,
+		"perfil_fase": profile_phase_deg, "perfil_centro": profile_center, "perfil_ideal": profile_ideal,
+		"bloqueada": slide_locked,
 	}
 
 static func from_dict(d: Dictionary) -> Connection:
@@ -158,4 +196,11 @@ static func from_dict(d: Dictionary) -> Connection:
 	c.servo_min_deg = d.get("servo_min_deg", 0.0)
 	c.servo_max_deg = d.get("servo_max_deg", 180.0)
 	c.servo_sec_per_60 = d.get("servo_sec_per_60", 0.15)
+	c.profile = int(d.get("perfil", Profile.NINGUNO))
+	c.profile_amp = float(d.get("perfil_amp", 20.0))
+	c.profile_freq = float(d.get("perfil_freq", 0.25))
+	c.profile_phase_deg = float(d.get("perfil_fase", 0.0))
+	c.profile_center = float(d.get("perfil_centro", 0.0))
+	c.profile_ideal = bool(d.get("perfil_ideal", false))
+	c.slide_locked = bool(d.get("bloqueada", false))
 	return c

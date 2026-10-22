@@ -86,6 +86,7 @@ static func build(def: Dictionary) -> Node3D:
 		"pantalla": return _screen(d, def, false)
 		"movil": return _screen(d, def, true)
 		"esp32": return _esp32(d)
+		"cabeza": return _head(d, def)
 		_: return null
 
 ## Carta de ajuste lado a lado (un círculo, una cruz y una rejilla por ojo, y barras
@@ -178,6 +179,48 @@ static func _screen(d: Vector3, def: Dictionary, phone: bool) -> Node3D:
 	glass.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0, d.y * 0.5 + (0.0005 if phone else 0.0002), 0))
 	glass.set_meta("pantalla_luz", true)
 	n.add_child(glass)
+	return n
+
+## Cabeza de prueba: maniquí impreso (elipsoide) con la cara hacia +X, nariz,
+## orejas y la posición de los ojos marcada (donde caen los ojos del visor).
+static func _head(d: Vector3, def: Dictionary) -> Node3D:
+	var n := Node3D.new()
+	var skin := mat(Color(0.78, 0.76, 0.73), 0.0, 0.7)
+	var skull := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.5
+	sm.height = 1.0
+	sm.radial_segments = 48
+	sm.rings = 24
+	skull.mesh = sm
+	skull.scale = d
+	skull.material_override = skin
+	n.add_child(skull)
+	var a := d * 0.5
+	var eyes: Dictionary = def.get("ojos_mm", {"x": 84, "y": 10, "ipd": 63})
+	var ex := float(eyes.get("x", 84)) / 1000.0
+	var ey := float(eyes.get("y", 10)) / 1000.0
+	var half_ipd := float(eyes.get("ipd", 63)) / 2000.0
+	var dark := mat(Color(0.12, 0.12, 0.14), 0.0, 0.4)
+	for z in [half_ipd, -half_ipd]:
+		var eye := MeshInstance3D.new()
+		var es := SphereMesh.new()
+		es.radius = 0.011
+		es.height = 0.022
+		eye.mesh = es
+		eye.material_override = dark
+		eye.position = Vector3(ex, ey, z)
+		n.add_child(eye)
+	# Nariz: cuña bajo los ojos.
+	var nose := _box(Vector3(0.026, 0.034, 0.02), skin, Vector3(a.x * 0.93, ey - 0.03, 0))
+	nose.rotation = Vector3(0, 0, deg_to_rad(-18))
+	n.add_child(nose)
+	# Orejas.
+	for z in [a.z, -a.z]:
+		var ear := _cyl(0.022, 0.012, skin, Vector3(-0.01, ey - 0.01, z))
+		ear.rotation = Vector3(PI / 2.0, 0, 0)
+		ear.scale = Vector3(0.75, 1.0, 1.3)
+		n.add_child(ear)
 	return n
 
 ## ESP32 DevKitC: placa negra, módulo ESP-WROOM-32 con blindaje y antena, dos tiras

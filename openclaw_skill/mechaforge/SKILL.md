@@ -132,7 +132,14 @@ caseras». Para revisar un diseño de visor usa `analyze_headset`. Render estér
 cámara por ojo sobre el eje de cada lente (a la distancia ojo–lente) y una imagen lado
 a lado predistorsionada en barril (k1, k2 de la lente) con corrección cromática (Abbe
 de la lente, `optica.abbe`); la pantalla la muestra encendida y el usuario la ve en
-«👓 Visor» (tecla V).
+«👓 Visor» (tecla V). Seguimiento: el visor puede mover sus cámaras con la
+orientación del programa (`roll`, `pitch`, `yaw` en °; modo IMU, guardado en el
+proyecto) y `analyze_headset` devuelve en `seguimiento` el error RMS por eje, la
+deriva de la guiñada, la latencia y el error de la vista. Banco de pruebas: pieza
+`cabeza_prueba` y bisagras con perfil de consigna (senoidal o cuadrado; servo ideal
+para seguirlo exacto); ejemplo «Gafas VR en cabeza de prueba». Las piezas unidas con
+uniones fijas (y con deslizaderas «bloqueadas al simular», como el ajuste de IPD)
+forman un solo cuerpo rígido en la simulación.
 
 Orientación con la IMU (filtro complementario):
 

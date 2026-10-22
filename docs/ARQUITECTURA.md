@@ -31,7 +31,10 @@
 - `HeadsetRig.gd` — render estéreo: dos `SubViewport` con una `Camera3D` por ojo
   (frustum asimétrico, `cull_mask` sin las capas del visor y del editor) y un tercero
   2D con el shader que compone la imagen lado a lado predistorsionada; la muestra en el
-  cristal de la pantalla del visor y en el panel «Vista del visor».
+  cristal de la pantalla del visor y en el panel «Vista del visor». Modo de
+  seguimiento IMU: las cámaras siguen la orientación que estima el programa.
+- `HeadTracking.gd` — registro de la orientación real frente a la estimada: errores,
+  deriva de la guiñada, latencia del filtro y CSV.
 - Piezas en `parts/vr.json`; el bus I²C está en `electronics/I2CBus.gd` y las funciones
   `i2c_…` del programa en `control/McuIo.gd`.
 

@@ -210,6 +210,25 @@
         }
       ],
       "descripcion": "Alimentada por USB: 5V y 3V3 como fuentes. I²C en GPIO21 (SDA) y GPIO22 (SCL)."
+    },
+    {
+      "id": "cabeza_prueba",
+      "nombre": "Cabeza de prueba (maniquí impreso)",
+      "categoria": "vr",
+      "material": "pla",
+      "forma": "cabeza",
+      "apariencia": "cabeza",
+      "dimensiones_mm": {
+        "x": 190,
+        "y": 230,
+        "z": 150
+      },
+      "ojos_mm": {
+        "x": 84,
+        "y": 10,
+        "ipd": 63
+      },
+      "descripcion": "Elipsoide de 190 × 230 × 150 mm con la cara hacia +X; los ojos están 84 mm por delante del centro y 10 mm por encima, a 63 mm entre sí. Impresa hueca: masa según el relleno. Para montar el visor y moverlo con servos (banco de pruebas)."
     }
   ]
 }

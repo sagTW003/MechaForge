@@ -18,6 +18,13 @@ extends Node
 ## Coordenadas del espectador sobre la pantalla: x a su derecha (−X de la pantalla),
 ## y arriba (+Z), en metros desde el centro. Las de la textura: uv con origen arriba a
 ## la izquierda.
+##
+## Seguimiento: en modo «real» las cámaras siguen la pose verdadera del visor (como un
+## visor con seguimiento perfecto). En modo «IMU» siguen la orientación que estima el
+## programa (variables roll, pitch, yaw, en °) con el retardo del enlace y la pantalla,
+## y sin posición (3 grados de libertad: giran alrededor del punto medio de los ojos
+## del arranque), como un visor casero con un MPU-6050. Cada paso de simulación se
+## registra la real frente a la estimada (HeadTracking).
 
 const LAYER_VISOR := 1 << 1        # capa 2: piezas del visor
 const LAYER_EDITOR := 1 << 2       # capa 3: uniones, gizmo, terminales, vista previa de la IA
@@ -29,6 +36,10 @@ const MAX_EYE_PX := 1600           # lado máximo del render de cada ojo
 const HEADSET_REACH := 0.25        # piezas unidas al visor a más de esto no se ocultan
 const QUALITY := [0.5, 0.75, 1.0]
 const QUALITY_NAMES := ["Baja (½)", "Media (¾)", "Alta (1:1)"]
+enum Track { REAL, IMU }
+const TRACK_NAMES := ["Real (pose del visor)", "IMU (orientación del programa)"]
+const EST_VARS := ["roll", "pitch", "yaw"]
+const AXIS_NAMES := ["Alabeo", "Cabeceo", "Guiñada", "Error de la vista"]
 
 var main: Node
 var forced := false                # render activo sin panel ni simulación (pruebas, capturas)
@@ -39,6 +50,18 @@ var layout: Dictionary = {}        # última disposición (compute_layout)
 var screen_vp: SubViewport         # imagen lado a lado de la pantalla
 var eyes: Array = []               # [{vp, cam}]: ojo izquierdo y derecho
 var info_label: Label              # estado en el panel «Vista del visor»
+var track_mode := Track.REAL
+var link_ms := 20.0                # retardo del enlace (USB/BLE), el render y la pantalla
+var tracking := HeadTracking.new()
+var track_graph: LiveGraph         # gráfica del panel (real frente a estimada)
+var track_label: Label
+var graph_axis := 0
+var _ref: Dictionary = {}          # referencia del arranque: guiñada, montaje, ojos
+var _imu_uid := ""
+var _yaw_prev := 0.0
+var _stats_cache: Dictionary = {}
+var _layout_locked := false        # simulando: la óptica es la del arranque
+var _stats_frame := -1000
 var _rect: ColorRect
 var _mat: ShaderMaterial
 var _active := false
@@ -83,10 +106,102 @@ func _ready() -> void:
 func is_active() -> bool:
 	return _active
 
+## Cada paso de simulación (lo llama Main justo después de leer los sensores y correr
+## el programa: la pose real es la que midió la IMU): referencia al arrancar y una
+## muestra del seguimiento.
+func record_tick() -> void:
+	if not layout.get("ok", false):
+		refresh()
+		if not layout.get("ok", false):
+			return
+	var now: float = main.simulator.sim_time()
+	if _ref.is_empty():
+		_capture_ref()
+		tracking.clear()
+		if _ref.is_empty():
+			return
+	var vars: Dictionary = main.mcu_last_vars
+	if not (vars.has(EST_VARS[0]) and vars.has(EST_VARS[1]) and vars.has(EST_VARS[2])):
+		return
+	var imu: PartInstance = main._find_part(_imu_uid)
+	if imu == null:
+		return
+	var real := Sensors.imu_angles(main._part_live_xform(imu).basis)
+	var yaw := real.z - float(_ref["yaw0"])
+	yaw = _yaw_prev + wrapf(yaw - _yaw_prev, -180.0, 180.0)      # sin saltos de ±180°
+	_yaw_prev = yaw
+	real.z = yaw
+	var e := Vector3(float(vars[EST_VARS[0]]), float(vars[EST_VARS[1]]), float(vars[EST_VARS[2]]))
+	var verr := 0.0
+	tracking.add(now, real, e, 0.0)
+	# Error de la vista: la orientación que se mostraría ahora frente a la real.
+	var scr: PartInstance = main._find_part(str(layout["screen_uid"]))
+	if scr:
+		var cb_true := camera_basis(main._part_live_xform(scr).basis)
+		var cb_used := _imu_camera_basis(tracking.est_at(now - link_ms / 1000.0))
+		verr = rad_to_deg((cb_true.inverse() * cb_used).get_rotation_quaternion().get_angle())
+		tracking.view_err[tracking.view_err.size() - 1] = verr
+
+## Al arrancar una simulación: disposición nueva y referencia nueva (si no, al abrir
+## otro proyecto y simular en el mismo fotograma quedaba la del anterior).
+func on_sim_started() -> void:
+	_ref = {}
+	tracking.clear()
+	_layout_locked = false
+	refresh()
+
+## IMU del visor: la de las piezas ocultas a los ojos (la del propio visor) o, si no,
+## cualquiera de la escena.
+func _find_imu() -> PartInstance:
+	var hid := hidden_parts(main, layout)
+	var any: PartInstance = null
+	for c in main.parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def.has("imu"):
+			if hid.has((c as PartInstance).uid):
+				return c
+			if any == null:
+				any = c
+	return any
+
+## Al arrancar: guiñada real (el programa empieza en 0), montaje de las cámaras
+## respecto de la IMU y posición de los ojos.
+func _capture_ref() -> void:
+	var imu := _find_imu()
+	var scr: PartInstance = main._find_part(str(layout.get("screen_uid", "")))
+	if imu == null or scr == null:
+		return
+	_imu_uid = imu.uid
+	var bi: Basis = main._part_live_xform(imu).basis.orthonormalized()
+	var sx: Transform3D = main._part_live_xform(scr)
+	var cb := camera_basis(sx.basis)
+	var eyes0 := []
+	for e in layout["eyes"]:
+		eyes0.append(sx * (e["pos_local"] as Vector3))
+	var c0 := Vector3.ZERO
+	for p in eyes0:
+		c0 += p
+	c0 /= eyes0.size()
+	_ref = {"yaw0": Sensors.imu_angles(bi).z, "mount": bi.inverse() * cb, "cam0": cb, "eyes0": eyes0, "c0": c0}
+	_yaw_prev = 0.0
+
+## Base de las cámaras con la orientación estimada (guiñada respecto del arranque).
+func _imu_camera_basis(e: Vector3) -> Basis:
+	var bi := Sensors.imu_basis(Vector3(e.x, e.y, e.z + float(_ref.get("yaw0", 0.0))))
+	return (bi * (_ref.get("mount", Basis.IDENTITY) as Basis)).orthonormalized()
+
+## ¿Mueve la IMU las cámaras ahora? (modo IMU, simulando y con estimación).
+func imu_driving() -> bool:
+	return track_mode == Track.IMU and not _ref.is_empty() and tracking.size() > 0 \
+		and main.simulator != null and main.simulator.is_running()
+
 func _process(_delta: float) -> void:
 	_frame += 1
 	var running: bool = main.simulator != null and main.simulator.is_running()
 	var panel := _panel_open()
+	if not running:
+		_ref = {}
+	if panel and _frame % 15 == 0:
+		update_tracking_ui()
 	if not (forced or panel or running):
 		if _active:
 			_set_active(false)
@@ -104,10 +219,93 @@ func _panel_open() -> bool:
 	var p = main.get("visor_panel")
 	return p != null and p.visible and not p.is_collapsed()
 
+## Estadísticas del seguimiento (calculadas como mucho dos veces por segundo).
+func tracking_stats() -> Dictionary:
+	if _frame - _stats_frame >= 30 or _stats_cache.is_empty():
+		_stats_cache = tracking.stats()
+		_stats_frame = _frame
+	return _stats_cache
+
+## Gráfica y resumen del seguimiento en el panel (los últimos 10 s del eje elegido).
+func update_tracking_ui() -> void:
+	if track_label == null:
+		return
+	var n := tracking.size()
+	if n < 2:
+		track_label.text = tracking_hint()
+		if track_graph:
+			track_graph.set_series([], [])
+		return
+	var tend: float = tracking.t[n - 1]
+	var i0 := tracking.t.bsearch(tend - 10.0)
+	var stride := maxi(1, (n - i0) / 600)
+	var ts := []
+	var a := []
+	var b := []
+	for i in range(i0, n, stride):
+		ts.append(tracking.t[i])
+		if graph_axis < 3:
+			a.append(tracking.real[graph_axis][i])
+			b.append(tracking.est[graph_axis][i])
+		else:
+			a.append(tracking.view_err[i])
+	if track_graph:
+		var series := []
+		if graph_axis < 3:
+			series = [{"nombre": "real", "color": Color(0.4, 0.9, 0.5), "valores": a},
+				{"nombre": "estimada", "color": Color(1.0, 0.6, 0.25), "valores": b}]
+		else:
+			series = [{"nombre": "error de la vista (°)", "color": Color(1.0, 0.45, 0.45), "valores": a}]
+		track_graph.set_title("%s (°) · últimos 10 s" % AXIS_NAMES[graph_axis])
+		track_graph.set_series(ts, series)
+	track_label.text = stats_text()
+
+func tracking_hint() -> String:
+	if not (main.mcu_last_vars.has("roll") or main.simulator.is_running()):
+		return "Simula (▶) con un programa que calcule roll, pitch y yaw (°) a partir de la IMU del visor para comparar la orientación estimada con la real."
+	if not main.mcu_last_vars.has("roll"):
+		return "El programa no calcula roll, pitch y yaw: no hay orientación estimada que comparar."
+	return "Esperando datos…"
+
+func stats_text() -> String:
+	var s := tracking_stats()
+	if s.is_empty():
+		return "Recogiendo datos (el primer segundo es el arranque del filtro)…"
+	var rms: Array = s["rms_deg"]
+	var lat: float = s["latencia_ms"]
+	var t := "Error RMS: alabeo %.2f° · cabeceo %.2f° · guiñada %.2f°" % [rms[0], rms[1], rms[2]]
+	t += "\nDeriva de la guiñada: %+.2f °/min" % float(s["deriva_guinada_deg_min"])
+	if not is_nan(lat):
+		t += " · latencia del filtro %.1f ms" % lat
+		if track_mode == Track.IMU:
+			t += " + enlace %.0f ms = %.0f ms" % [link_ms, lat + link_ms]
+	t += "\nError de la vista (%s): %.2f° RMS, máx %.2f° · %.1f s de datos" % [
+		"IMU" if track_mode == Track.IMU else "si la moviera la IMU",
+		float(s["error_vista_rms_deg"]), float(s["error_vista_max_deg"]), float(s["duracion_s"])]
+	return t
+
+## Resumen para la API.
+func tracking_summary() -> Dictionary:
+	var out := {"modo": "imu" if track_mode == Track.IMU else "real", "retardo_enlace_ms": link_ms}
+	var s := tracking.stats()
+	if not s.is_empty():
+		if is_nan(float(s["latencia_ms"])):
+			s["latencia_ms"] = -1.0
+		out.merge(s)
+	return out
+
 ## Recalcula la disposición (lentes, ojos, frustums), los tamaños de los render, los
 ## parámetros del shader, las capas y la textura de la pantalla.
 func refresh() -> void:
-	layout = compute_layout(main.parts_root, Callable(main, "_part_live_xform"), QUALITY[quality])
+	# Al simular, la disposición óptica (lentes respecto de la pantalla) es la del
+	# arranque: la holgura de las uniones no debe mover la imagen. La pose de las
+	# cámaras sí se actualiza cada fotograma.
+	var running: bool = main.simulator != null and main.simulator.is_running()
+	if not running:
+		_layout_locked = false
+	if not (_layout_locked and layout.get("ok", false)):
+		layout = compute_layout(main.parts_root, Callable(main, "_part_live_xform"), QUALITY[quality])
+		_layout_locked = running and layout.get("ok", false)
 	if info_label:
 		info_label.text = status_text()
 	if not layout.get("ok", false):
@@ -154,10 +352,20 @@ func update_cameras() -> void:
 	var sx: Transform3D = main._part_live_xform(scr)
 	var cb := camera_basis(sx.basis)
 	var E: Array = layout["eyes"]
+	var imu := imu_driving() and (_ref["eyes0"] as Array).size() == E.size()
+	var rot := Basis.IDENTITY
+	if imu:
+		# 3 grados de libertad: giran con la estimación alrededor de los ojos del arranque.
+		cb = _imu_camera_basis(tracking.est_at(main.simulator.sim_time() - link_ms / 1000.0))
+		rot = cb * (_ref["cam0"] as Basis).inverse()
 	for i in range(E.size()):
 		var e: Dictionary = E[i]
 		var cam: Camera3D = eyes[i]["cam"]
-		cam.global_transform = Transform3D(cb, sx * (e["pos_local"] as Vector3))
+		var pos: Vector3 = sx * (e["pos_local"] as Vector3)
+		if imu:
+			var c0: Vector3 = _ref["c0"]
+			pos = c0 + rot * ((_ref["eyes0"][i] as Vector3) - c0)
+		cam.global_transform = Transform3D(cb, pos)
 		var t: Vector4 = e["tans"]
 		cam.size = NEAR * (t.w - t.z)
 		cam.frustum_offset = Vector2(NEAR * (t.x + t.y) * 0.5, NEAR * (t.z + t.w) * 0.5)
@@ -449,6 +657,8 @@ func status_text() -> String:
 		t += "\nPantalla encendida."
 	else:
 		t += "\nPantalla apagada: le faltan los 5 V (aquí se ve lo que mostraría)."
+	if track_mode == Track.IMU:
+		t += " Seguimiento con la IMU (3 GdL)." if imu_driving() else " Seguimiento con la IMU: sin estimación todavía (muestra la pose real)."
 	return t
 
 ## Resumen para la API (analyze_headset).

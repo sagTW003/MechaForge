@@ -124,10 +124,34 @@ static func has_mesh_mass(def: Dictionary) -> bool:
 static func mass_model(def: Dictionary) -> Dictionary:
 	if has_mesh_mass(def):
 		return def["_masa"]
+	if def.get("forma", "") == "cabeza":
+		return ellipsoid_mass(dims_m(def) * 0.5)
 	var boxes := compound_boxes(def)
 	if boxes.is_empty():
 		return {}
 	return boxes_mass(boxes)
+
+## Elipsoide de semiejes s (densidad 1): volumen, área (fórmula de Knud Thomsen,
+## error < 1.1 %), centroide e inercia respecto al centro.
+static func ellipsoid_mass(s: Vector3) -> Dictionary:
+	var v := 4.0 / 3.0 * PI * s.x * s.y * s.z
+	var p := 1.6075
+	var ab := pow(s.x * s.y, p)
+	var ac := pow(s.x * s.z, p)
+	var bc := pow(s.y * s.z, p)
+	var area := 4.0 * PI * pow((ab + ac + bc) / 3.0, 1.0 / p)
+	return {"volumen": v, "area": area, "centroide": Vector3.ZERO, "cerrada": true,
+		"inercia": [v * (s.y * s.y + s.z * s.z) / 5.0, v * (s.x * s.x + s.z * s.z) / 5.0, v * (s.x * s.x + s.y * s.y) / 5.0, 0.0, 0.0, 0.0]}
+
+## Puntos de un elipsoide de semiejes s (colisión convexa y pruebas).
+static func ellipsoid_points(s: Vector3, rings := 10, segs := 16) -> PackedVector3Array:
+	var pts := PackedVector3Array()
+	for i in range(rings + 1):
+		var th := PI * float(i) / rings
+		for j in range(segs if i > 0 and i < rings else 1):
+			var ph := TAU * float(j) / segs
+			pts.append(Vector3(sin(th) * cos(ph) * s.x, cos(th) * s.y, sin(th) * sin(ph) * s.z))
+	return pts
 
 static func has_custom_mass(def: Dictionary) -> bool:
 	return not mass_model(def).is_empty()

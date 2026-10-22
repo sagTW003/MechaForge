@@ -39,6 +39,11 @@ func run() -> void:
 	print("[TEST] Ejemplos: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
 
+## Transformación en vivo de la primera pieza de ese tipo (en un cuerpo de varias
+## piezas fijas, la de la pieza y no la del cuerpo).
+func _xf(def_id: String) -> Transform3D:
+	return main._part_live_xform(_part(def_id))
+
 func _body(def_id: String) -> RigidBody3D:
 	for c in main.parts_root.get_children():
 		if c is PartInstance and c.def_id == def_id:
@@ -189,19 +194,39 @@ func _t_gafas_vr() -> void:
 	check(main.circuit_rt.screen_powered(_part("pantalla_55")), "  la pantalla recibe 5 V de la ESP32 y se enciende")
 	var sane := true
 	for c in main.parts_root.get_children():
-		var b: RigidBody3D = main.simulator.get_body(c.uid)
-		if b and (is_nan(b.global_position.x) or b.global_position.distance_to(c.position) > 0.012):
+		var lp: Vector3 = main._part_live_xform(c).origin
+		if is_nan(lp.x) or lp.distance_to(c.position) > 0.012:
 			sane = false
 	check(sane, "  el conjunto se mantiene montado (lentes dentro del recorrido de sus deslizaderas)")
 
+func _t_visor_cabeza() -> void:
+	var op := Optics.analyze(main.parts_root)
+	check(op.get("ok", false) and absf(float(op.get("ipd_mm", 0.0)) - 63.0) < 0.2 and main.headset_rig.track_mode == HeadsetRig.Track.IMU,
+		"  gafas montadas en la cabeza (IPD 63 mm) y seguimiento con la IMU")
+	var head := _part("cabeza_prueba")
+	var shell := _part("carcasa_visor")
+	var rel0: Transform3D = head.global_transform.affine_inverse() * shell.global_transform
+	main._toggle_simulation()
+	await wait_phys(720)
+	check(main.mcu_enabled and main.mcu_target_uid == "" and main.headset_rig.imu_driving() and main.headset_rig.is_active(),
+		"  la ESP32 estima la orientación y mueve las cámaras del visor (pantalla encendida)")
+	var hx: Transform3D = main._part_live_xform(head)
+	var moved := rad_to_deg((head.global_transform.basis.inverse() * hx.basis).get_rotation_quaternion().get_angle())
+	var rel: Transform3D = hx.affine_inverse() * main._part_live_xform(shell)
+	check(moved > 5.0 and rel.origin.distance_to(rel0.origin) < 1e-4, "  los servos giran la cabeza (%.0f° ahora) y las gafas van fijas en ella" % moved)
+	var s: Dictionary = main.headset_rig.tracking.stats()
+	var rms: Array = s.get("rms_deg", [99, 99, 99])
+	check(float(rms[0]) < 3.0 and float(rms[1]) < 3.0 and float(rms[2]) < 3.0 and float(s.get("latencia_ms", 999.0)) < 40.0,
+		"  orientación estimada frente a la real: RMS %.1f° / %.1f° / %.1f°, latencia %.0f ms" % [rms[0], rms[1], rms[2], float(s.get("latencia_ms", 0.0))])
+
 func _t_grua() -> void:
 	await _generic(4.0)
-	var up := _body("perfil_4040_300").global_transform.basis.y
+	var up := _xf("perfil_4040_300").basis.y
 	check(up.y > 0.98, "  la torre no vuelca mientras la pluma gira")
 
 func _t_puente_carga() -> void:
 	await _generic(3.0)
-	check(_body("viga_acero_500").global_position.y > 0.19, "  el puente sostiene la carga")
+	check(_xf("viga_acero_500").origin.y > 0.19, "  el puente sostiene la carga")
 
 ## Energía mecánica total de los cuerpos libres (cinética + potencial).
 func _energy() -> float:

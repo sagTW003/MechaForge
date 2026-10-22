@@ -121,6 +121,12 @@ var notes_edit: TextEdit
 var headset_rig: HeadsetRig
 var visor_panel: FloatingPanel
 var visor_view: TextureRect
+var visor_pre_chk: CheckBox
+var visor_chroma_chk: CheckBox
+var visor_quality_opt: OptionButton
+var visor_track_opt: OptionButton
+var visor_axis_opt: OptionButton
+var visor_link_spin: SpinBox
 var tool_server: ToolServer
 var _proposal_seq: int = 0
 var _proposal_ids: Array = []          # ids de propuestas incluidas en ai_pending
@@ -1440,6 +1446,7 @@ func _build_visor_panel() -> void:
 	var row := HFlowContainer.new()
 	row.add_theme_constant_override("h_separation", 6)
 	var pre := CheckBox.new()
+	visor_pre_chk = pre
 	pre.text = "Predistorsión de la lente"
 	pre.button_pressed = headset_rig.predistort
 	pre.tooltip_text = "Barril con los k1 y k2 de la lente: la lente (de cojín) devuelve la imagen recta."
@@ -1448,6 +1455,7 @@ func _build_visor_panel() -> void:
 		headset_rig.apply_settings())
 	row.add_child(pre)
 	var chr := CheckBox.new()
+	visor_chroma_chk = chr
 	chr.text = "Corrección cromática"
 	chr.button_pressed = headset_rig.chroma
 	chr.tooltip_text = "Cada color con su escala (número de Abbe del acrílico): sin ella el borde de la imagen se ve con flecos rojos y azules."
@@ -1456,6 +1464,7 @@ func _build_visor_panel() -> void:
 		headset_rig.apply_settings())
 	row.add_child(chr)
 	var q := OptionButton.new()
+	visor_quality_opt = q
 	q.focus_mode = Control.FOCUS_NONE
 	q.tooltip_text = "Resolución del render de cada ojo (1:1 = la de la pantalla en el centro de la lente)"
 	for n in HeadsetRig.QUALITY_NAMES:
@@ -1468,7 +1477,94 @@ func _build_visor_panel() -> void:
 	row.add_child(_button("Guardar PNG", _save_visor_png))
 	row.add_child(_button("Cerrar", func(): visor_panel.visible = false))
 	vb.add_child(row)
+	# Seguimiento de la cabeza: real frente a lo que estima el programa con la IMU.
+	vb.add_child(HSeparator.new())
+	var trow := HFlowContainer.new()
+	trow.add_theme_constant_override("h_separation", 6)
+	trow.add_child(_label("Seguimiento:"))
+	visor_track_opt = OptionButton.new()
+	visor_track_opt.focus_mode = Control.FOCUS_NONE
+	visor_track_opt.tooltip_text = "Real: las cámaras siguen la pose verdadera del visor.\nIMU: siguen la orientación que calcula el programa (roll, pitch, yaw) con el retardo indicado y sin posición (3 grados de libertad), como un visor casero."
+	for n in HeadsetRig.TRACK_NAMES:
+		visor_track_opt.add_item(n)
+	visor_track_opt.item_selected.connect(func(i):
+		headset_rig.track_mode = i
+		Config.project_dirty = true)
+	trow.add_child(visor_track_opt)
+	trow.add_child(_label("Retardo (ms):"))
+	visor_link_spin = _spin(0, 200, 1, headset_rig.link_ms)
+	visor_link_spin.tooltip_text = "Del enlace ESP32 → ordenador (USB serie o Bluetooth), el render y el barrido de la pantalla"
+	visor_link_spin.value_changed.connect(func(v):
+		headset_rig.link_ms = v
+		Config.project_dirty = true)
+	trow.add_child(visor_link_spin)
+	vb.add_child(trow)
+	var grow := HFlowContainer.new()
+	grow.add_theme_constant_override("h_separation", 6)
+	var axis_opt := OptionButton.new()
+	visor_axis_opt = axis_opt
+	axis_opt.focus_mode = Control.FOCUS_NONE
+	axis_opt.tooltip_text = "Eje de la gráfica: orientación real frente a la estimada, o el error de la vista"
+	for n in HeadsetRig.AXIS_NAMES:
+		axis_opt.add_item(n)
+	axis_opt.item_selected.connect(func(i):
+		headset_rig.graph_axis = i
+		headset_rig.update_tracking_ui())
+	grow.add_child(axis_opt)
+	grow.add_child(_button("Exportar CSV", _export_tracking_csv))
+	grow.add_child(_button("Borrar datos", func():
+		headset_rig.tracking.clear()
+		headset_rig.update_tracking_ui()))
+	vb.add_child(grow)
+	var graph := LiveGraph.new()
+	graph.custom_minimum_size = Vector2(566, 130)
+	vb.add_child(graph)
+	headset_rig.track_graph = graph
+	var tl := _label("")
+	tl.add_theme_font_size_override("font_size", 11)
+	tl.add_theme_color_override("font_color", Color(0.72, 0.74, 0.78))
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tl.custom_minimum_size = Vector2(566, 0)
+	vb.add_child(tl)
+	headset_rig.track_label = tl
 	visor_panel.visible = false
+
+## Ajustes del visor guardados con el proyecto (vacío: los de por defecto).
+func _apply_visor_settings(vs: Dictionary) -> void:
+	if headset_rig == null:
+		return
+	headset_rig.track_mode = int(vs.get("seguimiento", HeadsetRig.Track.REAL))
+	headset_rig.link_ms = float(vs.get("retardo_ms", 20.0))
+	headset_rig.predistort = bool(vs.get("predistorsion", true))
+	headset_rig.chroma = bool(vs.get("cromatica", true))
+	headset_rig.quality = int(vs.get("calidad", 1))
+	headset_rig.tracking.clear()
+	headset_rig.apply_settings()
+	_sync_visor_panel()
+
+## Pone los controles del panel del visor como los ajustes de headset_rig.
+func _sync_visor_panel() -> void:
+	if visor_pre_chk == null:
+		return
+	visor_pre_chk.set_pressed_no_signal(headset_rig.predistort)
+	visor_chroma_chk.set_pressed_no_signal(headset_rig.chroma)
+	visor_quality_opt.select(headset_rig.quality)
+	visor_track_opt.select(headset_rig.track_mode)
+	visor_link_spin.set_value_no_signal(headset_rig.link_ms)
+
+func _export_tracking_csv() -> void:
+	if headset_rig.tracking.size() == 0:
+		Config.notify("Aún no hay datos de seguimiento: simula con un programa que calcule roll, pitch y yaw.", 4.0)
+		return
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://capturas"))
+	var path := "user://capturas/seguimiento_%s.csv" % Time.get_datetime_string_from_system().replace(":", "-")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		Config.notify("No se pudo crear el CSV.")
+		return
+	f.store_string(headset_rig.tracking.csv())
+	f.close()
+	Config.notify("CSV del seguimiento guardado en %s" % ProjectSettings.globalize_path(path), 6.0)
 
 func _toggle_visor_panel() -> void:
 	if visor_panel == null:
@@ -1943,6 +2039,7 @@ func api_headset() -> Dictionary:
 			it["aumento"] = -1.0
 	if r.get("ok", false):
 		r["render"] = headset_rig.describe()
+		r["seguimiento"] = headset_rig.tracking_summary()
 	return r
 
 ## Análisis de diseño como datos (estabilidad, esfuerzos, masa, consumo).
@@ -2545,8 +2642,66 @@ func _refresh_uniones_panel() -> void:
 			info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			info.custom_minimum_size = Vector2(320, 0)
 			box.add_child(info)
+			if conn.tipo == Connection.Tipo.BISAGRA and conn.control_mode != Connection.ControlMode.NINGUNO:
+				_add_profile_editor(box, conn)
+			elif conn.tipo == Connection.Tipo.DESLIZADERA:
+				var lk := CheckBox.new()
+				lk.text = "Bloqueada al simular (ajuste)"
+				lk.button_pressed = conn.slide_locked
+				lk.tooltip_text = "Un ajuste fijado con tornillo o por fricción (p. ej. la distancia entre las lentes): al simular no se desliza.\nEn edición, la pieza se mueve por su recorrido para ajustarla."
+				lk.add_theme_font_size_override("font_size", 11)
+				lk.toggled.connect(func(v):
+					conn.slide_locked = v
+					Config.project_dirty = true)
+				box.add_child(lk)
 		uniones_list.add_child(box)
 		idx += 1
+
+## Perfil de consigna de una bisagra con control (banco de pruebas): fija, senoidal o
+## cuadrada, con centro, amplitud, frecuencia y desfase.
+func _add_profile_editor(box: VBoxContainer, conn: Connection) -> void:
+	var u := "°" if conn.control_mode == Connection.ControlMode.POSICION else "rad/s"
+	var g := GridContainer.new()
+	g.columns = 2
+	g.add_theme_constant_override("h_separation", 6)
+	var lbl := func(t: String) -> Label:
+		var l := _label(t)
+		l.add_theme_font_size_override("font_size", 11)
+		return l
+	g.add_child(lbl.call("Consigna"))
+	var opt := OptionButton.new()
+	opt.focus_mode = Control.FOCUS_NONE
+	opt.tooltip_text = "Fija: el valor de la unión (o el programa). Senoidal o cuadrada: la mueve el banco de pruebas, sin el programa."
+	for n in Connection.PROFILE_NOMBRE:
+		opt.add_item(n)
+	opt.select(conn.profile)
+	opt.item_selected.connect(func(i):
+		conn.profile = i
+		Config.project_dirty = true
+		_refresh_uniones_panel())
+	g.add_child(opt)
+	if conn.profile != Connection.Profile.NINGUNO:
+		var rows := [["Centro (%s)" % u, "profile_center", -360.0, 360.0, 0.5], ["Amplitud (%s)" % u, "profile_amp", 0.0, 360.0, 0.5],
+			["Frecuencia (Hz)", "profile_freq", 0.01, 10.0, 0.01], ["Desfase (°)", "profile_phase_deg", -360.0, 360.0, 5.0]]
+		for r in rows:
+			g.add_child(lbl.call(r[0]))
+			var sp := _spin(r[2], r[3], r[4], float(conn.get(r[1])))
+			var key: String = r[1]
+			sp.value_changed.connect(func(v):
+				conn.set(key, v)
+				Config.project_dirty = true)
+			g.add_child(sp)
+		if conn.control_mode == Connection.ControlMode.POSICION:
+			g.add_child(lbl.call("Servo ideal"))
+			var ideal := CheckBox.new()
+			ideal.text = "sigue el perfil exacto"
+			ideal.button_pressed = conn.profile_ideal
+			ideal.tooltip_text = "Banco de pruebas de precisión: la pieza que mueve esta unión sigue el perfil sin error (se mueve como cuerpo cinemático).\nSin marcar, el perfil es la consigna del PID y el motor real la sigue con su par y su velocidad."
+			ideal.toggled.connect(func(v):
+				conn.profile_ideal = v
+				Config.project_dirty = true)
+			g.add_child(ideal)
+	box.add_child(g)
 
 ## Texto descriptivo de una unión (piezas, eje, anclaje, motor y control).
 func _connection_details(conn: Connection, an: String, bn: String) -> String:
@@ -2559,6 +2714,13 @@ func _connection_details(conn: Connection, an: String, bn: String) -> String:
 		t += "\nMotor %s · par %.2f N·m · %.1f rad/s en vacío" % [Connection.MOTOR_TYPE_NOMBRE[conn.motor_type], conn.motor_stall_torque, conn.motor_noload_speed]
 		if conn.control_mode != Connection.ControlMode.NINGUNO:
 			t += "\nControl: %s" % Connection.CONTROL_NOMBRE[conn.control_mode]
+			if conn.profile != Connection.Profile.NINGUNO:
+				var u := "°" if conn.control_mode == Connection.ControlMode.POSICION else " rad/s"
+				t += "\nPerfil %s: %.1f%s ± %.1f%s a %.2f Hz (desfase %.0f°)%s" % [Connection.PROFILE_NOMBRE[conn.profile].to_lower(),
+					conn.profile_center, u, conn.profile_amp, u, conn.profile_freq, conn.profile_phase_deg,
+					" · servo ideal" if conn.profile_ideal and conn.control_mode == Connection.ControlMode.POSICION else ""]
+	if conn.tipo == Connection.Tipo.DESLIZADERA and conn.slide_locked:
+		t += "\nAjuste bloqueado al simular"
 	if conn.tipo == Connection.Tipo.ENGRANAJE:
 		t += "\nRelación %.3f · huelgo %.1f° · rendimiento %.0f %%" % [conn.effective_gear_ratio(), conn.gear_backlash_deg, conn.gear_efficiency * 100.0]
 	return t
@@ -2609,8 +2771,9 @@ func _indicate_connection(uid: String, frame: bool = false) -> void:
 	var ba := simulator.get_body(conn.a_uid)
 	if pa == null or ba == null:
 		return
-	# Anclaje en el marco del cuerpo A (a partir de su transformación inicial).
-	_joint_ind_local = pa.initial_transform.affine_inverse() * conn.anchor
+	# Anclaje en el marco del cuerpo A (a partir de la transformación inicial de la
+	# pieza y de su sitio en el cuerpo, que puede llevar varias piezas fijas).
+	_joint_ind_local = ba.global_transform.affine_inverse() * (_part_live_xform(pa) * (pa.initial_transform.affine_inverse() * conn.anchor))
 	_joint_ind_body = ba
 	_joint_ind = Node3D.new()
 	_joint_ind.name = "IndicadorUnion"
@@ -2645,6 +2808,7 @@ func _indicate_connection(uid: String, frame: bool = false) -> void:
 		var box := MeshInstance3D.new()
 		var bm := BoxMesh.new(); bm.size = PartLibrary.dims_m(part.def) * 1.08
 		box.mesh = bm
+		box.transform = body.global_transform.affine_inverse() * _part_live_xform(part)
 		var hm := StandardMaterial3D.new()
 		hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		hm.albedo_color = Color(0.2, 0.9, 1.0, 0.18)
@@ -3251,6 +3415,7 @@ func _physics_process(delta: float) -> void:
 		_mcu_sensor_vars = mcu_sensors.read(parts_root, simulator, get_world_3d().direct_space_state)
 		if not simulator.paused:
 			_mcu_tick(delta)
+			headset_rig.record_tick()
 
 func _process(_delta: float) -> void:
 	_update_joint_indicator()
@@ -3887,6 +4052,7 @@ func _on_new() -> void:
 		mcu_editor.text = MCU_DEFAULT
 	if notes_edit:
 		notes_edit.text = ""
+	_apply_visor_settings({})
 	_redraw_connection_markers()
 	_redraw_wires()
 	_refresh_uniones_panel()
@@ -3977,7 +4143,16 @@ func _project_extra() -> Dictionary:
 			extra[k] = project_meta[k]
 	if notes_edit and notes_edit.text.strip_edges() != "":
 		extra["notas"] = notes_edit.text
+	if _has_headset():
+		extra["visor"] = {"seguimiento": headset_rig.track_mode, "retardo_ms": headset_rig.link_ms,
+			"predistorsion": headset_rig.predistort, "cromatica": headset_rig.chroma, "calidad": headset_rig.quality}
 	return extra
+
+func _has_headset() -> bool:
+	for c in parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def.has("pantalla"):
+			return true
+	return false
 
 func _apply_project_extra(doc: Dictionary) -> void:
 	project_meta = {}
@@ -3988,6 +4163,7 @@ func _apply_project_extra(doc: Dictionary) -> void:
 			project_meta[k] = doc[k]
 	if doc.has("entorno"):
 		work_env.set_mode(int(doc["entorno"]))
+	_apply_visor_settings(doc.get("visor", {}) if typeof(doc.get("visor", null)) == TYPE_DICTIONARY else {})
 	var v = doc.get("vista", null)
 	if typeof(v) == TYPE_DICTIONARY:
 		camera.target = _vec(v.get("objetivo", [0, 0.1, 0]))
@@ -4118,6 +4294,8 @@ func _reset_simulation() -> void:
 		Config.notify("Simulación reiniciada al estado inicial.")
 
 func _on_sim_started() -> void:
+	if headset_rig:
+		headset_rig.on_sim_started()
 	sim_button.text = "⏹  Editar"
 	_set_time_controls(true)
 	_select(null)
@@ -5107,10 +5285,12 @@ func _build_mcu_panel() -> void:
 	mcu_panel.set_collapsed(true)
 
 ## Uniones con control PID, en orden (salidas m1, m2... del microcontrolador).
+## Uniones que recibe el microcontrolador (output, m1..mN): bisagras con control
+## y sin perfil (las de perfil las mueve el banco de pruebas).
 func _controlled_connections() -> Array:
 	var out := []
 	for conn in connections:
-		if conn.tipo == Connection.Tipo.BISAGRA and conn.control_mode != Connection.ControlMode.NINGUNO:
+		if conn.mcu_driven():
 			out.append(conn)
 	return out
 
@@ -5142,7 +5322,7 @@ func _populate_mcu_targets() -> void:
 	mcu_target_selector.clear()
 	var idx := 0
 	for conn in connections:
-		if conn.tipo == Connection.Tipo.BISAGRA and conn.control_mode != Connection.ControlMode.NINGUNO:
+		if conn.mcu_driven():
 			mcu_target_selector.add_item("Unión %d (%s)" % [idx + 1, Connection.CONTROL_NOMBRE[conn.control_mode]])
 			mcu_target_selector.set_item_metadata(mcu_target_selector.item_count - 1, conn.uid)
 		idx += 1
