@@ -229,6 +229,20 @@
         "ipd": 63
       },
       "descripcion": "Elipsoide de 190 × 230 × 150 mm con la cara hacia +X; los ojos están 84 mm por delante del centro y 10 mm por encima, a 63 mm entre sí. Impresa hueca: masa según el relleno. Para montar el visor y moverlo con servos (banco de pruebas)."
+    },
+    {
+      "id": "carta_calibracion",
+      "nombre": "Carta de calibración A3 (tablero de ajedrez)",
+      "categoria": "vr",
+      "material": "carton",
+      "forma": "placa",
+      "apariencia": "carta",
+      "dimensiones_mm": {
+        "x": 420,
+        "y": 3,
+        "z": 297
+      },
+      "descripcion": "Tablero de casillas de 30 mm con cruz central y esquinas de color en la cara +Y (rojo arriba a la izquierda, verde arriba a la derecha, azul abajo a la izquierda, amarillo abajo a la derecha, vistas de frente): a través de las lentes, las rectas deben salir rectas y la imagen derecha."
     }
   ]
 }

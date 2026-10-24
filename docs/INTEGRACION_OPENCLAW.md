@@ -31,8 +31,9 @@ Paso 0, para diseñar el puente `ai_bridge` **sin inventar la API**.
    `127.0.0.1`) y registrarlo con `openclaw mcp`, ofreciendo las herramientas del
    proyecto con esquema JSON:
    - `get_scene_state`, `get_telemetry`, `analyze_design`, `get_circuit_state`, `measure_voltage`
-   - `add_part`, `connect_parts`, `set_property`, `remove_part`
+   - `add_part`, `connect_parts`, `connect_wire`, `set_property`, `remove_part`
    - `write_controller_script`, `run_simulation`, `stop_simulation`
+   - Visor VR: `analyze_headset`, `check_headset`, `configure_headset`, `capture_headset_view`
    - Laboratorio matemático: `lab_list_modules`, `lab_open`, `lab_close`, `lab_get_state`,
      `lab_set_param`, `lab_control`, `lab_sample`, `lab_perturb`, `lab_capture`
 
@@ -76,9 +77,11 @@ La conexión se define en `project/ai_bridge/openclaw_config.json` (plantilla:
   sobre HTTP** en `127.0.0.1:18790` (solo loopback, token Bearer en
   `user://mechaforge_api.json`, generado la primera vez y fuera del repositorio).
   Las herramientas (`ai_bridge/SimulatorApi.gd`) son las del documento del proyecto:
-  `get_scene_state`, `add_part`, `connect_parts`, `set_property`, `remove_part`,
-  `write_controller_script`, `run_simulation`, `stop_simulation`, `get_telemetry`,
-  `analyze_design` (+ `list_parts`, `get_proposal_status`).
+  `get_scene_state`, `add_part`, `connect_parts`, `connect_wire`, `set_property`,
+  `remove_part`, `write_controller_script`, `run_simulation`, `stop_simulation`,
+  `get_telemetry`, `analyze_design`, las del visor VR (`analyze_headset`,
+  `check_headset`, `configure_headset`, `capture_headset_view`) (+ `list_parts`,
+  `get_proposal_status`).
 - Se eligió HTTP (en lugar de WebSocket) porque las *skills* de OpenClaw usan `curl`;
   así un agente puede usar MechaForge sin código adicional.
 - **Seguridad**: toda herramienta que modifica la escena devuelve

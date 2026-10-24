@@ -87,6 +87,7 @@ static func build(def: Dictionary) -> Node3D:
 		"movil": return _screen(d, def, true)
 		"esp32": return _esp32(d)
 		"cabeza": return _head(d, def)
+		"carta": return _chart(d)
 		_: return null
 
 ## Carta de ajuste lado a lado (un círculo, una cruz y una rejilla por ojo, y barras
@@ -180,6 +181,50 @@ static func _screen(d: Vector3, def: Dictionary, phone: bool) -> Node3D:
 	glass.set_meta("pantalla_luz", true)
 	n.add_child(glass)
 	return n
+
+## Carta de calibración: cartón con un tablero de ajedrez impreso en la cara +Y (con el
+## mismo medio giro que la pantalla, para que se lea derecha mirándola de frente).
+static func _chart(d: Vector3) -> Node3D:
+	var n := Node3D.new()
+	n.add_child(_box(d, mat(Color(0.62, 0.5, 0.36), 0.0, 0.9)))
+	var face := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(d.x, d.z)
+	face.mesh = pm
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = calibration_texture()
+	m.roughness = 0.85
+	face.material_override = m
+	face.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0, d.y * 0.5 + 0.0002, 0))
+	n.add_child(face)
+	return n
+
+static var _calib_tex: ImageTexture
+
+## Tablero de 30 mm (2 px/mm sobre 420 × 297 mm), una esquina de casilla en el centro,
+## cruz roja central y casillas de color en las esquinas.
+static func calibration_texture() -> ImageTexture:
+	if _calib_tex:
+		return _calib_tex
+	var w := 840
+	var h := 594
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	var sq := 60
+	var y0 := h / 2 - 5 * sq
+	for y in range(h):
+		for x in range(w):
+			var cx := int(floor(float(x) / sq))
+			var cy := int(floor(float(y - y0) / sq))
+			img.set_pixel(x, y, Color(0.08, 0.08, 0.09) if (cx + cy) % 2 == 0 else Color(0.93, 0.93, 0.9))
+	var marks := [[0, 0, Color(0.9, 0.15, 0.1)], [w - sq, 0, Color(0.15, 0.75, 0.25)],
+		[0, h - sq, Color(0.15, 0.35, 0.9)], [w - sq, h - sq, Color(0.95, 0.8, 0.1)]]
+	for mk in marks:
+		img.fill_rect(Rect2i(mk[0], mk[1], sq, sq), mk[2])
+	img.fill_rect(Rect2i(w / 2 - 2, h / 2 - 40, 4, 80), Color(0.9, 0.1, 0.1))
+	img.fill_rect(Rect2i(w / 2 - 40, h / 2 - 2, 80, 4), Color(0.9, 0.1, 0.1))
+	img.generate_mipmaps()
+	_calib_tex = ImageTexture.create_from_image(img)
+	return _calib_tex
 
 ## Cabeza de prueba: maniquí impreso (elipsoide) con la cara hacia +X, nariz,
 ## orejas y la posición de los ojos marcada (donde caen los ojos del visor).

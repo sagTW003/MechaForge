@@ -6,50 +6,50 @@
 	},
 	"cables": [
 		{
-			"a_key": "p1956706_74484:5V",
-			"b_key": "p1955033_41829:5V",
+			"a_key": "p2454587_7321:5V",
+			"b_key": "p2332667_13744:5V",
 			"color": "auto",
 			"tipo": "power",
 			"uid": "v1"
 		},
 		{
-			"a_key": "p1956706_74484:GND",
-			"b_key": "p1955033_41829:GND",
+			"a_key": "p2454587_7321:GND",
+			"b_key": "p2332667_13744:GND",
 			"color": "auto",
 			"tipo": "gnd",
 			"uid": "v2"
 		},
 		{
-			"a_key": "p1956706_74484:3V3",
-			"b_key": "p1958558_48966:VCC",
+			"a_key": "p2454587_7321:3V3",
+			"b_key": "p2459636_73065:VCC",
 			"color": "naranja",
 			"tipo": "power",
 			"uid": "v3"
 		},
 		{
-			"a_key": "p1956706_74484:GND2",
-			"b_key": "p1958558_48966:GND",
+			"a_key": "p2454587_7321:GND2",
+			"b_key": "p2459636_73065:GND",
 			"color": "negro",
 			"tipo": "gnd",
 			"uid": "v4"
 		},
 		{
-			"a_key": "p1956706_74484:GPIO22",
-			"b_key": "p1958558_48966:SCL",
+			"a_key": "p2454587_7321:GPIO22",
+			"b_key": "p2459636_73065:SCL",
 			"color": "amarillo",
 			"tipo": "signal",
 			"uid": "v5"
 		},
 		{
-			"a_key": "p1956706_74484:GPIO21",
-			"b_key": "p1958558_48966:SDA",
+			"a_key": "p2454587_7321:GPIO21",
+			"b_key": "p2459636_73065:SDA",
 			"color": "azul",
 			"tipo": "signal",
 			"uid": "v6"
 		}
 	],
-	"creado": "2026-10-22T20:19:09",
-	"descripcion": "Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia).",
+	"creado": "2026-10-24T22:33:24",
+	"descripcion": "Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales, frente a una carta de calibración. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia); en «Vista», mira la carta a través de las lentes.",
 	"entorno": 0,
 	"formato": "mechaforge",
 	"grid_mm": 10.0,
@@ -79,7 +79,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1940072_73663"
+			"uid": "p2078854_61633"
 		},
 		{
 			"def_id": "perfil_2020_200",
@@ -100,7 +100,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1946313_73671"
+			"uid": "p2196067_71197"
 		},
 		{
 			"def_id": "servo",
@@ -121,7 +121,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1952963_7741"
+			"uid": "p2321024_65318"
 		},
 		{
 			"def_id": "servo",
@@ -142,7 +142,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1953239_95037"
+			"uid": "p2327284_18317"
 		},
 		{
 			"def_id": "servo",
@@ -163,7 +163,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1953423_58123"
+			"uid": "p2327475_83195"
 		},
 		{
 			"def_id": "cabeza_prueba",
@@ -190,7 +190,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1953627_40132"
+			"uid": "p2327669_44317"
 		},
 		{
 			"def_id": "carcasa_visor",
@@ -212,7 +212,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1954819_78195"
+			"uid": "p2329543_40622"
 		},
 		{
 			"def_id": "pantalla_55",
@@ -233,7 +233,7 @@
 				1.57079637050629,
 				0.0
 			],
-			"uid": "p1955033_41829"
+			"uid": "p2332667_13744"
 		},
 		{
 			"def_id": "soporte_lentes",
@@ -254,7 +254,7 @@
 				1.57079637050629,
 				0.0
 			],
-			"uid": "p1956361_31344"
+			"uid": "p2442721_65107"
 		},
 		{
 			"def_id": "lente_cardboard_37",
@@ -275,7 +275,7 @@
 				1.57079637050629,
 				0.0
 			],
-			"uid": "p1956509_75703"
+			"uid": "p2443823_62013"
 		},
 		{
 			"def_id": "lente_cardboard_37",
@@ -296,7 +296,7 @@
 				1.57079637050629,
 				0.0
 			],
-			"uid": "p1956605_27758"
+			"uid": "p2454394_89628"
 		},
 		{
 			"def_id": "esp32_devkit",
@@ -317,7 +317,7 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1956706_74484"
+			"uid": "p2454587_7321"
 		},
 		{
 			"def_id": "imu",
@@ -338,19 +338,61 @@
 				0.0,
 				0.0
 			],
-			"uid": "p1958558_48966"
+			"uid": "p2459636_73065"
+		},
+		{
+			"def_id": "perfil_2020_400",
+			"dims_mm": {
+				"x": 20.0,
+				"y": 400.0,
+				"z": 20.0
+			},
+			"fijo": true,
+			"material": "aluminio",
+			"pos": [
+				0.439999997615814,
+				0.200000002980232,
+				0.0
+			],
+			"rot": [
+				0.0,
+				0.0,
+				0.0
+			],
+			"uid": "p2574403_32290"
+		},
+		{
+			"def_id": "carta_calibracion",
+			"dims_mm": {
+				"x": 420.0,
+				"y": 3.0,
+				"z": 297.0
+			},
+			"fijo": false,
+			"material": "carton",
+			"pos": [
+				0.419999986886978,
+				0.453000009059906,
+				0.0
+			],
+			"rot": [
+				-1.57079637050629,
+				1.57079637050629,
+				0.0
+			],
+			"uid": "p2574896_66432"
 		}
 	],
 	"uniones": [
 		{
-			"a": "p1940072_73663",
+			"a": "p2078854_61633",
 			"anchor": [
 				-0.115000002086163,
 				0.108000002801418,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1946313_73671",
+			"b": "p2196067_71197",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -386,17 +428,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1954756_81186"
+			"uid": "c2329445_14883"
 		},
 		{
-			"a": "p1946313_73671",
+			"a": "p2196067_71197",
 			"anchor": [
 				-0.115000002086163,
 				0.226999998092651,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1952963_7741",
+			"b": "p2321024_65318",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -432,17 +474,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1954769_33588"
+			"uid": "c2329462_20841"
 		},
 		{
-			"a": "p1952963_7741",
+			"a": "p2321024_65318",
 			"anchor": [
 				-0.115000002086163,
 				0.246999993920326,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1953239_95037",
+			"b": "p2327284_18317",
 			"bloqueada": false,
 			"control_mode": 1,
 			"ctrl_kd": 0.3,
@@ -478,17 +520,17 @@
 			"servo_sec_per_60": 0.12,
 			"step_deg": 1.8,
 			"tipo": 1,
-			"uid": "c1954777_91629"
+			"uid": "c2329483_20310"
 		},
 		{
-			"a": "p1953239_95037",
+			"a": "p2327284_18317",
 			"anchor": [
 				-0.115000002086163,
 				0.287000000476837,
 				0.0
 			],
 			"axis": 2,
-			"b": "p1953423_58123",
+			"b": "p2327475_83195",
 			"bloqueada": false,
 			"control_mode": 1,
 			"ctrl_kd": 0.3,
@@ -524,17 +566,17 @@
 			"servo_sec_per_60": 0.12,
 			"step_deg": 1.8,
 			"tipo": 1,
-			"uid": "c1954788_55529"
+			"uid": "c2329498_1776"
 		},
 		{
-			"a": "p1953423_58123",
+			"a": "p2327475_83195",
 			"anchor": [
 				-0.115000002086163,
 				0.326999992132187,
 				0.0
 			],
 			"axis": 0,
-			"b": "p1953627_40132",
+			"b": "p2327669_44317",
 			"bloqueada": false,
 			"control_mode": 1,
 			"ctrl_kd": 0.3,
@@ -570,17 +612,17 @@
 			"servo_sec_per_60": 0.12,
 			"step_deg": 1.8,
 			"tipo": 1,
-			"uid": "c1954798_25686"
+			"uid": "c2329506_34118"
 		},
 		{
-			"a": "p1954819_78195",
+			"a": "p2329543_40622",
 			"anchor": [
 				0.0270000007003546,
 				0.453000009059906,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1955033_41829",
+			"b": "p2332667_13744",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -616,17 +658,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1961811_17189"
+			"uid": "c2465068_42445"
 		},
 		{
-			"a": "p1954819_78195",
+			"a": "p2329543_40622",
 			"anchor": [
 				-0.0160000007599592,
 				0.453000009059906,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1956361_31344",
+			"b": "p2442721_65107",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -662,17 +704,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1961827_76985"
+			"uid": "c2465094_57569"
 		},
 		{
-			"a": "p1954819_78195",
+			"a": "p2329543_40622",
 			"anchor": [
 				0.00499999988824129,
 				0.505500018596649,
 				-0.0450000017881393
 			],
 			"axis": 1,
-			"b": "p1956706_74484",
+			"b": "p2454587_7321",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -708,17 +750,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1961836_70022"
+			"uid": "c2465109_21611"
 		},
 		{
-			"a": "p1954819_78195",
+			"a": "p2329543_40622",
 			"anchor": [
 				-0.00499999988824129,
 				0.504499971866608,
 				0.0299999993294477
 			],
 			"axis": 1,
-			"b": "p1958558_48966",
+			"b": "p2459636_73065",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -754,17 +796,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c1961842_23024"
+			"uid": "c2465122_31184"
 		},
 		{
-			"a": "p1956361_31344",
+			"a": "p2442721_65107",
 			"anchor": [
 				-0.0160000007599592,
 				0.453000009059906,
 				0.0315000005066395
 			],
 			"axis": 2,
-			"b": "p1956509_75703",
+			"b": "p2443823_62013",
 			"bloqueada": true,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -800,17 +842,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 2,
-			"uid": "c1961851_70687"
+			"uid": "c2465134_88518"
 		},
 		{
-			"a": "p1956361_31344",
+			"a": "p2442721_65107",
 			"anchor": [
 				-0.0160000007599592,
 				0.453000009059906,
 				-0.0315000005066395
 			],
 			"axis": 2,
-			"b": "p1956605_27758",
+			"b": "p2454394_89628",
 			"bloqueada": true,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -846,17 +888,17 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 2,
-			"uid": "c1961858_85937"
+			"uid": "c2465149_73607"
 		},
 		{
-			"a": "p1953627_40132",
+			"a": "p2327669_44317",
 			"anchor": [
 				0.0,
 				0.453000009059906,
 				0.0
 			],
 			"axis": 1,
-			"b": "p1954819_78195",
+			"b": "p2329543_40622",
 			"bloqueada": false,
 			"control_mode": 0,
 			"ctrl_kd": 0.2,
@@ -892,13 +934,67 @@
 			"servo_sec_per_60": 0.15,
 			"step_deg": 1.8,
 			"tipo": 0,
-			"uid": "c2042078_84482"
+			"uid": "c2574356_49519"
+		},
+		{
+			"a": "p2574403_32290",
+			"anchor": [
+				0.419999986886978,
+				0.453000009059906,
+				0.0
+			],
+			"axis": 1,
+			"b": "p2574896_66432",
+			"bloqueada": false,
+			"control_mode": 0,
+			"ctrl_kd": 0.2,
+			"ctrl_ki": 0.5,
+			"ctrl_kp": 4.0,
+			"ctrl_setpoint": 0.0,
+			"elec_current_noload": 0.2,
+			"elec_current_stall": 2.5,
+			"elec_uid": "",
+			"elec_voltaje_nominal": 12.0,
+			"gear_backlash_deg": 0.5,
+			"gear_efficiency": 0.97,
+			"gear_ratio": 1.0,
+			"gear_z1": 0,
+			"gear_z2": 0,
+			"limit_enabled": false,
+			"limit_lower": -3.14159265358979,
+			"limit_upper": 3.14159265358979,
+			"microsteps": 1,
+			"motor_enabled": false,
+			"motor_noload_speed": 6.0,
+			"motor_stall_torque": 0.5,
+			"motor_target_speed": 3.0,
+			"motor_type": 0,
+			"perfil": 0,
+			"perfil_amp": 20.0,
+			"perfil_centro": 0.0,
+			"perfil_fase": 0.0,
+			"perfil_freq": 0.25,
+			"perfil_ideal": false,
+			"servo_max_deg": 180.0,
+			"servo_min_deg": 0.0,
+			"servo_sec_per_60": 0.15,
+			"step_deg": 1.8,
+			"tipo": 0,
+			"uid": "c2664248_9757"
 		}
 	],
 	"version": 3,
 	"visor": {
 		"calidad": 1,
 		"cromatica": true,
+		"ipd_usuario_mm": 63.0,
+		"perfil": 0,
+		"perfil_manual": {
+			"dist_mm": 41.7,
+			"ipd_mm": 63.0,
+			"k1": 0.215,
+			"k2": 0.215
+		},
 		"predistorsion": true,
 		"retardo_ms": 20.0,
 		"seguimiento": 1

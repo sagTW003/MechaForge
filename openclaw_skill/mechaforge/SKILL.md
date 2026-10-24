@@ -46,8 +46,11 @@ curl -s -X POST http://127.0.0.1:18790/rpc \
 | `check_headset` | Verificación del visor VR: por ojo, desalineación, distorsión y aberración cromática residuales (′) según el perfil del render frente a las lentes; convergencia y desnivel entre ojos (Δ) con la IPD del usuario; masa, centro de masa respecto de la cara y par; holguras y contactos o interferencias; avisos |
 | `analyze_headset` | Visor VR: por lente, distancia a la pantalla, imagen virtual (m, −1 si no hay) y aumento, campo de visión h × v, píxeles por grado, descentrado; distancia entre lentes (IPD) y avisos; en `render`, las cámaras de los ojos (posición, campo con la distorsión, resolución, tangentes del frustum) |
 | `add_part` | `{"def_id","material","pos":[x,y,z],"rot_deg":[x,y,z]}` (metros; el suelo es y=0) |
-| `connect_parts` | `{"a","b","union":"fija|bisagra|deslizadera|rotula|engranaje","eje":"X|Y|Z","motor":true}` |
-| `set_property` | `{"uid","material","dims_mm":{...},"pos":[...]}` |
+| `connect_parts` | `{"a","b","union":"fija|bisagra|deslizadera|rotula|engranaje","eje":"X|Y|Z","motor":true}`; opcionales: `"anclaje":[x,y,z]`, `"limites":[lo,hi]` (° o mm), `"tipo_motor":"dc|paso|servo"`, `"control":"posicion|velocidad"`, `"consigna"`, `"pid":[kp,ki,kd]`, `"perfil":{"tipo":"seno|cuadrada","amplitud","frecuencia","desfase","centro","ideal"}`, `"bloqueada":true` (deslizadera de ajuste) |
+| `connect_wire` | `{"a":"uid:terminal","b":"uid:terminal","color"}`: un cable (los terminales salen en `list_parts` y `get_scene_state`) |
+| `set_property` | `{"uid","material","dims_mm":{...},"pos":[...],"rot_deg":[...],"anclada":true,"estado":{"ojo_mm","i2c_dir","impresion","imu","colision"}}` |
+| `configure_headset` | Ajustes del visor: `{"seguimiento":"real|imu","retardo_ms","perfil":"diseno|manual|cardboard_v1|cardboard_v2","perfil_manual":{...},"ipd_usuario_mm","predistorsion","cromatica","calidad"}` |
+| `capture_headset_view` | `{"vista":"pantalla|ojo_izquierdo|ojo_derecho"}` → ruta del PNG (con el render del visor activo) |
 | `remove_part` | `{"uid"}` |
 | `write_controller_script` | `{"script"}` programa del microcontrolador (ver abajo) |
 | `run_simulation` / `stop_simulation` | Iniciar / detener la física |
@@ -143,6 +146,23 @@ uniones fijas (y con deslizaderas «bloqueadas al simular», como el ajuste de I
 forman un solo cuerpo rígido en la simulación. Para revisar un diseño de visor
 terminado usa `check_headset` (el perfil del render y la IPD del usuario se eligen en
 «Verificación del visor» y se guardan con el proyecto).
+
+Receta para montar unas gafas VR (cada paso es una propuesta: espera a que el usuario
+pulse Aplicar antes de usar los uid nuevos, con `get_proposal_status` y
+`get_scene_state`):
+1. `add_part`: `carcasa_visor` en (0, 0.0475, 0); `pantalla_55` en (0.027, 0.0475, 0),
+   `soporte_lentes` en (−0.016, 0.0475, 0) y dos `lente_cardboard_37` en
+   (−0.016, 0.0475, ±0.0315), las tres con `rot_deg` de la base «cara al ojo» (+Y
+   hacia −X); `esp32_devkit` y `imu` sobre el techo.
+2. `set_property` de la carcasa con `"anclada": true` (o fíjala a la cabeza de prueba).
+3. `connect_parts`: fijas de la carcasa a la pantalla, al soporte, a la ESP32 y a la
+   IMU; deslizaderas del soporte a cada lente, eje Z, `"limites":[-9,9]`,
+   `"bloqueada":true`.
+4. `connect_wire`: ESP32 5V/GND → pantalla 5V/GND; ESP32 3V3/GND2/GPIO22/GPIO21 → IMU
+   VCC/GND/SCL/SDA.
+5. `write_controller_script` con el filtro complementario por I²C (ver «Bus I²C»).
+6. `analyze_headset` y `check_headset`; `run_simulation` y `get_telemetry`
+   (`quien` = 104, `bus_i2c` ok). Guía completa en `docs/GAFAS_VR.md`.
 
 Orientación con la IMU (filtro complementario):
 

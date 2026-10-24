@@ -452,7 +452,7 @@ título; guárdalos con «Guardar como…»):
 | Multímetro en protoboard | Tensión en el LED y en la resistencia, continuidad, corriente en serie |
 | Arduino Nano y NE555 (DIP) | Integrados que cruzan el canal; 555 astable y salidas `d2`/`d13` del programa |
 | Gafas VR caseras | Carcasa impresa, pantalla, lentes en deslizaderas (IPD 63 mm) y ESP32 que lee el MPU-6050 por I²C con un filtro complementario |
-| Gafas VR en cabeza de prueba | Las gafas sobre una cabeza impresa que mueven tres servos; las cámaras del visor siguen la orientación que estima la IMU, con gráficas de real frente a estimada |
+| Gafas VR en cabeza de prueba | Las gafas sobre una cabeza impresa que mueven tres servos, frente a una carta de calibración; las cámaras del visor siguen la orientación que estima la IMU, con gráficas de real frente a estimada |
 
 Los ejemplos son archivos `.mforge` en `project/templates/`: **añadir un proyecto
 al menú = copiar ahí un `.mforge`** (con `"nombre"` y `"descripcion"`). Se regeneran
@@ -522,6 +522,9 @@ bucle:
 
 ### Gafas VR caseras: las piezas del visor
 
+> Guía completa (montaje, firmware, óptica, render, seguimiento, verificación y API):
+> [docs/GAFAS_VR.md](docs/GAFAS_VR.md).
+
 ![Gafas VR caseras](docs/demo_vr_fase1.png)
 *Ejemplo «Gafas VR caseras» con una lente seleccionada: a 40 mm de la pantalla forma la imagen a 0.37 m del ojo (×9), con 72° × 79° de campo por ojo, 15 píxeles por grado e IPD de 63 mm.*
 
@@ -577,7 +580,7 @@ bucle:
 ### Gafas VR caseras: seguimiento de la cabeza con la IMU
 
 ![Seguimiento con la IMU](docs/demo_vr_fase3.png)
-*Ejemplo «Gafas VR en cabeza de prueba»: tres servos mueven la cabeza, la ESP32 estima la orientación con el MPU-6050 y las cámaras del visor la siguen; la gráfica compara la guiñada real con la estimada.*
+*Ejemplo «Gafas VR en cabeza de prueba»: tres servos mueven la cabeza frente a una carta de calibración, la ESP32 estima la orientación con el MPU-6050 y las cámaras del visor la siguen; la gráfica compara la guiñada real con la estimada.*
 
 - **Cabeza de prueba** (pieza `cabeza_prueba`): maniquí impreso, elipsoide de
   190 × 230 × 150 mm con masa, centro de masa e inercia propias (577 g impreso al
@@ -635,6 +638,12 @@ bucle:
   el borde (471′); con el render a 63 mm y un usuario de 58 mm, divergencia de 1.33 Δ;
   con el render a 60 mm y las lentes a 63 mm, convergencia de 7.2 Δ y además 54′ de
   distorsión asimétrica; el perfil de Cardboard v1 deja 206′.
+- **OpenClaw puede montar las gafas por la API**: `connect_wire` (cables entre
+  terminales), `connect_parts` con anclaje, límites, motor, control, perfil y
+  deslizadera bloqueada, `set_property` con rotación, anclaje y ajustes,
+  `configure_headset` y `capture_headset_view`, además de `analyze_headset` y
+  `check_headset`. Una prueba monta las gafas completas solo con la API y comprueba
+  que funcionan.
 - **Uniones fijas rígidas**: en Jolt las uniones fijas entre cuerpos dinámicos se
   comportaban como resortes (una viga de 0.6 kg sobre un servo de 32 g cedía 8°);
   ahora las piezas unidas con uniones fijas forman un solo cuerpo.
@@ -725,7 +734,7 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; verificación óptica, ergonomía y holguras; `-- mfvr fase3` o `fase4` solo esa parte) | `mfvr` |
+| Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; verificación óptica, ergonomía y holguras; las gafas montadas solo con la API; `-- mfvr fase3`, `fase4` o `fase5` solo esa parte) | `mfvr` |
 
 ## Arquitectura
 

@@ -33,7 +33,7 @@ const EJEMPLOS := [
 	["12_gafas_vr", "Gafas VR caseras",
 		"Carcasa impresa en PLA con pantalla de 5.5\", dos lentes de f = 45 mm en deslizaderas (distancia entre ojos de 63 mm) y una ESP32 que lee el MPU-6050 por I²C y estima la orientación con un filtro complementario. Selecciona una lente para ver su óptica."],
 	["13_visor_cabeza", "Gafas VR en cabeza de prueba",
-		"Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia)."],
+		"Las gafas caseras sobre una cabeza impresa que mueven tres servos (guiñada, cabeceo y alabeo) con perfiles senoidales, frente a una carta de calibración. La ESP32 estima la orientación con la IMU y las cámaras del visor la siguen: abre 👓 Visor y pulsa ▶ Simular para comparar la orientación real con la estimada (error, deriva de la guiñada y latencia); en «Vista», mira la carta a través de las lentes."],
 ]
 
 func run() -> void:
@@ -310,6 +310,11 @@ func _ej_visor_cabeza() -> void:
 	_servo(_hinge(s_roll, head, Vector3(hx, 0.327, 0), 0), 10.0, 0.25, 45.0, 35.0)
 	var shell := _headset(0.4055)
 	main._tpl_fix(head, shell, shell.position)
+	# Carta de calibración en un poste, 0.45 m delante de los ojos y a su altura.
+	var face := Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0)).get_euler()
+	var stand := _anchor(_sp("perfil_2020_400", "aluminio", Vector3(0.44, 0.2, 0)))
+	var chart := _sp("carta_calibracion", "carton", Vector3(0.42, 0.453, 0), face)
+	main._tpl_fix(stand, chart, chart.position)
 	_program(VR_PROGRAM)
 	main.headset_rig.track_mode = HeadsetRig.Track.IMU
 	_view(Vector3(-0.05, 0.33, 0.0), 0.85, -125, -12, 0)

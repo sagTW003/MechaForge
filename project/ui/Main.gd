@@ -1670,6 +1670,32 @@ func _sync_check_panel() -> void:
 		(check_manual_spins[k] as SpinBox).set_value_no_signal(float(headset_rig.profile_manual[k]))
 	check_manual.visible = headset_rig.profile_mode == HeadsetRig.Profile.MANUAL
 
+## Imagen del visor en PNG (API capture_headset_view): la pantalla o un ojo a través de
+## su lente. Hace falta el render activo (panel abierto o simulando con la pantalla
+## encendida); la vista de un ojo se prepara y se pide otra vez.
+func api_capture_headset(vista: String) -> Dictionary:
+	var m := ["pantalla", "ojo_izquierdo", "ojo_derecho"].find(vista)
+	if m < 0:
+		return {"error": "vista no válida: %s" % vista}
+	if not headset_rig.is_active():
+		return {"error": "El render del visor no está activo: abre 👓 Visor o simula con la pantalla encendida."}
+	if m != headset_rig.view_mode and m > 0:
+		headset_rig.set_view_mode(m)
+		if visor_view_opt:
+			visor_view_opt.select(m)
+			visor_view.texture = headset_rig.view_texture()
+		return {"status": "preparando", "nota": "Vista %s activada: vuelve a llamar en un momento para guardarla." % vista}
+	if DisplayServer.get_name() == "headless":
+		return {"error": "Sin ventana no hay render que guardar."}
+	var tex: Texture2D = headset_rig.screen_vp.get_texture() if m == 0 else headset_rig.eyeview_vp.get_texture()
+	var img := tex.get_image()
+	if img == null or img.is_empty():
+		return {"error": "Aún no hay imagen renderizada."}
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://capturas"))
+	var path := "user://capturas/visor_%s_%s.png" % [vista, Time.get_datetime_string_from_system().replace(":", "-")]
+	img.save_png(path)
+	return {"ruta": ProjectSettings.globalize_path(path), "px": [img.get_width(), img.get_height()], "vista": vista}
+
 ## Verificación del visor como datos (API check_headset), sin infinitos.
 func api_headset_check() -> Dictionary:
 	var r := HeadsetCheck.report(self, headset_rig)
@@ -1885,6 +1911,7 @@ func _ai_preview(actions: Array, accumulate: bool = false) -> void:
 func _ai_summary(actions: Array, ghosts: int) -> String:
 	var names := {"connect": ["unión", "uniones"], "remove": ["eliminación", "eliminaciones"],
 		"set_property": ["cambio", "cambios"], "script": ["programa", "programas"],
+		"cable": ["cable", "cables"], "visor": ["ajuste del visor", "ajustes del visor"],
 		"grafica": ["gráfica", "gráficas"], "lab": ["módulo del laboratorio", "módulos del laboratorio"],
 		"nota": ["nota", "notas"]}
 	var counts := {}
@@ -1928,11 +1955,23 @@ func _ai_apply() -> void:
 					if typeof(a.get("dims_mm")) == TYPE_DICTIONARY:
 						for k in a["dims_mm"]:
 							inst2.def["dimensiones_mm"][k] = float(a["dims_mm"][k])
+					if typeof(a.get("estado")) == TYPE_DICTIONARY:
+						for k in a["estado"]:
+							inst2.estado[str(k)] = a["estado"][k]
+					if a.has("anclada"):
+						inst2.anchored = bool(a["anclada"])
 					inst2.rebuild()
-					if typeof(a.get("pos")) == TYPE_ARRAY and a["pos"].size() >= 3:
-						_do({"type": "transform", "uid": inst2.uid, "old": _xf_of(inst2),
-							"new": {"pos": [a["pos"][0], a["pos"][1], a["pos"][2]], "rot": _arr(inst2.rotation)}})
+					var has_pos: bool = typeof(a.get("pos")) == TYPE_ARRAY and a["pos"].size() >= 3
+					var has_rot: bool = typeof(a.get("rot_deg")) == TYPE_ARRAY and a["rot_deg"].size() >= 3
+					if has_pos or has_rot:
+						var np = [a["pos"][0], a["pos"][1], a["pos"][2]] if has_pos else _arr(inst2.position)
+						var nr = _arr(_ai_rot(a)) if has_rot else _arr(inst2.rotation)
+						_do({"type": "transform", "uid": inst2.uid, "old": _xf_of(inst2), "new": {"pos": np, "rot": nr}})
 					Config.project_dirty = true
+			"cable":
+				_ai_apply_wire(a)
+			"visor":
+				_ai_apply_visor(a)
 			"script":
 				mcu_editor.text = str(a.get("script", ""))
 				mcu_panel.set_collapsed(false)
@@ -2028,9 +2067,93 @@ func _ai_apply_connect(a: Dictionary) -> void:
 		c.gear_z1 = int(a["z1"]); c.gear_z2 = int(a["z2"])
 	elif pa.def.get("forma", "") == "engranaje" and pb.def.get("forma", "") == "engranaje":
 		c.gear_z1 = PartLibrary.gear_teeth(pa.def); c.gear_z2 = PartLibrary.gear_teeth(pb.def)
+	var an = a.get("anclaje", null)
+	if typeof(an) == TYPE_ARRAY and an.size() >= 3:
+		c.anchor = Vector3(float(an[0]), float(an[1]), float(an[2]))
+	var lim = a.get("limites", null)
+	if typeof(lim) == TYPE_ARRAY and lim.size() >= 2:
+		c.limit_enabled = true
+		var sc := 0.001 if c.tipo == Connection.Tipo.DESLIZADERA else PI / 180.0
+		c.limit_lower = float(lim[0]) * sc
+		c.limit_upper = float(lim[1]) * sc
+	var mt := str(a.get("tipo_motor", ""))
+	if mt != "":
+		c.motor_enabled = true
+		c.motor_type = {"dc": Connection.MotorType.DC, "paso": Connection.MotorType.STEPPER, "servo": Connection.MotorType.SERVO}.get(mt, Connection.MotorType.DC)
+		if c.motor_type == Connection.MotorType.SERVO:
+			c.servo_min_deg = -90.0
+			c.servo_max_deg = 90.0
+	var ctl := str(a.get("control", ""))
+	if ctl in ["posicion", "velocidad"]:
+		c.motor_enabled = true
+		c.control_mode = Connection.ControlMode.POSICION if ctl == "posicion" else Connection.ControlMode.VELOCIDAD
+		if a.has("consigna"):
+			c.ctrl_setpoint = deg_to_rad(float(a["consigna"])) if ctl == "posicion" else float(a["consigna"])
+	var pid = a.get("pid", null)
+	if typeof(pid) == TYPE_ARRAY and pid.size() >= 3:
+		c.ctrl_kp = float(pid[0]); c.ctrl_ki = float(pid[1]); c.ctrl_kd = float(pid[2])
+	var pf = a.get("perfil", null)
+	if typeof(pf) == TYPE_DICTIONARY:
+		c.profile = {"seno": Connection.Profile.SENO, "cuadrada": Connection.Profile.CUADRADA}.get(str(pf.get("tipo", "fija")), Connection.Profile.NINGUNO)
+		c.profile_amp = float(pf.get("amplitud", c.profile_amp))
+		c.profile_freq = float(pf.get("frecuencia", c.profile_freq))
+		c.profile_phase_deg = float(pf.get("desfase", c.profile_phase_deg))
+		c.profile_center = float(pf.get("centro", c.profile_center))
+		c.profile_ideal = bool(pf.get("ideal", false))
+	if a.has("bloqueada"):
+		c.slide_locked = bool(a["bloqueada"])
 	connections.append(c)
 	_redraw_connection_markers()
 	_refresh_uniones_panel()
+
+## Cable propuesto por la IA entre dos terminales «uid:terminal».
+func _ai_apply_wire(a: Dictionary) -> void:
+	var ta := _terminal_info(str(a.get("a", "")))
+	var tb := _terminal_info(str(a.get("b", "")))
+	if ta.is_empty() or tb.is_empty():
+		return
+	var tipo := "signal"
+	if ta["tipo"] == "gnd" or tb["tipo"] == "gnd":
+		tipo = "gnd"
+	elif ta["tipo"] == "power" or tb["tipo"] == "power":
+		tipo = "power"
+	wires.append({"uid": "w%d_%d" % [Time.get_ticks_usec(), randi() % 100000], "a_key": str(a["a"]), "b_key": str(a["b"]),
+		"tipo": tipo, "color": str(a.get("color", "auto"))})
+	Config.project_dirty = true
+	_redraw_wires()
+	_refresh_circuito_panel()
+
+## Terminal «uid:terminal»: {tipo} o vacío.
+func _terminal_info(key: String) -> Dictionary:
+	var parts := key.split(":")
+	if parts.size() != 2:
+		return {}
+	var part := _find_part(parts[0])
+	if part == null:
+		return {}
+	for t in part.def.get("terminales", []):
+		if str(t.get("id", "")) == parts[1]:
+			return {"tipo": str(t.get("tipo", "signal"))}
+	return {}
+
+## Ajustes del visor propuestos por la IA (solo los indicados).
+func _ai_apply_visor(a: Dictionary) -> void:
+	var cur: Dictionary = _project_extra().get("visor", {"seguimiento": headset_rig.track_mode, "retardo_ms": headset_rig.link_ms,
+		"predistorsion": headset_rig.predistort, "cromatica": headset_rig.chroma, "calidad": headset_rig.quality,
+		"perfil": headset_rig.profile_mode, "perfil_manual": headset_rig.profile_manual.duplicate(), "ipd_usuario_mm": headset_rig.user_ipd_mm})
+	if a.has("seguimiento"):
+		cur["seguimiento"] = HeadsetRig.Track.IMU if str(a["seguimiento"]) == "imu" else HeadsetRig.Track.REAL
+	if a.has("perfil"):
+		cur["perfil"] = ["diseno", "manual", "cardboard_v1", "cardboard_v2"].find(str(a["perfil"]))
+	if typeof(a.get("perfil_manual")) == TYPE_DICTIONARY:
+		var pm: Dictionary = (cur.get("perfil_manual", {}) as Dictionary).duplicate()
+		pm.merge(a["perfil_manual"], true)
+		cur["perfil_manual"] = pm
+	for k in ["retardo_ms", "ipd_usuario_mm", "predistorsion", "cromatica", "calidad"]:
+		if a.has(k):
+			cur[k] = a[k]
+	_apply_visor_settings(cur)
+	Config.project_dirty = true
 
 func _clear_ai_ghosts() -> void:
 	if ai_ghost_root:
@@ -2085,9 +2208,16 @@ func api_scene_state() -> Dictionary:
 	for c in parts_root.get_children():
 		if c is PartInstance:
 			var p := c as PartInstance
-			parts.append({"uid": p.uid, "def_id": p.def_id, "nombre": p.def.get("nombre", ""),
+			var item := {"uid": p.uid, "def_id": p.def_id, "nombre": p.def.get("nombre", ""),
 				"material": p.material_id, "pos": _arr(p.position), "rot_deg": _arr(p.rotation_degrees),
-				"dims_mm": p.def.get("dimensiones_mm", {}), "masa_kg": p.mass_kg()})
+				"dims_mm": p.def.get("dimensiones_mm", {}), "masa_kg": p.mass_kg()}
+			if p.anchored:
+				item["anclada"] = true
+			if not p.estado.is_empty():
+				item["estado"] = p.estado.duplicate(true)
+			if p.def.has("terminales"):
+				item["terminales"] = (p.def["terminales"] as Array).map(func(t): return "%s:%s" % [p.uid, t.get("id", "")])
+			parts.append(item)
 	var conns := []
 	for cn in connections:
 		conns.append((cn as Connection).to_dict())

@@ -244,7 +244,7 @@ Plan de mejora en tres objetivos (fotorrealismo, maniobrabilidad, física):
       (si la tolerancia no cabe en el presupuesto se relaja y se avisa en lugar de no dar
       valor). Quedan como pruebas permanentes en `mflabtest` (~1000 casos).
 
-## 🔄 Gafas VR caseras (simulación del visor)
+## ✅ Gafas VR caseras (simulación del visor)
 Plan en seis fases a partir del análisis de factibilidad: el motor ya trae cámaras
 secundarias, capas de render y un modo VR tipo Cardboard con distorsión de lente; lo
 que faltaba estaba en el proyecto.
@@ -364,8 +364,21 @@ que faltaba estaba en el proyecto.
 - [x] Pruebas: `mfvr` (fase 4, también sola con `-- mfvr fase4`; con ventana, la vista
       a través de la lente renderizada).
 
-### Fases siguientes
-- [ ] Fase 5 — Ejemplo «Gafas VR caseras», API, suite y documentación.
+### ✅ Fase 5 — Integración
+- [x] **API para montar unas gafas completas**: `connect_wire` (cables entre
+      terminales), `connect_parts` con anclaje, límites, tipo de motor, control, PID,
+      perfil de consigna y deslizadera bloqueada, `set_property` con rotación, anclaje
+      y ajustes en `estado`, `configure_headset` (ajustes del visor) y
+      `capture_headset_view` (PNG de la pantalla o de un ojo). `list_parts` y
+      `get_scene_state` dan los terminales de cada pieza. Todo pasa por la propuesta
+      con vista previa (Aplicar / Descartar).
+- [x] **Carta de calibración** (`carta_calibracion`) delante de la cabeza de prueba:
+      tablero con cruz y esquinas de color para ver a través de las lentes que las
+      rectas salen rectas y la imagen derecha.
+- [x] Guía [GAFAS_VR.md](GAFAS_VR.md): piezas, montaje, firmware, óptica, render,
+      seguimiento, verificación, API y límites del modelo.
+- [x] Pruebas: `mfvr` (fase 5: las gafas montadas solo con la API, que funcionan;
+      errores de la API; la carta del ejemplo).
 
 ## ✅ Elección de la cámara del seguimiento de manos
 - [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»

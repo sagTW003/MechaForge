@@ -12,8 +12,10 @@ extends RefCounted
 ##   lab_list_modules, lab_open, lab_close, lab_get_state, lab_set_param,
 ##   lab_control, lab_sample, lab_perturb, lab_capture, lab_plot
 ## Cambios en la escena (requieren confirmación del usuario — vista previa fantasma):
-##   add_part, connect_parts, set_property, remove_part, write_controller_script,
+##   add_part, connect_parts, connect_wire, set_property, remove_part,
+##   write_controller_script, configure_headset (ajustes del visor VR),
 ##   write_note (notas del proyecto; get_notes las lee)
+## Visor VR (lectura): analyze_headset, check_headset, capture_headset_view
 ##
 ## "host" es el controlador principal (ui/Main.gd); aquí solo se valida y traduce.
 
@@ -31,17 +33,42 @@ const TOOLS := [
 			"def_id": {"type": "string"}, "material": {"type": "string"},
 			"pos": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
 			"rot_deg": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}}},
-	{"name": "connect_parts", "description": "Propone una unión entre dos piezas: fija, bisagra, deslizadera, rotula o engranaje; opcionalmente con motor.",
+	{"name": "connect_parts", "description": "Propone una unión entre dos piezas: fija, bisagra, deslizadera, rotula o engranaje; opcionalmente con motor. Eje en ejes del mundo; anclaje en m (por defecto, el punto medio); límites en grados (bisagra) o mm (deslizadera). Bisagra con motor: tipo_motor dc/paso/servo, control posicion/velocidad con consigna (° o rad/s) y PID [kp, ki, kd], y perfil de consigna (seno o cuadrada: amplitud, frecuencia Hz, desfase °, centro; ideal=true sigue el perfil exacto, banco de pruebas). Deslizadera: bloqueada=true la fija al simular (un ajuste, como la distancia entre lentes).",
 		"input_schema": {"type": "object", "required": ["a", "b", "union"], "properties": {
 			"a": {"type": "string"}, "b": {"type": "string"},
 			"union": {"type": "string", "enum": ["fija", "bisagra", "deslizadera", "rotula", "engranaje"]},
 			"eje": {"type": "string", "enum": ["X", "Y", "Z"]}, "motor": {"type": "boolean"},
 			"velocidad": {"type": "number"}, "torque": {"type": "number"},
-			"z1": {"type": "integer"}, "z2": {"type": "integer"}}}},
-	{"name": "set_property", "description": "Propone cambiar material, dimensiones (mm) o posición de una pieza.",
+			"z1": {"type": "integer"}, "z2": {"type": "integer"},
+			"anclaje": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+			"limites": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+			"tipo_motor": {"type": "string", "enum": ["dc", "paso", "servo"]},
+			"control": {"type": "string", "enum": ["ninguno", "posicion", "velocidad"]},
+			"consigna": {"type": "number"},
+			"pid": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+			"perfil": {"type": "object", "properties": {"tipo": {"type": "string", "enum": ["fija", "seno", "cuadrada"]},
+				"amplitud": {"type": "number"}, "frecuencia": {"type": "number"}, "desfase": {"type": "number"},
+				"centro": {"type": "number"}, "ideal": {"type": "boolean"}}},
+			"bloqueada": {"type": "boolean"}}}},
+	{"name": "connect_wire", "description": "Propone un cable entre dos terminales 'uid:terminal' (p. ej. 'p12:5V' y 'p34:VCC'); el tipo (alimentación, tierra o señal) sale de los terminales. Los terminales de cada pieza están en list_parts / get_scene_state.",
+		"input_schema": {"type": "object", "required": ["a", "b"], "properties": {
+			"a": {"type": "string"}, "b": {"type": "string"},
+			"color": {"type": "string", "enum": ["auto", "rojo", "negro", "naranja", "amarillo", "azul", "verde", "blanco"]}}}},
+	{"name": "set_property", "description": "Propone cambiar material, dimensiones (mm), posición (m), rotación (grados), anclaje al mundo o ajustes de una pieza en «estado»: ojo_mm (lente: distancia ojo–lente), i2c_dir (IMU: 104 = 0x68 o 105 = 0x69), impresion {relleno 0–1, paredes_mm}, imu {odr_hz, gyro_fs_dps, accel_fs_g, ideal}, colision (multiple, convexa o caja).",
 		"input_schema": {"type": "object", "required": ["uid"], "properties": {
 			"uid": {"type": "string"}, "material": {"type": "string"},
-			"dims_mm": {"type": "object"}, "pos": {"type": "array", "items": {"type": "number"}}}}},
+			"dims_mm": {"type": "object"}, "pos": {"type": "array", "items": {"type": "number"}},
+			"rot_deg": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3},
+			"anclada": {"type": "boolean"}, "estado": {"type": "object"}}}},
+	{"name": "configure_headset", "description": "Propone los ajustes del visor VR (se guardan con el proyecto): seguimiento real o imu (las cámaras siguen la orientación roll/pitch/yaw del programa), retardo_ms del enlace, perfil del render (diseno, manual, cardboard_v1, cardboard_v2) y perfil_manual {ipd_mm, dist_mm, k1, k2}, ipd_usuario_mm, predistorsion, cromatica y calidad (0 baja, 1 media, 2 alta).",
+		"input_schema": {"type": "object", "properties": {
+			"seguimiento": {"type": "string", "enum": ["real", "imu"]}, "retardo_ms": {"type": "number"},
+			"perfil": {"type": "string", "enum": ["diseno", "manual", "cardboard_v1", "cardboard_v2"]},
+			"perfil_manual": {"type": "object"}, "ipd_usuario_mm": {"type": "number"},
+			"predistorsion": {"type": "boolean"}, "cromatica": {"type": "boolean"},
+			"calidad": {"type": "integer", "minimum": 0, "maximum": 2}}}},
+	{"name": "capture_headset_view", "description": "Guarda en PNG lo que muestra la pantalla del visor (vista 'pantalla') o lo que ve un ojo a través de su lente ('ojo_izquierdo', 'ojo_derecho') y devuelve la ruta. El render del visor debe estar activo (panel 👓 Visor abierto o simulando con la pantalla encendida).",
+		"input_schema": {"type": "object", "properties": {"vista": {"type": "string", "enum": ["pantalla", "ojo_izquierdo", "ojo_derecho"]}}}},
 	{"name": "remove_part", "description": "Propone eliminar una pieza.",
 		"input_schema": {"type": "object", "required": ["uid"], "properties": {"uid": {"type": "string"}}}},
 	{"name": "write_controller_script", "description": "Propone el programa del microcontrolador (líneas 'variable = expresión'; la última es la consigna). Las variables conservan su valor entre pasos (empiezan en 0); bajo 'inicio:' solo el primer paso, bajo 'bucle:' cada paso. Entradas: t, x, dt y sensores (IMU: imu1_ax/ay/az en g, imu1_gx/gy/gz en °/s).",
@@ -111,6 +138,9 @@ func call_tool(name: String, p: Dictionary) -> Dictionary:
 		"analyze_design": return host.api_analyze()
 		"analyze_headset": return host.api_headset()
 		"check_headset": return host.api_headset_check()
+		"capture_headset_view": return host.api_capture_headset(str(p.get("vista", "pantalla")))
+		"connect_wire": return _wire(p)
+		"configure_headset": return _headset_config(p)
 		"run_simulation": return host.api_run(true)
 		"stop_simulation": return host.api_run(false)
 		"get_proposal_status": return host.api_proposal_status(int(p.get("id", -1)))
@@ -157,8 +187,13 @@ func _list_parts(cat: String) -> Dictionary:
 		var d := PartLibrary.get_def(id)
 		if cat != "" and d.get("categoria", "") != cat:
 			continue
-		parts.append({"def_id": id, "nombre": d.get("nombre", id), "categoria": d.get("categoria", ""),
-			"dimensiones_mm": d.get("dimensiones_mm", {}), "material": d.get("material", "")})
+		var item := {"def_id": id, "nombre": d.get("nombre", id), "categoria": d.get("categoria", ""),
+			"dimensiones_mm": d.get("dimensiones_mm", {}), "material": d.get("material", "")}
+		if d.has("terminales"):
+			item["terminales"] = (d["terminales"] as Array).map(func(t): return "%s (%s)" % [t.get("id", ""), t.get("tipo", "signal")])
+		if d.has("descripcion"):
+			item["descripcion"] = d["descripcion"]
+		parts.append(item)
 	return {"piezas": parts, "materiales": MaterialLibrary.ids()}
 
 static func _vec3(v, fallback = Vector3.ZERO) -> Variant:
@@ -191,13 +226,57 @@ func _connect(p: Dictionary) -> Dictionary:
 	a["tipo"] = "connect"
 	return host.api_propose([a])
 
+const ESTADO_KEYS := ["ojo_mm", "i2c_dir", "impresion", "imu", "colision"]
+
 func _set_property(p: Dictionary) -> Dictionary:
 	if host._find_part(str(p.get("uid", ""))) == null:
 		return {"error": "pieza no encontrada"}
 	if p.has("material") and not MaterialLibrary.has_material(str(p["material"])):
 		return {"error": "material inexistente"}
+	if p.has("estado"):
+		if typeof(p["estado"]) != TYPE_DICTIONARY:
+			return {"error": "estado debe ser un objeto"}
+		for k in p["estado"]:
+			if not str(k) in ESTADO_KEYS:
+				return {"error": "estado.%s no se puede cambiar (válidos: %s)" % [k, ", ".join(ESTADO_KEYS)]}
 	var a := p.duplicate()
 	a["tipo"] = "set_property"
+	return host.api_propose([a])
+
+## Terminal «uid:terminal» de una pieza de la escena (vacío si no existe).
+func _terminal(key: String) -> Dictionary:
+	var parts := key.split(":")
+	if parts.size() != 2:
+		return {}
+	var part: PartInstance = host._find_part(parts[0])
+	if part == null:
+		return {}
+	for t in part.def.get("terminales", []):
+		if str(t.get("id", "")) == parts[1]:
+			return t
+	return {}
+
+func _wire(p: Dictionary) -> Dictionary:
+	var a := str(p.get("a", ""))
+	var b := str(p.get("b", ""))
+	for k in [a, b]:
+		if _terminal(k).is_empty():
+			return {"error": "terminal '%s' no encontrado (formato 'uid:terminal')" % k}
+	if a == b:
+		return {"error": "los dos extremos son el mismo terminal"}
+	return host.api_propose([{"tipo": "cable", "a": a, "b": b, "color": str(p.get("color", "auto"))}])
+
+func _headset_config(p: Dictionary) -> Dictionary:
+	var keys := ["seguimiento", "retardo_ms", "perfil", "perfil_manual", "ipd_usuario_mm", "predistorsion", "cromatica", "calidad"]
+	var a := {"tipo": "visor"}
+	for k in p:
+		if not str(k) in keys:
+			return {"error": "ajuste desconocido: %s (válidos: %s)" % [k, ", ".join(keys)]}
+		a[k] = p[k]
+	if a.size() == 1:
+		return {"error": "no hay ajustes"}
+	if a.has("perfil") and not str(a["perfil"]) in ["diseno", "manual", "cardboard_v1", "cardboard_v2"]:
+		return {"error": "perfil no válido"}
 	return host.api_propose([a])
 
 func _remove(p: Dictionary) -> Dictionary:

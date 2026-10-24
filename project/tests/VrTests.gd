@@ -4,6 +4,8 @@ extends Node
 ## (sin --headless se añade el render real: bolas en direcciones conocidas de cada ojo;
 ## con la variable MF_VR_DUMP=<carpeta> guarda las imágenes renderizadas)
 ##
+## Fase 5: las gafas completas montadas solo con la API (como OpenClaw), errores de la
+## API y la carta de calibración del ejemplo de la cabeza.
 ## Fase 4: verificación óptica (distorsión y color residuales, desalineación, prisma
 ## por la IPD del render y del usuario), ergonomía, holguras y vista a través de la lente.
 ## Fase 3: perfiles de consigna, cabeza de prueba, base de la IMU, latencia y deriva,
@@ -37,6 +39,12 @@ func wait_phys(n: int) -> void:
 		await get_tree().physics_frame
 
 func run() -> void:
+	if "fase5" in OS.get_cmdline_user_args():
+		await _run_phase5()
+		main._on_new()
+		print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
+		get_tree().quit(1 if fail > 0 else 0)
+		return
 	if "fase4" in OS.get_cmdline_user_args():
 		await _run_phase4()
 		main._on_new()
@@ -78,6 +86,7 @@ func run() -> void:
 	await _test_rig_render()
 	await _run_phase3()
 	await _run_phase4()
+	await _run_phase5()
 	main._on_new()
 	print("[TEST] Visor VR: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -1617,5 +1626,116 @@ func _test_eyeview_render() -> void:
 	rig.forced = false
 	rig.quality = 1
 	rig.set_view_mode(0)
+
+#endregion
+
+#region FASE 5: INTEGRACIÓN (OPENCLAW MONTA LAS GAFAS POR LA API) -----------------
+
+func _run_phase5() -> void:
+	print("[TEST] Visor VR — Fase 5 (las gafas montadas solo con la API de OpenClaw)")
+	await _test_api_build_headset()
+	_test_api_errors()
+	_test_calibration_chart()
+
+func _uids_of(def_id: String) -> Array:
+	var out := []
+	for c in main.parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id == def_id:
+			out.append((c as PartInstance).uid)
+	return out
+
+func _test_api_build_headset() -> void:
+	main._on_new()
+	var api := SimulatorApi.new(main)
+	var yc := 0.0475
+	var fe := Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0)).get_euler()
+	var face := [rad_to_deg(fe.x), rad_to_deg(fe.y), rad_to_deg(fe.z)]
+	var plan := [["carcasa_visor", "pla", [0.0, yc, 0.0], [0, 0, 0]], ["pantalla_55", "abs", [0.027, yc, 0.0], face],
+		["soporte_lentes", "pla", [-0.016, yc, 0.0], face], ["lente_cardboard_37", "acrilico", [-0.016, yc, 0.0315], face],
+		["lente_cardboard_37", "acrilico", [-0.016, yc, -0.0315], face], ["esp32_devkit", "abs", [0.005, 0.1, -0.045], [0, 0, 0]],
+		["imu", "abs", [-0.005, 0.099, 0.03], [0, 0, 0]]]
+	var pending := true
+	for it in plan:
+		var r := api.call_tool("add_part", {"def_id": it[0], "material": it[1], "pos": it[2], "rot_deg": it[3]})
+		pending = pending and str(r.get("status", "")) == "pending_confirmation"
+	check(pending and main.parts_root.get_child_count() == 0 and main.ai_pending.size() == 7,
+		"API: siete piezas del visor propuestas en vista previa, sin tocar la escena hasta que el usuario aplica")
+	main._ai_apply()
+	var shell: String = _uids_of("carcasa_visor")[0]
+	var scr: String = _uids_of("pantalla_55")[0]
+	var holder: String = _uids_of("soporte_lentes")[0]
+	var lenses := _uids_of("lente_cardboard_37")
+	var esp: String = _uids_of("esp32_devkit")[0]
+	var imu: String = _uids_of("imu")[0]
+	api.call_tool("set_property", {"uid": shell, "anclada": true})
+	api.call_tool("set_property", {"uid": lenses[0], "estado": {"ojo_mm": 15.0}})
+	main._ai_apply()
+	for u in [scr, holder, esp, imu]:
+		api.call_tool("connect_parts", {"a": shell, "b": u, "union": "fija", "anclaje": main._arr(main._find_part(u).position)})
+	for l in lenses:
+		api.call_tool("connect_parts", {"a": holder, "b": l, "union": "deslizadera", "eje": "Z", "limites": [-9, 9], "bloqueada": true,
+			"anclaje": main._arr(main._find_part(l).position)})
+	main._ai_apply()
+	var k := func(u: String, t: String) -> String: return "%s:%s" % [u, t]
+	for w in [[k.call(esp, "5V"), k.call(scr, "5V")], [k.call(esp, "GND"), k.call(scr, "GND")], [k.call(esp, "3V3"), k.call(imu, "VCC")],
+			[k.call(esp, "GND2"), k.call(imu, "GND")], [k.call(esp, "GPIO22"), k.call(imu, "SCL")], [k.call(esp, "GPIO21"), k.call(imu, "SDA")]]:
+		api.call_tool("connect_wire", {"a": w[0], "b": w[1]})
+	api.call_tool("write_controller_script", {"script": preload("res://templates/GeneradorEjemplos.gd").VR_PROGRAM})
+	api.call_tool("configure_headset", {"seguimiento": "real", "perfil": "diseno", "ipd_usuario_mm": 63.0, "retardo_ms": 15})
+	main._ai_apply()
+	var slid: Array = main.connections.filter(func(c): return (c as Connection).tipo == Connection.Tipo.DESLIZADERA)
+	check(main.parts_root.get_child_count() == 7 and main.connections.size() == 6 and main.wires.size() == 6 and slid.size() == 2
+		and (slid[0] as Connection).slide_locked and absf((slid[0] as Connection).limit_upper - 0.009) < 1e-9 and main._find_part(shell).anchored
+		and absf(_rig().link_ms - 15.0) < 1e-6 and main.mcu_enabled,
+		"API: uniones (fijas y deslizaderas bloqueadas con límites), 6 cables, programa y ajustes del visor aplicados")
+	var ah: Dictionary = main.api_headset()
+	var ch: Dictionary = main.api_headset_check()
+	check(ah.get("ok", false) and absf(float(ah["ipd_mm"]) - 63.0) < 0.05 and ch.get("ok", false) and (ch["avisos"] as Array).is_empty(),
+		"API: analyze_headset (IPD %.1f mm) y check_headset (sin avisos) sobre las gafas montadas por la API" % float(ah.get("ipd_mm", 0.0)))
+	api.call_tool("run_simulation", {})
+	await wait_phys(240)
+	var tel: Dictionary = api.call_tool("get_telemetry", {})
+	var vars: Dictionary = tel.get("microcontrolador", {}).get("variables", {})
+	var bus: Dictionary = tel.get("bus_i2c", {})
+	check(int(vars.get("quien", 0)) == 0x68 and bool(bus.get(imu, {}).get("ok", false)) and main.circuit_rt.screen_powered(main._find_part(scr))
+		and absf(float(vars.get("roll", 99.0))) < 2.5,
+		"API: simulando, la ESP32 lee el MPU-6050 por I²C (WHO_AM_I 0x%X), la pantalla se enciende y el visor está nivelado" % int(vars.get("quien", 0)))
+	await get_tree().process_frame
+	var cap: Dictionary = api.call_tool("capture_headset_view", {"vista": "pantalla"})
+	if DisplayServer.get_name() == "headless":
+		check(cap.has("ruta") or cap.has("error"), "API: capture_headset_view responde (sin ventana no hay imagen que guardar)")
+	else:
+		await RenderingServer.frame_post_draw
+		cap = api.call_tool("capture_headset_view", {"vista": "pantalla"})
+		check(cap.has("ruta") and FileAccess.file_exists(str(cap["ruta"])) and int(cap["px"][0]) == 1600, "API: capture_headset_view guarda la pantalla del visor en PNG (%s)" % str(cap.get("px", [])))
+	api.call_tool("stop_simulation", {})
+	await get_tree().process_frame
+
+func _test_api_errors() -> void:
+	var api := SimulatorApi.new(main)
+	var esp: String = _uids_of("esp32_devkit")[0]
+	var e1 := api.call_tool("connect_wire", {"a": esp + ":NOEXISTE", "b": esp + ":5V"})
+	var e2 := api.call_tool("configure_headset", {"brillo": 3})
+	var e3 := api.call_tool("set_property", {"uid": esp, "estado": {"def": {}}})
+	var e4 := api.call_tool("capture_headset_view", {"vista": "nariz"})
+	check(e1.has("error") and e2.has("error") and e3.has("error") and e4.has("error") and main.ai_pending.is_empty(),
+		"API: terminales, ajustes y campos de estado desconocidos se rechazan sin proponer nada")
+	var lp: Dictionary = api.call_tool("list_parts", {"categoria": "electronica"})
+	var esp_def: Array = (lp["piezas"] as Array).filter(func(p): return p["def_id"] == "esp32_devkit")
+	check(not esp_def.is_empty() and str(esp_def[0].get("terminales", [])).contains("GPIO21 (signal)"),
+		"API: list_parts da los terminales de cada pieza para cablear")
+	main._ai_discard()
+
+func _test_calibration_chart() -> void:
+	main._open_example(HEAD_EXAMPLE)
+	var chart := _part_by_def("carta_calibracion")
+	var tex := PartVisuals.calibration_texture().get_image()
+	check(chart.size() == 1 and tex.get_width() == 840 and tex.get_pixel(30, 30).r > 0.8 and tex.get_pixel(30, 30).g < 0.3
+		and tex.get_pixel(810, 30).g > 0.6 and tex.get_pixel(30, 564).b > 0.8,
+		"Carta de calibración en el ejemplo de la cabeza: tablero con esquinas de color (rojo, verde, azul, amarillo)")
+	var lay := HeadsetRig.compute_layout(main.parts_root, Callable(main, "_part_live_xform"))
+	var ew: Vector3 = main._part_live_xform(_part_by_def("pantalla_55")[0]) * (lay["eyes"][0]["pos_local"] as Vector3)
+	var cpos: Vector3 = (chart[0] as PartInstance).global_position
+	check(absf(cpos.y - ew.y) < 0.01 and cpos.x - ew.x > 0.4, "Carta de calibración: a la altura de los ojos y %.2f m por delante" % (cpos.x - ew.x))
 
 #endregion

@@ -285,16 +285,6 @@ func _vr3_shot(out_path: String) -> void:
 	await get_tree().process_frame
 	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel, main.mcu_panel, main.music_panel, main.ai_panel, main.graphics_panel]:
 		if p: p.visible = false
-	var props := [
-		main._spawn("perfil_2020_400", "aluminio_anodizado", Vector3(0.45, 0.2, -0.13)),
-		main._spawn("perfil_2020_400", "aluminio", Vector3(0.55, 0.2, 0.16)),
-		main._spawn("engranaje_m1_z40", "cobre", Vector3(0.36, 0.46, 0.0), Vector3(0, 0, PI / 2.0)),
-		main._spawn("rueda_65", "abs", Vector3(0.42, 0.37, 0.11), Vector3(PI / 2.0, 0, 0)),
-		main._spawn("motor_dc", "acero", Vector3(0.4, 0.53, -0.07)),
-	]
-	for q in props:
-		(q as PartInstance).anchored = true
-	main._update_counts()
 	main.connections_root.visible = false
 	main._select(null)
 	main.gizmo.attach(null)
@@ -306,10 +296,10 @@ func _vr3_shot(out_path: String) -> void:
 	var vs := get_viewport().get_visible_rect().size
 	main.visor_panel.position = Vector2(vs.x - 600.0, main.topbar_bottom() + 8.0)
 	var cam: CameraOrbit = main.camera
-	cam.target = Vector3(0.1, 0.36, 0.12)
-	cam.distance = 1.0
-	cam._yaw = deg_to_rad(-128)
-	cam._pitch = deg_to_rad(-12)
+	cam.target = Vector3(0.16, 0.4, 0.04)
+	cam.distance = 1.05
+	cam._yaw = deg_to_rad(32)
+	cam._pitch = deg_to_rad(-14)
 	cam._update_transform()
 	MaterialLibrary.wait_textures()
 	await get_tree().create_timer(9.0).timeout
