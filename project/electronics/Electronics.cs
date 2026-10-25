@@ -20,7 +20,7 @@ public partial class Electronics : Node
     /// </summary>
     public Dictionary SolveCircuit(int nodeCount, Array resistors, Array sources)
     {
-        var solver = new ElectricalSolver();
+        using var solver = new ElectricalSolver();
         solver.EnsureNode(nodeCount - 1);
         foreach (Variant item in resistors)
         {
@@ -83,5 +83,17 @@ public partial class Electronics : Node
         if (_pids.TryGetValue(id, out var p)) p.Reset();
     }
 
-    public void PidDestroy(int id) => _pids.Remove(id);
+    // Los PID y el solver son RefCounted de C#: si no se liberan aquí, los recoge el
+    // recolector de .NET con el motor ya apagado y la aplicación falla al salir.
+    public void PidDestroy(int id)
+    {
+        if (_pids.Remove(id, out var p)) p.Dispose();
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what != NotificationPredelete) return;
+        foreach (var p in _pids.Values) p.Dispose();
+        _pids.Clear();
+    }
 }

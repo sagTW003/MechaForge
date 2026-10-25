@@ -239,8 +239,7 @@ func _import(name: String, tris: PackedVector3Array) -> Dictionary:
 #region MALLAS: MASA ------------------------------------------------------------
 
 func _test_mesh_mass() -> void:
-	var mm = load("res://core/MeshMass.cs").new()
-	var r: Dictionary = mm.Compute(_box(Vector3(0.3, 0.2, 0.1), Vector3.ONE * 0.1))
+	var r: Dictionary = MeshTools.Compute(_box(Vector3(0.3, 0.2, 0.1), Vector3.ONE * 0.1))
 	var it: Array = r["inercia"]
 	check(absf(float(r["volumen"]) - 1e-3) < 1e-8 and absf(float(r["area"]) - 0.06) < 1e-7 and r["cerrada"],
 		"Masa de malla: cubo de 10 cm → V = 1000 cm³, A = 600 cm², estanco")
@@ -252,17 +251,17 @@ func _test_mesh_mass() -> void:
 		"Masa de malla: inercia del cubo V·(a²+a²)/12 = %s y productos nulos" % str(i0))
 	var hollow := _box(Vector3.ZERO, Vector3.ONE * 0.1)
 	hollow.append_array(_box(Vector3.ZERO, Vector3.ONE * 0.08, true))
-	var rh: Dictionary = mm.Compute(hollow)
+	var rh: Dictionary = MeshTools.Compute(hollow)
 	check(absf(float(rh["volumen"]) - (1e-3 - 0.08 * 0.08 * 0.08)) < 1e-8 and rh["cerrada"],
 		"Masa de malla: caja hueca cerrada → V = 1000 − 512 = 488 cm³")
 	var flipped := PackedVector3Array()
 	var cube := _box(Vector3.ZERO, Vector3.ONE * 0.1)
 	for i in range(cube.size() / 3):
 		flipped.append_array([cube[3 * i], cube[3 * i + 2], cube[3 * i + 1]])
-	var rf: Dictionary = mm.Compute(flipped)
+	var rf: Dictionary = MeshTools.Compute(flipped)
 	check(absf(float(rf["volumen"]) - 1e-3) < 1e-8 and rf["cerrada"], "Masa de malla: caras al revés → mismo volumen positivo")
 	var open := cube.slice(0, cube.size() - 6)
-	check(not bool(mm.Compute(open)["cerrada"]), "Masa de malla: una caja sin tapa no es estanca")
+	check(not bool(MeshTools.Compute(open)["cerrada"]), "Masa de malla: una caja sin tapa no es estanca")
 
 func _test_import_mass() -> void:
 	main._on_new()

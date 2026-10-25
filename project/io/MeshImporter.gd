@@ -67,11 +67,11 @@ static func triangles(def: Dictionary) -> PackedVector3Array:
 ## de densidad respecto al centroide [Ixx, Iyy, Izz, Ixy, Ixz, Iyz] y si es estanca.
 static func mass_properties(def: Dictionary) -> Dictionary:
 	var tris := triangles(def)
-	var scr = load("res://core/MeshMass.cs")
-	if tris.is_empty() or scr == null:
+	if tris.is_empty():
 		return {"volumen": 0.0, "area": 0.0, "centroide": Vector3.ZERO, "inercia": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "cerrada": false, "triangulos": 0}
-	var mm = scr.new()
-	var r: Dictionary = mm.Compute(tris)
+	# Autoload de C#: crear un MeshMass por cálculo dejaba objetos de .NET sin recoger
+	# al cerrar y la aplicación fallaba al salir.
+	var r: Dictionary = MeshTools.Compute(tris)
 	return r
 
 ## Formas de colisión convexas de una pieza importada, en el espacio de la pieza:

@@ -27,6 +27,7 @@ MaterialLibrary="*res://core/MaterialLibrary.gd"
 PartLibrary="*res://core/PartLibrary.gd"
 GraphicsProfiles="*res://rendering/GraphicsProfiles.gd"
 Electronics="*res://electronics/Electronics.cs"
+MeshTools="*res://core/MeshTools.cs"
 SystemMedia="*res://media/SystemMedia.cs"
 
 [display]

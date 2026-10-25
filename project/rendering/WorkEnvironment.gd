@@ -201,6 +201,12 @@ func set_mode(m: int) -> void:
 	_show_garage(mode == Mode.COCHERA)
 	Config.notify("Entorno: %s" % MODE_NAMES[mode], 3.0)
 
+## La cochera fuera del árbol (otro entorno) no la libera nadie: al cerrar quedaba
+## huérfana con sus cuerpos y mallas, y el ejecutable de release fallaba al salir.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(_garage) and _garage.get_parent() == null:
+		_garage.free()
+
 ## La cochera (con sus colisiones) solo existe en el árbol en su modo.
 func _show_garage(on: bool) -> void:
 	if on:
