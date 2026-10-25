@@ -1636,6 +1636,7 @@ func _run_phase5() -> void:
 	await _test_api_build_headset()
 	_test_api_errors()
 	_test_calibration_chart()
+	await _test_live_wires()
 
 func _uids_of(def_id: String) -> Array:
 	var out := []
@@ -1725,6 +1726,55 @@ func _test_api_errors() -> void:
 	check(not esp_def.is_empty() and str(esp_def[0].get("terminales", [])).contains("GPIO21 (signal)"),
 		"API: list_parts da los terminales de cada pieza para cablear")
 	main._ai_discard()
+
+## Mayor distancia entre los extremos de cada cable dibujado y sus terminales en vivo.
+func _wire_end_error() -> float:
+	var worst := 0.0
+	for w in main.wires:
+		var uid := str(w["uid"])
+		var holder: Node3D = main._wire_nodes.get(uid)
+		var pts: PackedVector3Array = main._wire_pts.get(uid, PackedVector3Array())
+		if holder == null or pts.is_empty():
+			return INF
+		var pa: PartInstance = main._find_part(str(w["a_key"]).split(":")[0])
+		var pb: PartInstance = main._find_part(str(w["b_key"]).split(":")[0])
+		var ea: Vector3 = main._wire_end_live(str(w["a_key"]), pa)
+		var eb: Vector3 = main._wire_end_live(str(w["b_key"]), pb)
+		worst = maxf(worst, (holder.global_transform * pts[0]).distance_to(ea))
+		worst = maxf(worst, (holder.global_transform * pts[pts.size() - 1]).distance_to(eb))
+	return worst
+
+## Los cables siguen a sus piezas al simular (antes se quedaban donde estaban y, con
+## las gafas moviéndose con la cabeza, quedaban sueltos sobre la carcasa).
+func _test_live_wires() -> void:
+	main._open_example(HEAD_EXAMPLE)
+	main._toggle_simulation()
+	await wait_phys(240)
+	await get_tree().process_frame
+	var head: PartInstance = _part_by_def("cabeza_prueba")[0]
+	var moved := rad_to_deg((head.global_transform.basis.inverse() * main._part_live_xform(head).basis).get_rotation_quaternion().get_angle())
+	main._update_live_wires()           # lo que hace cada fotograma antes de dibujar
+	var err := _wire_end_error()
+	check(moved > 5.0 and err < 0.0005, "Cables: con las gafas girando con la cabeza (%.0f°), los 6 cables siguen a sus terminales (error %.2f mm)" % [moved, err * 1000.0])
+	main._toggle_simulation()
+	await get_tree().process_frame
+	check(_wire_end_error() < 0.0005 and (main._wire_nodes.values()[0] as Node3D).global_transform.is_equal_approx(Transform3D.IDENTITY),
+		"Cables: al parar vuelven a su forma de edición")
+	# Extremos en cuerpos distintos: un LED que cae, cableado a una batería en el suelo.
+	main._on_new()
+	var bat: PartInstance = main._spawn("bateria_lipo_3s", "abs", Vector3(0, 0.0205, 0))
+	var led: PartInstance = main._spawn("led", "abs", Vector3(0.12, 0.15, 0))
+	main.wires = [{"uid": "w1", "a_key": main._key(bat.uid, "V+"), "b_key": main._key(led.uid, "anodo"), "tipo": "power", "color": "auto"}]
+	main._redraw_wires()
+	main._toggle_simulation()
+	await wait_phys(120)
+	await get_tree().process_frame
+	var fell: float = led.global_position.y - main._part_live_xform(led).origin.y
+	var err2 := _wire_end_error()
+	check(fell > 0.05 and err2 < float(main.WIRE_RETENSE_M) + 0.0005, "Cables: entre piezas que se mueven por separado se vuelven a tender (el LED cayó %.0f mm; error %.2f mm)" % [fell * 1000.0, err2 * 1000.0])
+	main._toggle_simulation()
+	main.wires = []
+	main._redraw_wires()
 
 func _test_calibration_chart() -> void:
 	main._open_example(HEAD_EXAMPLE)

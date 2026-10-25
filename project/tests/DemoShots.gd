@@ -64,6 +64,9 @@ func run(out_path: String, env_mode: int, show_gizmo: bool, close: bool = false,
 	if template == "vr4":
 		await _vr4_shot(out_path)
 		return
+	if template.begins_with("vrzoom"):
+		await _vrzoom_shot(out_path, template)
+		return
 	var sp := func(id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
 		return main._spawn(id, mat, pos, rot)
 	# Placa base perforada y bastidor de perfiles 2020.
@@ -349,6 +352,37 @@ func _vr4_shot(out_path: String) -> void:
 	main._clear_joint_indicator()
 	main._refresh_check()
 	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(out_path)
+	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))
+	get_tree().quit()
+
+## Primer plano del techo de las gafas en el ejemplo de la cabeza: «vrzoom» en edición,
+## «vrzoom_sim» simulando 3 s (electrónica y cables sobre la carcasa).
+func _vrzoom_shot(out_path: String, which: String) -> void:
+	main._open_example("res://templates/13_visor_cabeza.mforge")
+	await get_tree().process_frame
+	for p in [main.biblioteca_panel, main.propiedades_panel, main.uniones_panel, main.circuito_panel, main.mcu_panel, main.music_panel, main.ai_panel, main.graphics_panel, main.elec_panel]:
+		if p: p.visible = false
+	main.connections_root.visible = false
+	main._select(null)
+	if which == "vrzoom_sim":
+		main._toggle_simulation()
+		await get_tree().create_timer(3.0).timeout
+		if main.elec_panel: main.elec_panel.visible = false
+	var shell: PartInstance = null
+	for c in main.parts_root.get_children():
+		if c is PartInstance and (c as PartInstance).def_id == "carcasa_visor":
+			shell = c
+	var cam: CameraOrbit = main.camera
+	cam.target = main._part_live_xform(shell).origin + Vector3(0, 0.04, 0)
+	cam.distance = 0.32
+	cam._yaw = deg_to_rad(150)
+	cam._pitch = deg_to_rad(-30)
+	cam._update_transform()
+	MaterialLibrary.wait_textures()
+	await get_tree().create_timer(1.0).timeout
+	main._clear_joint_indicator()
 	await RenderingServer.frame_post_draw
 	get_viewport().get_texture().get_image().save_png(out_path)
 	print("[SHOT11] Guardado en %s" % ProjectSettings.globalize_path(out_path))

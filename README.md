@@ -644,6 +644,8 @@ bucle:
   `configure_headset` y `capture_headset_view`, además de `analyze_headset` y
   `check_headset`. Una prueba monta las gafas completas solo con la API y comprueba
   que funcionan.
+- Al simular, los **cables siguen a sus piezas** (los de un mismo cuerpo se mueven con
+  él; entre piezas que se mueven por separado, se vuelven a tender).
 - **Uniones fijas rígidas**: en Jolt las uniones fijas entre cuerpos dinámicos se
   comportaban como resortes (una viga de 0.6 kg sobre un servo de 32 g cedía 8°);
   ahora las piezas unidas con uniones fijas forman un solo cuerpo.

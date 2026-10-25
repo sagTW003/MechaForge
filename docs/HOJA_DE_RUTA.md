@@ -377,8 +377,13 @@ que faltaba estaba en el proyecto.
       rectas salen rectas y la imagen derecha.
 - [x] Guía [GAFAS_VR.md](GAFAS_VR.md): piezas, montaje, firmware, óptica, render,
       seguimiento, verificación, API y límites del modelo.
+- [x] Corregido: al simular, los cables se quedaban donde estaban y, con la
+      electrónica en movimiento (las gafas sobre la cabeza que gira), quedaban sueltos
+      sobre la carcasa. Ahora siguen a sus piezas: si los dos extremos van en el mismo
+      cuerpo rígido se mueven con él tal como están tendidos; si no, se vuelven a
+      tender cuando un extremo se mueve más de 1 mm. Al parar recuperan su forma.
 - [x] Pruebas: `mfvr` (fase 5: las gafas montadas solo con la API, que funcionan;
-      errores de la API; la carta del ejemplo).
+      errores de la API; la carta del ejemplo; cables que siguen a sus piezas).
 
 ## ✅ Elección de la cámara del seguimiento de manos
 - [x] Desplegable **Cámara** en el panel «✋ Seguimiento de manos», con «Automática»

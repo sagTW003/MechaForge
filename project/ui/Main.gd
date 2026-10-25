@@ -64,6 +64,8 @@ var circuito_label: Label
 const WIRE_PICK_LAYER := 4
 var _wire_nodes: Dictionary = {}       # uid de cable -> nodo 3D (incandescencia)
 var _wire_pts: Dictionary = {}         # uid de cable -> puntos de la curva
+var _wire_live: Dictionary = {}        # simulando: uid de cable -> extremos del último tendido
+const WIRE_RETENSE_M := 0.001          # se vuelve a tender si un extremo se mueve más
 
 # --- Circuito vivo, multímetro y protoboard multipín ---
 var circuit_rt: CircuitRuntime
@@ -3685,6 +3687,8 @@ func _physics_process(delta: float) -> void:
 
 func _process(_delta: float) -> void:
 	_update_joint_indicator()
+	if simulator and simulator.is_running():
+		_update_live_wires()
 	if not simulator.is_running():
 		_sync_inserted_parts()
 	_dmm_panel_accum += _delta
@@ -4562,6 +4566,7 @@ func _reset_simulation() -> void:
 		Config.notify("Simulación reiniciada al estado inicial.")
 
 func _on_sim_started() -> void:
+	_init_live_wires()
 	if headset_rig:
 		headset_rig.on_sim_started()
 	sim_button.text = "⏹  Editar"
@@ -4589,6 +4594,9 @@ func _on_sim_started() -> void:
 
 func _on_sim_stopped() -> void:
 	_clear_joint_indicator()
+	# Los cables vuelven a su forma de edición.
+	_wire_live.clear()
+	_redraw_wires()
 	sim_button.text = "▶  Simular"
 	_set_time_controls(false)
 	_select(null)
@@ -5081,6 +5089,64 @@ func _redraw_wires(quick: bool = false) -> void:
 		wires_root.add_child(holder)
 		_wire_nodes[str(w.get("uid", ""))] = holder
 		_wire_pts[str(w.get("uid", ""))] = pts
+
+## Extremo de un cable en vivo: su punto de edición movido como su pieza (sirve para
+## terminales y para agujeros de la protoboard).
+func _wire_end_live(key: String, part: PartInstance):
+	var p = _terminal_pos_by_key(key)
+	if p == null:
+		return null
+	return _part_live_xform(part) * part.global_transform.affine_inverse() * (p as Vector3)
+
+## Al arrancar la simulación: los extremos de cada cable tal como están tendidos.
+func _init_live_wires() -> void:
+	_wire_live.clear()
+	for w in wires:
+		var a = _terminal_pos_by_key(str(w["a_key"]))
+		var b = _terminal_pos_by_key(str(w["b_key"]))
+		if a != null and b != null:
+			_wire_live[str(w.get("uid", ""))] = [a, b]
+
+## Simulando, los cables siguen a sus piezas (antes se quedaban donde estaban y, con la
+## electrónica en movimiento, quedaban sueltos): si los dos extremos van en el mismo
+## cuerpo rígido, el cable se mueve con él tal como está tendido; si no, se vuelve a
+## tender (cuerda con gravedad, sin atravesar piezas) cuando un extremo se mueve más
+## de WIRE_RETENSE_M.
+func _update_live_wires() -> void:
+	var obstacles := []
+	for w in wires:
+		var uid := str(w.get("uid", ""))
+		var holder: Node3D = _wire_nodes.get(uid)
+		if holder == null or not is_instance_valid(holder):
+			continue
+		var pa := _find_part(str(w["a_key"]).split(":")[0])
+		var pb := _find_part(str(w["b_key"]).split(":")[0])
+		if pa == null or pb == null:
+			continue
+		var ba := simulator.get_body(pa.uid)
+		if ba != null and ba == simulator.get_body(pb.uid):
+			holder.global_transform = _part_live_xform(pa) * pa.global_transform.affine_inverse()
+			continue
+		var ea = _wire_end_live(str(w["a_key"]), pa)
+		var eb = _wire_end_live(str(w["b_key"]), pb)
+		if ea == null or eb == null:
+			continue
+		var last: Array = _wire_live.get(uid, [])
+		if last.size() == 2 and (last[0] as Vector3).distance_to(ea) < WIRE_RETENSE_M and (last[1] as Vector3).distance_to(eb) < WIRE_RETENSE_M:
+			continue
+		_wire_live[uid] = [ea, eb]
+		if obstacles.is_empty():
+			for part in parts_root.get_children():
+				if part is PartInstance:
+					obstacles.append({"xf": _part_live_xform(part), "half": PartLibrary.dims_m(part.def) * 0.5})
+		var pts := CableSim.solve(ea, eb, obstacles, 1.12, 22, 25)
+		var col := CableRenderer.color_for(w.get("tipo", "signal"), str(w.get("color", "auto")))
+		var nh := CableRenderer.build(pts, col, bool(w.get("soldado_a", false)), bool(w.get("soldado_b", false)))
+		nh.set_meta("wire_uid", uid)
+		wires_root.add_child(nh)
+		holder.queue_free()
+		_wire_nodes[uid] = nh
+		_wire_pts[uid] = pts
 
 ## Compatibilidad entre terminales: 0 = no (mismo terminal), 1 = precaución
 ## (alimentación ↔ tierra), 2 = compatible.
