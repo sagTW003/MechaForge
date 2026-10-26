@@ -56,14 +56,22 @@ static func parse_wires(doc: Dictionary) -> Array:
 	return out
 
 ## Guarda a disco. Devuelve OK o un código de error de Godot.
+## Escribe en «path.tmp» y lo renombra al final: abrir el archivo para escribir lo
+## vacía, así que un fallo a medias (disco lleno, corte de luz) dejaba el proyecto
+## cortado y sin poder abrirse. Ahora el anterior sigue entero hasta el último paso.
 static func save(parts_root: Node3D, path: String, connections: Array = [], wires: Array = [], extra: Dictionary = {}) -> int:
-	var doc := build_document(parts_root, connections, wires, extra)
-	var f := FileAccess.open(path, FileAccess.WRITE)
+	var text := JSON.stringify(build_document(parts_root, connections, wires, extra), "\t")
+	var tmp := path + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
 		return FileAccess.get_open_error()
-	f.store_string(JSON.stringify(doc, "\t"))
+	var ok := f.store_string(text)
 	f.close()
-	return OK
+	# Con el disco lleno la escritura puede fallar al vaciar el búfer: se mira el tamaño.
+	if not ok or FileAccess.get_file_as_bytes(tmp).size() != text.to_utf8_buffer().size():
+		DirAccess.remove_absolute(tmp)
+		return ERR_FILE_CANT_WRITE
+	return DirAccess.rename_absolute(tmp, path)
 
 ## Carga un documento desde disco. Devuelve el Dictionary o {} si falla.
 static func load_document(path: String) -> Dictionary:

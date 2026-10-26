@@ -923,6 +923,13 @@ func _run_tests() -> void:
 	_check(doc.get("piezas", []).size() == 2, "Documento serializa 2 piezas")
 	var tmp := "user://test_roundtrip.mforge"
 	_check(ProjectSerializer.save(parts_root, tmp) == OK, "Guardado sin error")
+	_check(ProjectSerializer.save(parts_root, tmp) == OK and not FileAccess.file_exists(tmp + ".tmp"),
+		"Guardar encima de un proyecto lo reemplaza entero (sin dejar .tmp)")
+	DirAccess.make_dir_absolute(tmp + ".tmp")     # el temporal no se puede crear
+	var save_failed := ProjectSerializer.save(parts_root, tmp) != OK
+	DirAccess.remove_absolute(tmp + ".tmp")
+	_check(save_failed and ProjectSerializer.load_document(tmp).get("piezas", []).size() == 2,
+		"Si el guardado falla, el proyecto anterior queda entero")
 	var loaded := ProjectSerializer.load_document(tmp)
 	_check(not loaded.is_empty() and loaded["piezas"].size() == 2, "Carga recupera 2 piezas")
 	var n := ProjectSerializer.apply_document(loaded, parts_root)
