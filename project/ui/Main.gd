@@ -96,8 +96,6 @@ var _mcu_sensor_vars: Dictionary = {}
 ## y las últimas calculadas (telemetría y API).
 var _mcu_state: Dictionary = {}
 var mcu_last_vars: Dictionary = {}
-var _mcu_parse_key: String = ""
-var _mcu_parse_cache: Dictionary = {}
 const MCU_PART_IDS := ["microcontrolador", "arduino_nano", "esp32_devkit", "movil_61"]
 ## Funciones i2c_… del programa (registros de los sensores por el bus I²C).
 var mcu_io := McuIo.new()
@@ -272,11 +270,20 @@ func _ready() -> void:
 	elif "mfshot" in OS.get_cmdline_user_args():
 		call_deferred("_run_screenshot")
 	elif "mftest" in OS.get_cmdline_user_args():
-		call_deferred("_run_tests")
+		var bt: Node = load("res://tests/BasicTests.gd").new()
+		bt.main = self
+		add_child(bt)
+		bt.call_deferred("run")
 	elif "mfphys" in OS.get_cmdline_user_args():
-		call_deferred("_run_phys_tests")
+		var pt: Node = load("res://tests/PhysicsTests.gd").new()
+		pt.main = self
+		add_child(pt)
+		pt.call_deferred("run")
 	elif "mfelec" in OS.get_cmdline_user_args():
-		call_deferred("_run_elec_tests")
+		var lt: Node = load("res://tests/ElectronicsTests.gd").new()
+		lt.main = self
+		add_child(lt)
+		lt.call_deferred("run")
 	elif "mfshot2" in OS.get_cmdline_user_args():
 		call_deferred("_run_physics_shot")
 	elif "mfshot3" in OS.get_cmdline_user_args():
@@ -577,117 +584,6 @@ func _run_ui_shot() -> void:
 	print("[SHOT4] Guardado en %s" % ProjectSettings.globalize_path(out_path))
 	get_tree().quit()
 
-#region PRUEBAS DE ELECTRÓNICA Y CONTROL (Fase 3) -------------------------------
-
-func _run_elec_tests() -> void:
-	print("[TEST] Pruebas de electrónica y control (Fase 3)...")
-
-	# 1) Resistencia única: 12 V / 6 Ω = 2 A, 24 W.
-	var r1: Dictionary = Electronics.SolveCircuit(2, [[1, 0, 6.0]], [[1, 0, 12.0]])
-	_check(r1["ok"], "Solver resuelve circuito simple")
-	_check(absf(float(r1["main_current"]) - 2.0) < 1.0e-6, "Ley de Ohm: I = 2 A")
-	_check(absf(float(r1["total_power"]) - 24.0) < 1.0e-6, "Potencia = 24 W")
-
-	# 2) Serie 4 Ω + 8 Ω a 12 V: I = 1 A, nodo medio a 8 V.
-	var r2: Dictionary = Electronics.SolveCircuit(3, [[1, 2, 4.0], [2, 0, 8.0]], [[1, 0, 12.0]])
-	var volts: PackedFloat64Array = r2["node_voltages"]
-	_check(absf(float(r2["main_current"]) - 1.0) < 1.0e-6, "Serie: I = 1 A")
-	_check(absf(volts[2] - 8.0) < 1.0e-6, "Divisor de tensión: nodo medio = 8 V")
-
-	# 3) Paralelo 6 Ω || 12 Ω a 12 V: I = 3 A.
-	var r3: Dictionary = Electronics.SolveCircuit(2, [[1, 0, 6.0], [1, 0, 12.0]], [[1, 0, 12.0]])
-	_check(absf(float(r3["main_current"]) - 3.0) < 1.0e-6, "Paralelo: I = 3 A")
-
-	# 4) Autonomía: 2 A con 2000 mAh = 1 h.
-	_check(absf(Electronics.Autonomy(2.0, 2000.0) - 1.0) < 1.0e-6, "Autonomía = 1 h")
-
-	# 5) PID converge a la consigna con una planta de primer orden.
-	var pid: int = Electronics.PidCreate()
-	Electronics.PidConfigure(pid, 2.0, 1.0, 0.05)
-	Electronics.PidSetLimits(pid, -10.0, 10.0)
-	Electronics.PidSetSetpoint(pid, 5.0)
-	var y := 0.0
-	var dt := 0.02
-	for i in range(600):
-		var u: float = Electronics.PidUpdate(pid, y, dt)
-		y += (u - 0.5 * y) * dt          # planta: dy/dt = u - 0.5 y
-	Electronics.PidDestroy(pid)
-	_check(absf(y - 5.0) < 0.2, "PID lleva la planta a la consigna (y=%.2f)" % y)
-
-	# 6) Cableado: batería 12 V + carga 6 Ω en lazo => 2 A.
-	var comps := [
-		{"uid": "bat", "kind": "bateria", "voltaje": 12.0, "capacidad_mah": 2000.0, "a": "bat:V+", "b": "bat:GND"},
-		{"uid": "r1", "kind": "carga", "resistencia": 6.0, "a": "r1:A", "b": "r1:B"},
-	]
-	var wpairs := [{"a": "bat:V+", "b": "r1:A"}, {"a": "r1:B", "b": "bat:GND"}]
-	var wr := WiringSolver.solve(comps, wpairs)
-	_check(wr["ok"] and absf(float(wr["current"]) - 2.0) < 1.0e-4, "Cableado: lazo batería→carga da 2 A")
-	_check(absf(WiringSolver.solve(comps, []).get("current", -1.0)) < 1.0e-9, "Cableado: sin cables => circuito abierto (0 A)")
-
-	# 7) Microcontrolador: script con variables y funciones matemáticas.
-	_check(absf(_mcu_run(["amp = 40", "output = amp * 2"], 0.0, 0.0, 0.008) - 80.0) < 1.0e-6, "MCU: variables y salida")
-	_check(absf(_mcu_run(["sin(pi/2) * 10"], 0.0, 0.0, 0.008) - 10.0) < 1.0e-4, "MCU: funciones matemáticas (sin)")
-	_check(absf(_mcu_run(["x * 3 + t"], 5.0, 2.0, 0.008) - 11.0) < 1.0e-6, "MCU: usa entradas t y x")
-	_check(is_nan(_mcu_run(["sin("], 0.0, 0.0, 0.008)), "MCU: script inválido se detecta")
-	_check(absf(_mcu_run(["a = clamp(x, 0, 3)", "a * 2 if x > 0 else -1"], 0.0, 5.0, 0.008) - 6.0) < 1.0e-6,
-		"MCU: clamp y «a if c else b» siguen funcionando")
-	# Una Expression sin objeto base llega igualmente a str_to_var, que carga un script
-	# de la aplicación para reescribirlo y ejecutarlo; un proyecto compartido con el
-	# programa activo ejecutaría código al abrirse.
-	var probe: GDScript = load("res://tests/McuProbe.gd")
-	var R := 'str_to_var("Resource(\\"res://tests/McuProbe.gd\\")")'
-	_mcu_run(['a = [%s.set_source_code("extends RefCounted\\nconst HIT = 1"), %s.reload()]' % [R, R]], 0.0, 0.0, 0.008)
-	_check(not probe.get_script_constant_map().has("HIT"), "MCU: no puede cargar ni reescribir scripts (str_to_var)")
-	_check(is_nan(_mcu_run(["a = instance_from_id(%d).get_class()" % get_instance_id()], 0.0, 0.0, 0.008)),
-		"MCU: no llega a los objetos de la aplicación (instance_from_id)")
-
-	# 8) Protoboard funcional: circuito cerrado por columnas y rieles internos.
-	_on_new()
-	var pb := _spawn("protoboard", "abs", Vector3(0, 0.005, 0))
-	var bat := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.02, -0.12))
-	var res := _spawn("resistencia_100", "abs", Vector3(0.12, 0.01, 0))
-	wires = [
-		{"uid": "w1", "a_key": _key(bat.uid, "V+"), "b_key": _key(pb.uid, "a0_0"), "tipo": "power"},
-		{"uid": "w2", "a_key": _key(res.uid, "A"), "b_key": _key(pb.uid, "a0_2"), "tipo": "power"},
-		{"uid": "w3", "a_key": _key(res.uid, "B"), "b_key": _key(pb.uid, "N1_0"), "tipo": "gnd"},
-		{"uid": "w4", "a_key": _key(bat.uid, "GND"), "b_key": _key(pb.uid, "N1_5"), "tipo": "gnd"},
-	]
-	var wp := []
-	for w in wires:
-		wp.append({"a": w["a_key"], "b": w["b_key"]})
-	wp.append_array(_protoboard_virtual_wires())
-	var rpb := WiringSolver.solve(_build_components(), wp)
-	_check(rpb["ok"] and float(rpb["current"]) > 0.05, "Protoboard funcional: circuito cierra por columnas/rieles (%.3f A)" % float(rpb["current"]))
-	wires = []
-	_on_new()
-
-	# 9) Integración F1: el circuito alimenta el motor (duty por voltaje).
-	await get_tree().process_frame
-	await get_tree().process_frame
-	var bat2 := _spawn("bateria_lipo_3s", "abs", Vector3(0, 0.02, -0.12))
-	var mot := _spawn("motor_dc", "acero", Vector3(0.12, 0.025, 0))
-	var a1 := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 0.5, 0))
-	var a2 := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 0.5, 0))
-	var cf := Connection.new(); cf.tipo = Connection.Tipo.BISAGRA; cf.motor_enabled = true
-	cf.a_uid = a1.uid; cf.b_uid = a2.uid; cf.elec_uid = mot.uid; cf.elec_voltaje_nominal = 11.1
-	connections = [cf]
-	wires = [
-		{"uid": "w1", "a_key": _key(bat2.uid, "V+"), "b_key": _key(mot.uid, "M+"), "tipo": "power"},
-		{"uid": "w2", "a_key": _key(mot.uid, "M-"), "b_key": _key(bat2.uid, "GND"), "tipo": "gnd"},
-	]
-	_circuit_tick()
-	_check(cf.elec_duty > 0.8, "F1: motor alimentado por el circuito (duty=%.2f)" % cf.elec_duty)
-	wires = []
-	_circuit_tick()
-	_check(cf.elec_duty < 0.05, "F1: sin cables el motor se detiene (duty=%.2f)" % cf.elec_duty)
-	connections = []
-	_on_new()
-
-	print("[TEST] Electrónica: %d OK, %d FALLOS" % [_test_ok, _test_fail])
-	get_tree().quit(1 if _test_fail > 0 else 0)
-
-#endregion
-
 func _run_physics_shot() -> void:
 	var uargs := OS.get_cmdline_user_args()
 	var i := uargs.find("mfshot2")
@@ -754,241 +650,6 @@ func _run_control_shot() -> void:
 	img.save_png(out_path)
 	print("[SHOT3] Guardado en %s" % ProjectSettings.globalize_path(out_path))
 	get_tree().quit()
-
-#region PRUEBAS DE FÍSICA (Fase 2) ----------------------------------------------
-
-func _pcheck(cond: bool, nombre: String) -> void:
-	if cond:
-		_test_ok += 1
-		print("  [OK]   %s" % nombre)
-	else:
-		_test_fail += 1
-		print("  [FALLO] %s" % nombre)
-
-func _spawn(def_id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
-	return _spawn_from_dict({"def_id": def_id, "material": mat, "pos": [pos.x, pos.y, pos.z], "rot": [rot.x, rot.y, rot.z]})
-
-func _phys_wait(frames: int) -> void:
-	for i in range(frames):
-		await get_tree().physics_frame
-
-func _run_phys_tests() -> void:
-	print("[TEST] Pruebas de física (Fase 2)...")
-
-	# --- 1) Gravedad + reinicio al estado inicial ---
-	_on_new()
-	var caida := _spawn("eje_acero_d10_150", "acero_inox", Vector3(0, 0.5, 0))
-	var y0 := caida.position.y
-	simulator.start([])
-	await _phys_wait(80)
-	var b := simulator.get_body(caida.uid)
-	_pcheck(b != null and b.global_position.y < 0.45, "La pieza cae por gravedad (y baja)")
-	simulator.stop()
-	_pcheck(absf(caida.position.y - y0) < 1.0e-5, "Al detener, la pieza vuelve al estado inicial")
-
-	# --- 2) Unión fija: mantiene la distancia entre piezas ---
-	_on_new()
-	var f1 := _spawn("perfil_2020_200", "aluminio", Vector3(-0.03, 0.5, 0))
-	var f2 := _spawn("perfil_2020_200", "aluminio", Vector3(0.03, 0.5, 0))
-	var cf := Connection.new(); cf.a_uid = f1.uid; cf.b_uid = f2.uid; cf.tipo = Connection.Tipo.FIJA
-	cf.anchor = (f1.global_position + f2.global_position) * 0.5
-	simulator.start([cf])
-	var d0 := simulator.get_body(f1.uid).global_position.distance_to(simulator.get_body(f2.uid).global_position)
-	await _phys_wait(100)
-	var d1 := simulator.get_body(f1.uid).global_position.distance_to(simulator.get_body(f2.uid).global_position)
-	_pcheck(absf(d1 - d0) < 0.005, "Unión fija conserva la distancia (%.4f→%.4f m)" % [d0, d1])
-	simulator.stop()
-
-	# --- 3) Motor de bisagra en espacio libre: velocidad RELATIVA no nula ---
-	_on_new()
-	var base := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
-	var arm := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
-	var cm := Connection.new(); cm.a_uid = base.uid; cm.b_uid = arm.uid
-	cm.tipo = Connection.Tipo.BISAGRA; cm.axis = 2
-	cm.anchor = (base.global_position + arm.global_position) * 0.5
-	cm.motor_enabled = true; cm.motor_target_speed = 6.0
-	cm.motor_stall_torque = 3.0; cm.motor_noload_speed = 8.0
-	simulator.start([cm])
-	for bb0 in [simulator.get_body(base.uid), simulator.get_body(arm.uid)]:
-		bb0.gravity_scale = 0.0          # banco de pruebas en el aire (sin contacto)
-	await _phys_wait(150)
-	var ba := simulator.get_body(base.uid)
-	var bb := simulator.get_body(arm.uid)
-	var rel := absf((bb.angular_velocity - ba.angular_velocity).dot(cm.axis_vector()))
-	var rel_signed := (bb.angular_velocity - ba.angular_velocity).dot(cm.axis_vector())
-	_pcheck(absf(rel_signed - 6.0) < 0.3, "Motor: Δω = consigna (+6 rad/s) en el eje y sentido pedidos (%.2f)" % rel_signed)
-	simulator.stop()
-
-	# --- 4) Engranaje: restricción dinámica ω_b = -ratio·ω_a (conserva el momento) ---
-	_on_new()
-	var g1 := _spawn("eje_acero_d10_150", "acero", Vector3(-0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
-	var g2 := _spawn("eje_acero_d10_150", "acero", Vector3(0.1, 0.5, 0), Vector3(PI / 2.0, 0, 0))
-	var cg := Connection.new(); cg.a_uid = g1.uid; cg.b_uid = g2.uid
-	cg.tipo = Connection.Tipo.ENGRANAJE; cg.axis = 1; cg.gear_ratio = 2.0
-	simulator.start([cg])
-	simulator.get_body(g1.uid).angular_velocity = Vector3.UP * 2.0
-	await _phys_wait(8)
-	var wa := simulator.get_body(g1.uid).angular_velocity.dot(Vector3.UP)
-	var wb := simulator.get_body(g2.uid).angular_velocity.dot(Vector3.UP)
-	_pcheck(absf(wa) > 0.05 and absf(wb / wa + 2.0) < 0.25, "Engranaje ratio 2: ω_b/ω_a ≈ -2 (obtenido %.2f / %.2f)" % [wb, wa])
-	_pcheck(wa < 2.0 and wa > 0.0, "La carga del engranaje frena al conductor (ω_a %.2f < 2.0)" % wa)
-	simulator.stop()
-
-	# --- Control PID de posición: la bisagra alcanza el ángulo consigna ---
-	_on_new()
-	var cb := _spawn("eje_acero_d10_150", "acero", Vector3(-0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
-	var ca := _spawn("eje_acero_d10_150", "acero", Vector3(0.03, 1.0, 0), Vector3(0, 0, PI / 2.0))
-	var cc := Connection.new(); cc.a_uid = cb.uid; cc.b_uid = ca.uid
-	cc.tipo = Connection.Tipo.BISAGRA; cc.axis = 2
-	cc.anchor = (cb.global_position + ca.global_position) * 0.5
-	cc.motor_enabled = true; cc.motor_stall_torque = 4.0; cc.motor_noload_speed = 10.0
-	cc.control_mode = Connection.ControlMode.POSICION; cc.ctrl_setpoint = 1.0
-	cc.ctrl_kp = 8.0; cc.ctrl_ki = 1.0; cc.ctrl_kd = 0.4
-	simulator.start([cc])
-	for bb1 in [simulator.get_body(cb.uid), simulator.get_body(ca.uid)]:
-		bb1.gravity_scale = 0.0
-	await _phys_wait(400)
-	var ang := simulator.control_measure(cc.uid)
-	_pcheck(absf(ang - 1.0) < 0.3, "Control PID alcanza el ángulo consigna (%.2f rad)" % ang)
-	var elec := simulator.electrical()
-	_pcheck(float(elec.get("current", 0.0)) > 0.0, "El motor consume corriente (%.2f A)" % float(elec.get("current", 0.0)))
-	simulator.stop()
-
-	# --- 5) Encaje por superficie: posar una pieza encima de otra ---
-	_on_new()
-	Config.surface_snap_enabled = true
-	var mesa := _spawn("placa_base_200x200", "acero", Vector3(0, 0.004, 0))  # cara superior en y=0.008
-	await _phys_wait(3)
-	camera.target = Vector3(0, 0.004, 0)
-	camera._yaw = 0.0
-	camera._pitch = deg_to_rad(-89.0)
-	camera.distance = 1.0
-	camera._update_transform()
-	await get_tree().process_frame
-	var centro := get_viewport().get_visible_rect().size * 0.5
-	var dims := PartLibrary.dims_m(PartLibrary.get_def("perfil_2020_100"))  # y=0.1
-	var snap := _try_surface_snap(centro, dims, null)
-	_pcheck(not snap.is_empty() and snap.get("target") == mesa, "Encaje detecta la pieza bajo el cursor")
-	if not snap.is_empty():
-		var esperado := 0.008 + dims.y * 0.5
-		_pcheck(absf(snap["pos"].y - esperado) < 0.02, "Encaje posa la pieza encima (y=%.3f, esperado %.3f)" % [snap["pos"].y, esperado])
-
-	_on_new()
-	print("[TEST] Física: %d OK, %d FALLOS" % [_test_ok, _test_fail])
-	get_tree().quit(1 if _test_fail > 0 else 0)
-
-#endregion
-
-#region PRUEBAS AUTOMATIZADAS (Fase 1) ------------------------------------------
-
-var _test_ok: int = 0
-var _test_fail: int = 0
-
-func _check(cond: bool, nombre: String) -> void:
-	if cond:
-		_test_ok += 1
-		print("  [OK]   %s" % nombre)
-	else:
-		_test_fail += 1
-		print("  [FALLO] %s" % nombre)
-
-func _run_tests() -> void:
-	print("[TEST] Ejecutando pruebas de MechaForge (Fase 1)...")
-
-	# 1. Biblioteca de piezas cargada.
-	_check(not PartLibrary.all_ids().is_empty(), "PartLibrary carga definiciones JSON")
-	_check(PartLibrary.has_part("perfil_2020_200"), "Existe la pieza 'perfil_2020_200'")
-
-	# 2. Cálculo de masa (perfil 20x20x200 mm de aluminio).
-	var def := PartLibrary.get_def("perfil_2020_200")
-	var vol := PartLibrary.volume_m3(def)          # 0.02*0.2*0.02 * 0.463 (sección en T) = 3.7e-5 m³
-	_check(absf(vol - 8.0e-5 * 0.463) < 1.0e-7, "Volumen del perfil 20x20x200 (sección en T) correcto")
-	var inst := PartInstance.new()
-	add_child(inst)
-	inst.setup(def)
-	var masa := inst.mass_kg()                     # 2700 * 8e-5 * 0.463 (sección en T) = 0.100 kg
-	_check(absf(masa - 0.100) < 1.0e-3, "Masa del perfil 2020 (aluminio, sección en T) ≈ 0.100 kg (0.5 kg/m)")
-	inst.queue_free()
-
-	# 3. Snapping a la rejilla.
-	Config.snap_enabled = true
-	Config.set_grid_size_mm(10.0)
-	_check(absf(Config.snap_scalar(0.017) - 0.02) < 1.0e-6, "Snapping redondea 17 mm -> 20 mm")
-
-	# 4. Serialización: ida y vuelta.
-	for c in parts_root.get_children():
-		c.queue_free()
-	await get_tree().process_frame
-	var a := _spawn_from_dict({"def_id": "perfil_2020_200", "material": "acero", "pos": [0.1, 0.05, -0.2], "rot": [0, 0.5, 0]})
-	var b := _spawn_from_dict({"def_id": "placa_100x100", "material": "aluminio", "pos": [0, 0.0025, 0], "rot": [0, 0, 0]})
-	var doc := ProjectSerializer.build_document(parts_root)
-	_check(doc.get("piezas", []).size() == 2, "Documento serializa 2 piezas")
-	var tmp := "user://test_roundtrip.mforge"
-	_check(ProjectSerializer.save(parts_root, tmp) == OK, "Guardado sin error")
-	_check(ProjectSerializer.save(parts_root, tmp) == OK and not FileAccess.file_exists(tmp + ".tmp"),
-		"Guardar encima de un proyecto lo reemplaza entero (sin dejar .tmp)")
-	DirAccess.make_dir_absolute(tmp + ".tmp")     # el temporal no se puede crear
-	var save_failed := ProjectSerializer.save(parts_root, tmp) != OK
-	DirAccess.remove_absolute(tmp + ".tmp")
-	_check(save_failed and ProjectSerializer.load_document(tmp).get("piezas", []).size() == 2,
-		"Si el guardado falla, el proyecto anterior queda entero")
-	var loaded := ProjectSerializer.load_document(tmp)
-	_check(not loaded.is_empty() and loaded["piezas"].size() == 2, "Carga recupera 2 piezas")
-	var n := ProjectSerializer.apply_document(loaded, parts_root)
-	_check(n == 2, "Reconstrucción instancia 2 piezas")
-	# Verifica que se conserva material y posición de una pieza.
-	var recuperada := _find_part(a.uid)
-	_check(recuperada != null and recuperada.material_id == "acero", "Se conserva el material 'acero'")
-	_check(recuperada != null and recuperada.position.distance_to(Vector3(0.1, 0.05, -0.2)) < 1.0e-4, "Se conserva la posición")
-
-	# 5. Mover pieza (nudge) + deshacer.
-	Config.set_grid_size_mm(10.0)
-	_select(recuperada)
-	var p_ini: Vector3 = recuperada.position
-	_nudge(Vector3(1, 0, 0))
-	_check(absf(recuperada.position.x - (p_ini.x + 0.01)) < 1.0e-6, "Empuje mueve la pieza 1 celda en X")
-	undo()
-	_check(recuperada.position.distance_to(p_ini) < 1.0e-6, "Deshacer restaura la posición")
-
-	# 6. Unidades.
-	_check(Units.fmt_mass(0.216) == "216.0 g", "Formato de masa < 1 kg en gramos")
-
-	# 7. Parser de acciones de la IA (Fase 4).
-	var ai_reply := "Claro.\n```json\n{\"acciones\":[{\"tipo\":\"add_part\",\"def_id\":\"perfil_2020_200\",\"material\":\"aluminio\",\"pos\":[0,0.1,0]}]}\n```"
-	var acts := AiActions.parse(ai_reply)
-	_check(acts.size() == 1 and str(acts[0]["tipo"]) == "add_part", "IA: extrae acciones del bloque JSON")
-	_check(AiActions.parse("Tu grúa se vuelca por el centro de masa.").is_empty(), "IA: prosa sin acciones => vacío")
-
-	# 8. BOM (Fase 5).
-	_on_new()
-	_spawn("perfil_2020_200", "aluminio", Vector3(0, 0.1, 0))
-	_spawn("perfil_2020_200", "aluminio", Vector3(0.1, 0.1, 0))
-	_export_bom()
-	var bom := FileAccess.get_file_as_string("user://bom.csv")
-	_check(bom.contains("TOTAL") and bom.contains("perfil_2020_200"), "BOM: exporta CSV con piezas y total")
-
-	# 9. Importador OBJ (Fase 5).
-	var of := FileAccess.open("user://test.obj", FileAccess.WRITE)
-	of.store_string("v 0 0 0\nv 0.1 0 0\nv 0 0.1 0\nf 1 2 3\n"); of.close()
-	var m := MeshImporter.load_mesh("user://test.obj")
-	_check(m != null and m.get_surface_count() > 0, "Importador OBJ carga una malla")
-
-	# 10. Mapa de esfuerzos: color verde→rojo.
-	_check(_stress_color(0.0).g > 0.7 and _stress_color(1.0).r > 0.7, "Esfuerzos: verde (bajo) a rojo (alto)")
-
-	# 11. Motores F2/F3: stepper, engranaje por dientes, servo.
-	var cm := Connection.new()
-	cm.step_deg = 1.8; cm.microsteps = 1
-	_check(absf(rad_to_deg(cm.snap_to_step(deg_to_rad(46.0))) - 46.8) < 0.05, "Stepper: 46° ajusta a 46.8° (paso 1.8°)")
-	cm.gear_z1 = 20; cm.gear_z2 = 40
-	_check(absf(cm.effective_gear_ratio() - 0.5) < 1.0e-6, "Engranaje por dientes 20/40 = 0.5")
-	cm.servo_sec_per_60 = 0.15
-	_check(absf(rad_to_deg(cm.servo_speed()) - 400.0) < 1.0, "Servo: 0.15 s/60° ≈ 400°/s")
-
-	print("[TEST] Resultado: %d OK, %d FALLOS" % [_test_ok, _test_fail])
-	get_tree().quit(1 if _test_fail > 0 else 0)
-
-#endregion
 
 #region CAPTURA (screenshot de demostración) ------------------------------------
 
@@ -4245,6 +3906,9 @@ func _duplicate_selected() -> void:
 
 #region UTILIDADES DE PIEZAS ----------------------------------------------------
 
+func _spawn(def_id: String, mat: String, pos: Vector3, rot := Vector3.ZERO) -> PartInstance:
+	return _spawn_from_dict({"def_id": def_id, "material": mat, "pos": [pos.x, pos.y, pos.z], "rot": [rot.x, rot.y, rot.z]})
+
 func _spawn_from_dict(d: Dictionary) -> PartInstance:
 	var def := PartLibrary.get_def(d["def_id"])
 	var inst := PartInstance.new()
@@ -5499,98 +5163,23 @@ func _show_circuit_result(r: Dictionary) -> void:
 
 #region MICROCONTROLADOR PROGRAMABLE (Fase 3.1) ---------------------------------
 
-## Evalúa una expresión con las variables dadas (usa Expression de Godot).
-func _eval_expr(expr_str: String, vars: Dictionary) -> float:
-	if expr_str.contains("i2c"):
-		mcu_io.main = self
-		expr_str = mcu_io.expand(expr_str, vars, _eval_expr)
-		if expr_str == "":
-			return NAN
-	if not McuIo.is_safe(expr_str):
-		return NAN
-	var e := Expression.new()
-	var names := PackedStringArray(vars.keys())
-	if e.parse(expr_str, names) != OK:
-		return NAN
-	var values := []
-	for k in vars.keys():
-		values.append(vars[k])
-	var r = e.execute(values, null, false)
-	if e.has_execute_failed():
-		return NAN
-	return float(r)
-
-## Ejecuta un "programa" multilínea: cada línea 'nombre = expr' define una
-## variable; la última línea evaluada del bucle es la salida (consigna).
-## Como en un microcontrolador real, las variables conservan su valor entre pasos
-## (empiezan en 0): "yaw = yaw + imu1_gz * dt" integra. Las líneas bajo «inicio:» se
-## ejecutan solo en el primer paso y las de «bucle:» (o sin etiqueta) en todos.
-## "state" guarda la memoria entre llamadas; sin él cada llamada empieza de cero
-## (validación de un programa).
+## Un paso del programa del microcontrolador (intérprete en McuProgram) con las
+## entradas t, x, dt y los sensores (en simulación: lecturas reales; fuera: 0 para
+## validar). "state" guarda la memoria entre llamadas; sin él cada llamada empieza de
+## cero (validación de un programa). "out_vars" recibe todas las variables.
 func _mcu_run(lines: Array, t: float, x: float, dt: float, out_vars: Variant = null, state: Variant = null) -> float:
 	var st: Dictionary = state if state is Dictionary else {}
-	var prog := _mcu_parse(lines)
+	var prog := McuProgram.parse(lines)
 	var vars := {}
 	for n in prog["nombres"]:
 		vars[n] = st.get(n, 0.0)
 	vars.merge({"t": t, "x": x, "dt": dt, "pi": PI}, true)
-	# Sensores (en simulación: lecturas reales; fuera: 0 para validar).
-	var sv: Dictionary = _mcu_sensor_vars if simulator.is_running() else Sensors.zero_vars(parts_root)
-	vars.merge(sv, true)
-	if not st.get("_iniciado", false):
-		if is_nan(_mcu_exec(prog["inicio"], vars)):
-			return NAN
-		st["_iniciado"] = true
-	var result := _mcu_exec(prog["bucle"], vars)
-	if is_nan(result):
-		return NAN
-	for n in prog["nombres"]:
-		st[n] = vars[n]
-	if out_vars is Dictionary:
+	vars.merge(_mcu_sensor_vars if simulator.is_running() else Sensors.zero_vars(parts_root), true)
+	mcu_io.main = self
+	var result := McuProgram.step(prog, vars, st, mcu_io)
+	if not is_nan(result) and out_vars is Dictionary:
 		(out_vars as Dictionary).merge(vars, true)
 	return result
-
-## Ejecuta líneas ya analizadas ({var, expr}); devuelve la última o NAN si falla.
-func _mcu_exec(prog_lines: Array, vars: Dictionary) -> float:
-	var result := 0.0
-	for ln in prog_lines:
-		var v := _eval_expr(ln["expr"], vars)
-		if is_nan(v):
-			return NAN
-		if ln["var"] != "":
-			vars[ln["var"]] = v
-		result = v
-	return result
-
-## Separa el programa en «inicio:» y «bucle:» y reúne los nombres asignados.
-func _mcu_parse(lines: Array) -> Dictionary:
-	var key := "\n".join(PackedStringArray(lines))
-	if key == _mcu_parse_key:
-		return _mcu_parse_cache
-	var prog := {"inicio": [], "bucle": [], "nombres": []}
-	var sec := "bucle"
-	var re := RegEx.create_from_string("^([A-Za-z_][A-Za-z0-9_]*)\\s*=(?!=)\\s*(.*)$")
-	for raw in lines:
-		var line := str(raw).strip_edges()
-		if line == "" or line.begins_with("#"):
-			continue
-		var low := line.to_lower()
-		if low in ["inicio:", "setup:"]:
-			sec = "inicio"
-			continue
-		if low in ["bucle:", "loop:"]:
-			sec = "bucle"
-			continue
-		var m := re.search(line)
-		if m:
-			prog[sec].append({"var": m.get_string(1), "expr": m.get_string(2)})
-			if not prog["nombres"].has(m.get_string(1)):
-				prog["nombres"].append(m.get_string(1))
-		else:
-			prog[sec].append({"var": "", "expr": line})
-	_mcu_parse_key = key
-	_mcu_parse_cache = prog
-	return prog
 
 func _build_mcu_panel() -> void:
 	mcu_panel = FloatingPanel.new("Microcontrolador")
@@ -5746,7 +5335,7 @@ func _find_mcu_part() -> PartInstance:
 ## Guarda las variables que calcula el programa (sin sensores ni t, x, dt).
 func _store_mcu_vars(vars: Dictionary) -> void:
 	mcu_last_vars = {}
-	for n in _mcu_parse(mcu_lines)["nombres"]:
+	for n in McuProgram.parse(mcu_lines)["nombres"]:
 		if vars.has(n):
 			mcu_last_vars[n] = vars[n]
 
