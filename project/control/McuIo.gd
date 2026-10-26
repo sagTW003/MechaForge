@@ -17,18 +17,46 @@ extends RefCounted
 ## (giroscopio), en complemento a dos con el byte alto primero.
 ##
 ## Seguridad: las llamadas se resuelven ANTES de evaluar la expresión (se sustituyen
-## por su resultado numérico), así la Expression nunca recibe un objeto propio y un
-## programa no puede llegar al resto de la aplicación.
+## por su resultado numérico), así la Expression nunca recibe un objeto propio. Aun
+## sin objeto base, una Expression llega a funciones globales como str_to_var, que
+## carga un script de la aplicación y permite reescribirlo y ejecutarlo: un proyecto
+## compartido con el programa activo ejecutaría código al abrirse. Por eso cada
+## expresión pasa antes por is_safe(): solo números, operadores, variables y las
+## funciones de SAFE_CALLS.
 
 const FUNCS := ["i2c_escribir", "i2c_leer", "i2c16", "i2c_ok"]
+## Funciones matemáticas de @GlobalScope que puede llamar un programa, y las palabras
+## de «a if condición else b» (pueden ir seguidas de un paréntesis).
+const SAFE_CALLS := ["sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh",
+	"tanh", "asinh", "acosh", "atanh", "sqrt", "pow", "exp", "log", "abs", "absf", "sign",
+	"signf", "floor", "ceil", "round", "fmod", "fposmod", "clamp", "clampf", "min", "max",
+	"minf", "maxf", "lerp", "lerpf", "inverse_lerp", "remap", "smoothstep", "move_toward",
+	"deg_to_rad", "rad_to_deg", "snapped", "wrapf", "is_nan", "is_inf", "randf",
+	"randf_range", "float", "int", "if", "else", "and", "or", "not"]
 const DATA_KEYS := ["ax", "ay", "az", "t", "gx", "gy", "gz"]
 
 var main: Node
 var regs: Dictionary = {}          # uid -> {registro: valor}
 var _re: RegEx
 
+static var _call_re: RegEx
+
 func reset() -> void:
 	regs.clear()
+
+## true si la expresión (ya sin llamadas i2c) solo tiene números, operadores,
+## variables y llamadas a SAFE_CALLS. Sin comillas no hay textos que pasar a una
+## función, y sin corchetes ni llaves no hay listas ni diccionarios.
+static func is_safe(expr: String) -> bool:
+	for ch in ["\"", "'", "[", "{", "$", "@"]:
+		if expr.contains(ch):
+			return false
+	if _call_re == null:
+		_call_re = RegEx.create_from_string("([A-Za-z_][A-Za-z0-9_]*)\\s*\\(")
+	for m in _call_re.search_all(expr):
+		if not m.get_string(1) in SAFE_CALLS:
+			return false
+	return true
 
 ## Sustituye en "expr" cada llamada i2c_…(…) por su resultado. "eval" evalúa los
 ## argumentos (que pueden contener variables y otras llamadas). "" si algo falla.

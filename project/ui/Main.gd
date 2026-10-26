@@ -627,6 +627,17 @@ func _run_elec_tests() -> void:
 	_check(absf(_mcu_run(["sin(pi/2) * 10"], 0.0, 0.0, 0.008) - 10.0) < 1.0e-4, "MCU: funciones matemáticas (sin)")
 	_check(absf(_mcu_run(["x * 3 + t"], 5.0, 2.0, 0.008) - 11.0) < 1.0e-6, "MCU: usa entradas t y x")
 	_check(is_nan(_mcu_run(["sin("], 0.0, 0.0, 0.008)), "MCU: script inválido se detecta")
+	_check(absf(_mcu_run(["a = clamp(x, 0, 3)", "a * 2 if x > 0 else -1"], 0.0, 5.0, 0.008) - 6.0) < 1.0e-6,
+		"MCU: clamp y «a if c else b» siguen funcionando")
+	# Una Expression sin objeto base llega igualmente a str_to_var, que carga un script
+	# de la aplicación para reescribirlo y ejecutarlo; un proyecto compartido con el
+	# programa activo ejecutaría código al abrirse.
+	var probe: GDScript = load("res://tests/McuProbe.gd")
+	var R := 'str_to_var("Resource(\\"res://tests/McuProbe.gd\\")")'
+	_mcu_run(['a = [%s.set_source_code("extends RefCounted\\nconst HIT = 1"), %s.reload()]' % [R, R]], 0.0, 0.0, 0.008)
+	_check(not probe.get_script_constant_map().has("HIT"), "MCU: no puede cargar ni reescribir scripts (str_to_var)")
+	_check(is_nan(_mcu_run(["a = instance_from_id(%d).get_class()" % get_instance_id()], 0.0, 0.0, 0.008)),
+		"MCU: no llega a los objetos de la aplicación (instance_from_id)")
 
 	# 8) Protoboard funcional: circuito cerrado por columnas y rieles internos.
 	_on_new()
@@ -5475,6 +5486,8 @@ func _eval_expr(expr_str: String, vars: Dictionary) -> float:
 		expr_str = mcu_io.expand(expr_str, vars, _eval_expr)
 		if expr_str == "":
 			return NAN
+	if not McuIo.is_safe(expr_str):
+		return NAN
 	var e := Expression.new()
 	var names := PackedStringArray(vars.keys())
 	if e.parse(expr_str, names) != OK:
