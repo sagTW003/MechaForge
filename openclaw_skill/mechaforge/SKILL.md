@@ -110,8 +110,10 @@ Entradas: `t` (s), `x` (medida), `dt` y sensores: `dist1` (ultrasonido, m),
 saturación y muestreo reales (ejes: x adelante, y izquierda, z arriba; en reposo
 `az` = 1), `imu1_nueva` (1 si llegó muestra) y la orientación verdadera
 `imu1_roll/pitch/yaw` (°; roll > 0 lado derecho abajo, pitch > 0 morro abajo, yaw > 0
-a la izquierda), útil para comparar con la estimada. Funciones: `sin`, `cos`, `abs`,
-`atan2`, `sqrt`, `clamp`, `min`, `max`… y `a if condición else b`.
+a la izquierda), útil para comparar con la estimada. Solo funciones matemáticas de
+Godot: `sin`, `cos`, `abs`, `atan2`, `sqrt`, `clamp`, `min`, `max`, sus versiones
+enteras (`clampi`, `maxi`, `posmod`…) y `a if condición else b`; sin textos ni listas.
+Si usas otra, el error dice cuál sobra y cuáles se permiten.
 
 ```
 base = 6

@@ -5299,7 +5299,7 @@ func _apply_mcu() -> void:
 			mcu_target_uid = ""
 			mcu_lines = mcu_editor.text.split("\n")
 			if is_nan(_mcu_run(mcu_lines, 0.0, 0.0, 1.0 / 120.0)):
-				mcu_status.text = "Error en el programa. Usa funciones como sin, cos, abs y variables t, x."
+				mcu_status.text = _mcu_error_text()
 				mcu_enabled = false
 				return
 			mcu_enabled = true
@@ -5317,13 +5317,20 @@ func _apply_mcu() -> void:
 	mcu_target_uid = mcu_target_selector.get_item_metadata(sel)
 	mcu_lines = mcu_editor.text.split("\n")
 	if is_nan(_mcu_run(mcu_lines, 0.0, 0.0, 1.0 / 120.0)):
-		mcu_status.text = "Error en el programa. Usa funciones como sin, cos, abs y variables t, x."
+		mcu_status.text = _mcu_error_text()
 		mcu_enabled = false
 		return
 	mcu_enabled = true
 	mcu_time = 0.0
 	_mcu_state = {}
 	mcu_status.text = "Programa activo. Pulsa ▶ Simular para verlo generar la consigna."
+
+## Mensaje del panel cuando el programa no se puede ejecutar: si el filtro rechazó una
+## función o un carácter, lo nombra (antes el mensaje no decía qué sobraba).
+func _mcu_error_text() -> String:
+	if McuProgram.rejected != "":
+		return "Error en el programa: no se permite «%s». Usa funciones matemáticas (sin, cos, abs, clamp, min, max…) y variables t, x." % McuProgram.rejected
+	return "Error en el programa. Usa funciones como sin, cos, abs y variables t, x."
 
 ## Placa programable de la escena (microcontrolador genérico o Arduino Nano).
 func _find_mcu_part() -> PartInstance:

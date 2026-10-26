@@ -8,8 +8,10 @@ extends RefCounted
 ## etiqueta) en todos.
 ##
 ## Seguridad: un proyecto compartido trae su programa y se valida ejecutándolo al
-## abrirse, así que cada expresión pasa antes por McuIo.is_safe().
+## abrirse, así que cada expresión pasa antes por McuIo.unsafe_part().
 
+## Lo que el filtro rechazó en el último paso ("" si no falló por eso).
+static var rejected := ""
 static var _parse_key := ""
 static var _parse_cache: Dictionary = {}
 static var _assign_re: RegEx
@@ -49,6 +51,7 @@ static func parse(lines: Array) -> Dictionary:
 ## pasos (las variables del programa y si ya corrió «inicio»). Devuelve la salida
 ## o NAN si alguna línea falla.
 static func step(prog: Dictionary, vars: Dictionary, st: Dictionary, io: McuIo) -> float:
+	rejected = ""
 	if not st.get("_iniciado", false):
 		if is_nan(exec(prog["inicio"], vars, io)):
 			return NAN
@@ -73,13 +76,15 @@ static func exec(prog_lines: Array, vars: Dictionary, io: McuIo) -> float:
 	return result
 
 ## Evalúa una expresión con las variables dadas (Expression de Godot, sin objeto
-## base). NAN si no es válida o si no pasa McuIo.is_safe().
+## base). NAN si no es válida o si McuIo.unsafe_part() rechaza algo (queda en «rejected»).
 static func evaluate(expr_str: String, vars: Dictionary, io: McuIo) -> float:
 	if expr_str.contains("i2c"):
 		expr_str = io.expand(expr_str, vars, func(e: String, v: Dictionary) -> float: return evaluate(e, v, io))
 		if expr_str == "":
 			return NAN
-	if not McuIo.is_safe(expr_str):
+	var bad := McuIo.unsafe_part(expr_str)
+	if bad != "":
+		rejected = bad
 		return NAN
 	var e := Expression.new()
 	if e.parse(expr_str, PackedStringArray(vars.keys())) != OK:

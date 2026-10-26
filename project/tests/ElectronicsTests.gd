@@ -67,6 +67,12 @@ func run() -> void:
 	check(is_nan(main._mcu_run(["sin("], 0.0, 0.0, 0.008)), "MCU: script inválido se detecta")
 	check(absf(main._mcu_run(["a = clamp(x, 0, 3)", "a * 2 if x > 0 else -1"], 0.0, 5.0, 0.008) - 6.0) < 1.0e-6,
 		"MCU: clamp y «a if c else b» siguen funcionando")
+	check(main._mcu_run(["a = clampi(5, 0, 3) + posmod(-1, 10)"], 0.0, 0.0, 0.008) == 12.0,
+		"MCU: funciones enteras de Godot (clampi, posmod)")
+	var bad_run: float = main._mcu_run(["a = mi_funcion(1)"], 0.0, 0.0, 0.008)
+	var api_err := str(main.tool_server.api.call_tool("write_controller_script", {"script": "a = mi_funcion(1)"}).get("error", ""))
+	check(is_nan(bad_run) and api_err.contains("«mi_funcion»") and api_err.contains("clampi"),
+		"MCU: una función no permitida se nombra en el error (para el usuario y para OpenClaw)")
 	# Una Expression sin objeto base llega igualmente a str_to_var, que carga un script
 	# de la aplicación para reescribirlo y ejecutarlo; un proyecto compartido con el
 	# programa activo ejecutaría código al abrirse.

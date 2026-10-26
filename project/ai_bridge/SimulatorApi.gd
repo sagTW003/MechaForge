@@ -289,5 +289,7 @@ func _script(p: Dictionary) -> Dictionary:
 	if s.strip_edges() == "":
 		return {"error": "script vacío"}
 	if is_nan(host._mcu_run(s.split("\n"), 0.0, 0.0, 1.0 / 120.0)):
+		if McuProgram.rejected != "":
+			return {"error": "el script no es válido: no se permite «%s». Se permite: %s" % [McuProgram.rejected, ", ".join(McuIo.SAFE_CALLS)]}
 		return {"error": "el script no es válido (usa 'variable = expresión')"}
 	return host.api_propose([{"tipo": "script", "script": s}])
