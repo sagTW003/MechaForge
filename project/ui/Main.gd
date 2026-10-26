@@ -66,6 +66,8 @@ var _wire_nodes: Dictionary = {}       # uid de cable -> nodo 3D (incandescencia
 var _wire_pts: Dictionary = {}         # uid de cable -> puntos de la curva
 var _wire_live: Dictionary = {}        # simulando: uid de cable -> extremos del último tendido
 const WIRE_RETENSE_M := 0.001          # se vuelve a tender si un extremo se mueve más
+const WIRE_RETENSE_PER_FRAME := 2      # tendidos por frame como mucho (~7 ms cada uno)
+var _wire_turn := 0                    # cable por el que empieza el reparto del frame
 
 # --- Circuito vivo, multímetro y protoboard multipín ---
 var circuit_rt: CircuitRuntime
@@ -5129,10 +5131,17 @@ func _init_live_wires() -> void:
 ## electrónica en movimiento, quedaban sueltos): si los dos extremos van en el mismo
 ## cuerpo rígido, el cable se mueve con él tal como está tendido; si no, se vuelve a
 ## tender (cuerda con gravedad, sin atravesar piezas) cuando un extremo se mueve más
-## de WIRE_RETENSE_M.
+## de WIRE_RETENSE_M. Cada tendido cuesta unos 7 ms con 30 piezas: con muchos cables
+## en movimiento la simulación se arrastraba, así que se tienden como mucho
+## WIRE_RETENSE_PER_FRAME por frame, por turnos.
 func _update_live_wires() -> void:
 	var obstacles := []
-	for w in wires:
+	var budget := WIRE_RETENSE_PER_FRAME
+	var n := wires.size()
+	var start := _wire_turn
+	for k in n:
+		var i := (start + k) % n
+		var w = wires[i]
 		var uid := str(w.get("uid", ""))
 		var holder: Node3D = _wire_nodes.get(uid)
 		if holder == null or not is_instance_valid(holder):
@@ -5152,6 +5161,10 @@ func _update_live_wires() -> void:
 		var last: Array = _wire_live.get(uid, [])
 		if last.size() == 2 and (last[0] as Vector3).distance_to(ea) < WIRE_RETENSE_M and (last[1] as Vector3).distance_to(eb) < WIRE_RETENSE_M:
 			continue
+		if budget == 0:
+			continue
+		budget -= 1
+		_wire_turn = (i + 1) % n
 		_wire_live[uid] = [ea, eb]
 		if obstacles.is_empty():
 			for part in parts_root.get_children():

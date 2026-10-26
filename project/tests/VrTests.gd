@@ -1772,6 +1772,33 @@ func _test_live_wires() -> void:
 	var err2 := _wire_end_error()
 	check(fell > 0.05 and err2 < float(main.WIRE_RETENSE_M) + 0.0005, "Cables: entre piezas que se mueven por separado se vuelven a tender (el LED cayó %.0f mm; error %.2f mm)" % [fell * 1000.0, err2 * 1000.0])
 	main._toggle_simulation()
+	# Muchos cables a la vez: como mucho WIRE_RETENSE_PER_FRAME tendidos por frame (cada
+	# uno ~7 ms; antes se tendían todos y la simulación se arrastraba), por turnos, y
+	# cuando las piezas se paran todos quedan al día.
+	main._on_new()
+	var bat2: PartInstance = main._spawn("bateria_lipo_3s", "abs", Vector3(0, 0.0205, 0))
+	main.wires = []
+	for i in 6:
+		var led_i: PartInstance = main._spawn("led", "abs", Vector3(0.1 + 0.03 * i, 0.15, 0))
+		main.wires.append({"uid": "m%d" % i, "a_key": main._key(bat2.uid, "V+"), "b_key": main._key(led_i.uid, "anodo"), "tipo": "power", "color": "auto"})
+	main._redraw_wires()
+	main._toggle_simulation()
+	var most := 0
+	var prev: Dictionary = main._wire_nodes.duplicate()
+	for f in 40:
+		await get_tree().process_frame
+		var changed := 0
+		for uid in prev:
+			if main._wire_nodes.get(uid) != prev[uid]:
+				changed += 1
+		most = maxi(most, changed)
+		prev = main._wire_nodes.duplicate()
+	await wait_phys(120)
+	await get_tree().process_frame
+	var err3 := _wire_end_error()
+	check(most > 0 and most <= main.WIRE_RETENSE_PER_FRAME and err3 < main.WIRE_RETENSE_M + 0.0005,
+		"Cables: con 6 LED cayendo, como mucho %d tendidos por frame (máx. %d) y al pararse todos al día (error %.2f mm)" % [main.WIRE_RETENSE_PER_FRAME, most, err3 * 1000.0])
+	main._toggle_simulation()
 	main.wires = []
 	main._redraw_wires()
 
