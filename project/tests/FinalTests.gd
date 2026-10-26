@@ -63,6 +63,8 @@ func _test_api() -> void:
 	check(ts.is_listening(), "API: servidor escuchando en 127.0.0.1:%d" % ts.port)
 	var h := await _http(HTTPClient.METHOD_GET, "/health", "", "")
 	check(h["code"] == 200 and h["json"].get("ok", false), "API: /health responde")
+	check(str(h["json"].get("version", "")) == ProjectSettings.get_setting("application/config/version"),
+		"API: /health da la versión de project.godot (%s)" % h["json"].get("version", ""))
 	var bad := await _http(HTTPClient.METHOD_GET, "/tools", "", "token-falso")
 	check(bad["code"] == 401, "API: sin token válido → 401")
 	var tools := await _http(HTTPClient.METHOD_GET, "/tools", "", ts.token)

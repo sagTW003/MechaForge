@@ -29,7 +29,9 @@ var current_project_path: String = ""
 var project_dirty: bool = false
 
 const APP_NAME := "MechaForge"
-const APP_VERSION := "0.1.0"
+## La de project.godot (antes una constante que se quedó en 0.1.0: /health y los
+## proyectos guardados decían 0.1.0).
+var APP_VERSION: String = ProjectSettings.get_setting("application/config/version", "")
 const PROJECT_EXTENSION := "mforge"
 
 func set_grid_size_mm(mm: float) -> void:
