@@ -20,15 +20,11 @@ namespace MechaForge;
 /// triángulos con sentidos opuestos, tras soldar vértices repetidos, como en un STL).
 /// Si no lo es, el volumen no está bien definido y quien llama debe usar una estimación.
 ///
-/// Uso desde GDScript: MeshTools.Compute(triangulos) (autoload; no crea objetos) con
+/// Uso desde GDScript: MeshTools.Compute(triangulos) (autoload) con
 /// triangulos = PackedVector3Array (3 vértices por triángulo, en metros).
 /// </summary>
-[GlobalClass]
-public partial class MeshMass : RefCounted
+public static class MeshMass
 {
-    public Godot.Collections.Dictionary Compute(Vector3[] tris) => ComputeTris(tris);
-
-    /// <summary>Lo mismo sin crear un objeto (desde GDScript: el autoload MeshTools).</summary>
     public static Godot.Collections.Dictionary ComputeTris(Vector3[] tris)
     {
         int n = tris.Length / 3;

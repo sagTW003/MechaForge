@@ -10,17 +10,17 @@ namespace MechaForge;
 /// Anti-windup por abrazadera: el integral no crece si la salida está saturada
 /// y el error empuja aún más hacia la saturación.
 ///
-/// Expuesto a GDScript como clase global (RefCounted).
+/// Clase normal de C# (no es un objeto de Godot): GDScript la usa a través del
+/// autoload Electronics, y así no hay que liberarla a mano.
 /// </summary>
-[GlobalClass]
-public partial class PidController : RefCounted
+public class PidController
 {
-    [Export] public double Kp = 1.0;
-    [Export] public double Ki = 0.0;
-    [Export] public double Kd = 0.0;
-    [Export] public double OutMin = -1e12;
-    [Export] public double OutMax = 1e12;
-    [Export] public double Setpoint = 0.0;
+    public double Kp = 1.0;
+    public double Ki = 0.0;
+    public double Kd = 0.0;
+    public double OutMin = -1e12;
+    public double OutMax = 1e12;
+    public double Setpoint = 0.0;
 
     private double _integral;
     private double _prevError;

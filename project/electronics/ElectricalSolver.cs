@@ -13,10 +13,10 @@ namespace MechaForge;
 /// —con la capacidad de la batería— la autonomía estimada.
 /// Unidades SI: V, A, Ω, W. El nodo 0 es SIEMPRE la tierra (0 V).
 ///
-/// Expuesto a GDScript como clase global (RefCounted).
+/// Clase normal de C# (no es un objeto de Godot): GDScript la usa a través del
+/// autoload Electronics, y así no hay que liberarla a mano.
 /// </summary>
-[GlobalClass]
-public partial class ElectricalSolver : RefCounted
+public class ElectricalSolver
 {
     private struct Resistor { public int A, B; public double R; }
     private struct VSource { public int A, B; public double V; }

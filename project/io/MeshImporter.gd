@@ -69,8 +69,6 @@ static func mass_properties(def: Dictionary) -> Dictionary:
 	var tris := triangles(def)
 	if tris.is_empty():
 		return {"volumen": 0.0, "area": 0.0, "centroide": Vector3.ZERO, "inercia": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "cerrada": false, "triangulos": 0}
-	# Autoload de C#: crear un MeshMass por cálculo dejaba objetos de .NET sin recoger
-	# al cerrar y la aplicación fallaba al salir.
 	var r: Dictionary = MeshTools.Compute(tris)
 	return r
 
