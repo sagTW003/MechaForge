@@ -230,7 +230,7 @@ func _exit_tree() -> void:
 	wait_textures()
 
 ## Material semitransparente para vistas previas "fantasma" (IA / colocación).
-func get_ghost(base_id: String, valid: bool = true) -> StandardMaterial3D:
+func get_ghost(_base_id: String, valid: bool = true) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.albedo_color = (Color(0.35, 0.8, 1.0, 0.45) if valid else Color(1.0, 0.35, 0.35, 0.45))

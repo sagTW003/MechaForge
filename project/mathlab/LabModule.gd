@@ -115,7 +115,7 @@ static func vcolor_mat(alpha: float = 1.0, glow: float = 0.35) -> ShaderMaterial
 	var transparent := alpha < 0.999
 	if not _vc_shaders.has(transparent):
 		var sh := Shader.new()
-		sh.code = "shader_type spatial;
+		sh.code = """shader_type spatial;
 render_mode cull_disabled%s;
 uniform float alpha_mul = 1.0;
 uniform float glow = 0.35;
@@ -125,8 +125,7 @@ void fragment() {
 	ROUGHNESS = 0.3;
 	SPECULAR = 0.55;
 %s}
-" % [", depth_draw_always" if transparent else "", "	ALPHA = alpha_mul;
-" if transparent else ""]
+""" % [", depth_draw_always" if transparent else "", "\tALPHA = alpha_mul;\n" if transparent else ""]
 		_vc_shaders[transparent] = sh
 	var m := ShaderMaterial.new()
 	m.shader = _vc_shaders[transparent]

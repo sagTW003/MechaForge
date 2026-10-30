@@ -3381,8 +3381,8 @@ func _process(_delta: float) -> void:
 	GraphicsProfiles.update_dynamic(_delta)
 	if _bench_active:
 		_bench_tick(_delta)
+	# El microcontrolador corre en _physics_process (paso fijo).
 	if simulator and simulator.is_running() and not simulator.paused:
-		pass   # el microcontrolador corre en _physics_process (paso fijo)
 		_tele_accum += _delta
 		if _tele_accum >= 0.1:
 			_tele_accum = 0.0
@@ -5460,7 +5460,9 @@ func _build_elec_panel() -> void:
 	graph_selector.item_selected.connect(_on_graph_selected)
 	graph_selector.tooltip_text = "Unión cuya gráfica se muestra (se señala en el modelo)"
 	gh.add_child(graph_selector)
-	var locate_g := _button("🎯", func(): if graph_uid != "": _indicate_connection(graph_uid, true))
+	var locate_g := _button("🎯", func():
+		if graph_uid != "":
+			_indicate_connection(graph_uid, true))
 	locate_g.tooltip_text = "Señalar y encuadrar la unión en el modelo"
 	gh.add_child(locate_g)
 	gh.add_child(_button("Exportar CSV", _export_csv))

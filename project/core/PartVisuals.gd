@@ -297,7 +297,7 @@ static func _esp32(d: Vector3) -> Node3D:
 	n.add_child(_box(Vector3(0.0016, 0.0008, 0.0008), led, Vector3(-d.x * 0.3, top + 0.0004, -d.z * 0.3)))
 	return n
 
-static func _pcb(d: Vector3, def: Dictionary) -> Node3D:
+static func _pcb(d: Vector3, _def: Dictionary) -> Node3D:
 	var n := Node3D.new()
 	# Placa FR4 de 1.6 mm apoyada abajo (el resto de la altura son componentes).
 	var t := minf(0.0016, d.y * 0.5)

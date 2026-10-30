@@ -566,7 +566,7 @@ func _sync_start() -> void:
 		(_ui["x0"] as SpinBox).set_value_no_signal(start[0])
 		(_ui["y0"] as SpinBox).set_value_no_signal(start[1])
 
-func perturb(hit: Vector3, first: bool) -> void:
+func perturb(hit: Vector3, _first: bool) -> void:
 	start = [hit.x / _s(), -hit.z / _s()]
 	_sync_start()
 	_compute_paths()

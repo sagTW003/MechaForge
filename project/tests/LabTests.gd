@@ -30,6 +30,7 @@ func run() -> void:
 		if has_method(fn):
 			await call(fn)
 	_t_expr()
+	await _t_mount_cycles()
 	await _t_api()
 	# Volver a MechaForge: la escena del simulador se conserva intacta.
 	var tree := get_tree()
@@ -48,6 +49,21 @@ func run() -> void:
 			"API HTTP: tras volver del laboratorio la API sigue atendiendo (get_scene_state)")
 	print("[TEST] Laboratorio: %d OK, %d FALLOS" % [ok, fail])
 	tree.quit(1 if fail > 0 else 0)
+
+## Montar y desmontar 20 veces los módulos con solver de C# (FieldSim) no deja nodos
+## sueltos. Las fugas de objetos de C# se verían al salir («Leaked unsafe reference»).
+func _t_mount_cycles() -> void:
+	lab.open_module("onda")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var before := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	for i in 20:
+		for id in ["calor", "schrodinger", "onda"]:
+			lab.open_module(id)
+			await get_tree().process_frame
+	await get_tree().process_frame
+	var after := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	check(absf(after - before) <= 5.0, "Montar y desmontar 20 veces onda, calor y Schrödinger no deja nodos sueltos (%d → %d)" % [before, after])
 
 # --- API del laboratorio para OpenClaw ------------------------------------------------
 

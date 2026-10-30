@@ -207,7 +207,7 @@ static func _carbon(x: int, y: int, n: int, fine: FastNoiseLite) -> Vector2:
 	return Vector2(0.3 + bulge * 0.6, shine)
 
 ## Dibujo de PCB. Devuelve (altura, clase) — clase 0 máscara, 1 pista, 2 vía, 3 serigrafía.
-static func _pcb(x: int, y: int, n: int, seed: int) -> Vector2:
+static func _pcb(x: int, y: int, _n: int, seed: int) -> Vector2:
 	var grid := 16
 	var gx := x % grid
 	var gy := y % grid

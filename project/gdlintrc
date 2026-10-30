@@ -1,0 +1,24 @@
+# Configuración de gdlint (gdtoolkit 4.x): `gdlint $(git ls-files "*.gd")` desde project/.
+# Se quedan las reglas que señalan fallos (argumentos sin usar, cargas duplicadas,
+# expresiones sin efecto, comparaciones consigo mismo, tabuladores mezclados). Se
+# desactivan las de estilo que chocan con las convenciones del proyecto: notación
+# matemática en los nombres (F, J, L, _X), líneas largas con fórmulas, el orden
+# libre de las declaraciones y el tamaño de Main.gd y de los módulos del laboratorio.
+disable:
+- max-line-length
+- max-file-lines
+- max-public-methods
+- max-returns
+- class-definitions-order
+- no-elif-return
+- no-else-return
+- function-name
+- function-variable-name
+- function-argument-name
+- class-variable-name
+- loop-variable-name
+excluded_directories: !!set
+  .git: null
+  .godot: null
+function-arguments-number: 10
+tab-characters: 1

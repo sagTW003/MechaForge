@@ -137,7 +137,7 @@ func _build() -> void:
 	add_child(probe)
 
 ## Banco de trabajo de madera en la pared del fondo, con panel perforado y herramientas.
-func _workbench(hw: float) -> void:
+func _workbench(_hw: float) -> void:
 	var wood := _m("Wood066", Color.WHITE, 2.5)
 	var steel := _m("Metal055A", Color(0.45, 0.47, 0.5), 3.0)
 	var x0 := -0.6
@@ -258,7 +258,7 @@ func _test_props() -> void:
 		_collider(cs, Vector3.ZERO, p + Vector3(0, 0.245, 0))
 
 ## Lámparas fluorescentes del techo (tubo emisivo + luz omni con sombras).
-func _lamps(hw: float, zc: float) -> void:
+func _lamps(_hw: float, _zc: float) -> void:
 	var housing := _m("Metal055A", Color(0.85, 0.85, 0.85), 4.0)
 	var tube := StandardMaterial3D.new()
 	tube.albedo_color = Color(1, 1, 0.97)

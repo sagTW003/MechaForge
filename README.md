@@ -723,6 +723,16 @@ exportación (`tools\preparar_godot.ps1 -Plantillas`).
 
 ## Pruebas
 
+Todo de una vez (gdlint, compilación de C# sin avisos, importación sin errores y las
+suites con su código de salida y sin fugas al cerrar):
+
+```
+powershell -ExecutionPolicy Bypass -File toolserificar.ps1 [suite ...]
+```
+
+`gdlint` es de gdtoolkit (`uv tool install "gdtoolkit==4.*"`); sus reglas están en
+`project/gdlintrc`.
+
 | Suite | Comando (`...\Godot_...mono_win64_console.exe --headless --path project -- <suite>`) |
 |---|---|
 | Base (Fase 1, IA, BOM, importación) | `mftest` |
