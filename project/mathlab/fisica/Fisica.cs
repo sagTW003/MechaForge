@@ -60,6 +60,37 @@ public partial class Fisica : Node
     public double[] SpinObservables(double[] psi, int n, double w0, double j, double d, double g) => CadenaEspines.Observables(psi, n, w0, j, d, g);
     public double SpinGroundEnergy(int n, double w0, double j, double d) => CadenaEspines.GroundEnergy(n, w0, j, d);
 
+    // --- Cuerdas ---
+    public long[] StringBosonicLevels(int d, int nMax) => Cuerdas.BosonicLevels(d, nMax);
+
+    /// <summary>Supercuerda abierta: estados por nivel de los sectores NS (con GSO) y R.</summary>
+    public Dictionary StringSuperLevels(int niveles)
+    {
+        var (ns, r) = Cuerdas.SuperLevels(niveles);
+        return new Dictionary { { "ns", ns }, { "r", r } };
+    }
+
+    public double StringAlphaM2(string teoria, string cuerda, double nivel) => Cuerdas.AlphaM2(teoria, cuerda, nivel);
+    public string StringIdentify(string teoria, string cuerda, int nivel) => Cuerdas.Identify(teoria, cuerda, nivel);
+
+    /// <summary>
+    /// Forma de la cuerda en «puntos» valores de σ: [y₀, z₀, y₁, z₁, …]. Abierta (σ ∈ [0, π]):
+    /// y y z con las ocupaciones de cada polarización; cerrada (σ ∈ [0, 2π)): y con los modos
+    /// hacia la derecha y z con los de la izquierda.
+    /// </summary>
+    public double[] StringShape(string contorno, double alpha, int[] ocY, double[] faseY, int[] ocZ, double[] faseZ, double tau, int puntos)
+    {
+        var o = new double[2 * puntos];
+        bool cerrada = contorno == "cerrada";
+        for (int k = 0; k < puntos; k++)
+        {
+            double sg = cerrada ? 2.0 * Math.PI * k / puntos : Math.PI * k / (puntos - 1);
+            o[2 * k] = Cuerdas.Displacement(contorno, alpha, ocY, faseY, sg, tau, false);
+            o[2 * k + 1] = Cuerdas.Displacement(contorno, alpha, ocZ, faseZ, sg, tau, cerrada);
+        }
+        return o;
+    }
+
     // --- Construcción de materia ---
     public string ElementSymbol(int z) => z >= 0 && z < Materia.Simbolos.Length ? Materia.Simbolos[z] : "?";
     public string ElementName(int z) => z >= 0 && z < Materia.Nombres.Length ? Materia.Nombres[z] : "?";

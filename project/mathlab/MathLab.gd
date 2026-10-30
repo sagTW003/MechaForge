@@ -66,6 +66,8 @@ const MODULES := [
 		"desc": "Cadena de hasta 12 espines: carga, almacenamiento y descarga con evolución exacta; energía, potencia, ergotropía y esferas de Bloch."},
 	{"id": "materia", "pilar": 4, "nombre": "Construcción de materia", "ruta": "res://mathlab/modules/MateriaModule.gd",
 		"desc": "Con quarks, nucleones, electrones y átomos: hadrones (Cornell), núcleos que se desintegran, átomos e iones y moléculas, con el motivo cuando algo no se puede formar."},
+	{"id": "cuerdas", "pilar": 4, "nombre": "Cuerdas y modos normales", "ruta": "res://mathlab/modules/CuerdasModule.gd",
+		"desc": "Cuerdas abiertas y cerradas: cada modo normal es una partícula (taquión, fotón, gravitón…) con su masa α′M² = N − a; miles de cuerdas en la GPU."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

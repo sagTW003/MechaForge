@@ -201,3 +201,29 @@ La caja de arena pasó a ser un módulo propio (`materia`) y las desintegracione
 - Sin condensado de Bose-Einstein (Gross-Pitaevskii, opcional en el encargo).
 - La fórmula semiempírica falla por décimas de MeV: predice estable el ⁶⁰Fe (real β⁻).
 - Molécula = valencias saturadas: no distingue enlaces iónicos y la geometría es de muelles.
+
+## 11. Fase 5 (vertical mínimo del módulo 2): hecha
+
+- **Dominio** (`dominio/Cuerdas.cs`, en doble): cuerda relativista libre en el gauge del cono
+  de luz. Degeneraciones por nivel como coeficientes de las funciones de partición
+  (bosónica: Π(1 − qⁿ)⁻²⁴; supercuerda: sectores NS con GSO y R en potencias de q^½),
+  α′M² (abierta N − 1 y cerrada 4(N − 1) en la bosónica; N_b y 4N_b en la supercuerda),
+  qué partícula es cada nivel y la forma clásica X(σ, τ) de un estado coherente con las
+  ocupaciones elegidas: abierta N–N (cos nσ), D–D (sin nσ) y cerrada (ondas viajeras a
+  derecha e izquierda).
+- **`cuerdas`**: «una cuerda» con los cuantos de los 4 primeros modos en dos polarizaciones
+  (en la cerrada, derecha e izquierda), su nivel, masa, espín máximo, estados del nivel y
+  el espectro; la cerrada con N ≠ Ñ se marca como no física. «Muchas cuerdas»: hasta
+  5000 evaluadas en el *vertex shader* (`shaders/cuerdas.gdshader`, una malla de líneas
+  compartida y los datos de cada cuerda en `INSTANCE_CUSTOM`), coloreadas por su nivel.
+- Comprobado: 1, 24, 324, 3200, 25 650 y 176 256 estados en los niveles 0–5 de la
+  bosónica; NS = R nivel a nivel (8, 128, 1152, …: la identidad de Jacobi); 24² = 299 +
+  276 + 1 en la cerrada sin masa; la forma cumple ∂²X/∂τ² = ∂²X/∂σ² (residuo 1,4·10⁻³,
+  el de las diferencias finitas), X = 0 en los extremos D–D, pendiente nula en los N–N y
+  sin salto en la costura σ = 0 = 2π de la cerrada.
+- **Medido en la RTX 5060**: 5000 cuerdas vibrando a **120 FPS** (el objetivo era 1000 a 60).
+
+**Límites**: en 3D se ven 2 de las D − 2 direcciones transversales; la forma es la clásica
+(un estado coherente), no la función de onda; solo modos n ≤ 4 con 0–3 cuantos. Las
+D-branas como objetos, las dimensiones compactas, los tipos I/IIA/IIB/heterótica y g_s son
+de la Fase 6.

@@ -58,6 +58,8 @@ func run() -> void:
 	await _t_modulo_bateria()
 	_t_materia()
 	await _t_modulo_materia()
+	_t_cuerdas()
+	await _t_modulo_cuerdas()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -692,3 +694,87 @@ func _t_modulo_materia() -> void:
 	var l0: PackedFloat64Array = Fisica.QuarkoniumLevels(mm.m_c, mm.alpha_s, mm.sigma, 0, 2)
 	var split := (l0[1] - l0[0]) * 1000.0
 	check(absf(split / mm.PSI_SPLIT_MEV - 1.0) < 0.15, "Charmonio con los parámetros por defecto: 2S − 1S = %.0f MeV (PDG 589 MeV, dentro del 15 %%)" % split)
+
+# --- Fase 5: cuerdas ---------------------------------------------------------------------
+
+func _t_cuerdas() -> void:
+	var c: PackedInt64Array = Fisica.StringBosonicLevels(24, 5)
+	check(Array(c) == [1, 24, 324, 3200, 25650, 176256],
+		"Cuerda bosónica (D = 26): estados por nivel 1, 24, 324, 3200, 25650, 176256 (coeficientes de Π(1 − qⁿ)⁻²⁴)")
+	var sl: Dictionary = Fisica.StringSuperLevels(8)
+	var ns: PackedInt64Array = sl["ns"]
+	var r: PackedInt64Array = sl["r"]
+	check(Array(ns) == Array(r) and ns[0] == 8 and ns[1] == 128 and ns[2] == 1152,
+		"Supercuerda (D = 10): NS con GSO = R en los 9 primeros niveles (8, 128, 1152, …): la identidad de Jacobi, supersimetría")
+	check(24 * 24 == (24 * 25 / 2 - 1) + 24 * 23 / 2 + 1,
+		"Cerrada bosónica sin masa: 24² = 576 = 299 (gravitón) + 276 (campo B) + 1 (dilatón)")
+	check(Fisica.StringAlphaM2("bosonica", "abierta", 0) == -1.0 and Fisica.StringAlphaM2("bosonica", "abierta", 1) == 0.0
+		and Fisica.StringAlphaM2("bosonica", "cerrada", 1) == 0.0 and Fisica.StringAlphaM2("bosonica", "cerrada", 2) == 4.0
+		and Fisica.StringAlphaM2("super", "abierta", 0) == 0.0,
+		"Masas: bosónica abierta α′M² = N − 1 (taquión en N = 0, fotón en N = 1); cerrada 4(N − 1); supercuerda sin taquión")
+	# La forma resuelve la ecuación de ondas con sus condiciones de contorno.
+	var oy := PackedInt32Array([1, 2, 0, 1])
+	var oz := PackedInt32Array([0, 1, 3, 0])
+	var fy := PackedFloat64Array([0.3, 1.1, 0.0, 2.0])
+	var fz := PackedFloat64Array([0.0, 0.7, 1.9, 0.0])
+	var h := 1e-3
+	var peor := 0.0
+	for cont in ["NN", "DD", "cerrada"]:
+		for k in 5:
+			var t0 := 0.37 * k + 0.1
+			var a0: PackedFloat64Array = Fisica.StringShape(cont, 1.0, oy, fy, oz, fz, t0, 401)
+			var ap: PackedFloat64Array = Fisica.StringShape(cont, 1.0, oy, fy, oz, fz, t0 + h, 401)
+			var am: PackedFloat64Array = Fisica.StringShape(cont, 1.0, oy, fy, oz, fz, t0 - h, 401)
+			var ds := (TAU if cont == "cerrada" else PI) / (401 if cont == "cerrada" else 400)
+			for j in range(100, 300, 37):
+				for comp in 2:
+					var xtt := (ap[2 * j + comp] - 2.0 * a0[2 * j + comp] + am[2 * j + comp]) / (h * h)
+					var xss := (a0[2 * (j + 1) + comp] - 2.0 * a0[2 * j + comp] + a0[2 * (j - 1) + comp]) / (ds * ds)
+					peor = maxf(peor, absf(xtt - xss) / maxf(absf(xtt), 1.0))
+	check(peor < 2e-3, "Forma de la cuerda: ∂²X/∂τ² = ∂²X/∂σ² en abierta (NN, DD) y cerrada (residuo relativo %s, de las diferencias finitas)" % LabUI.sci(peor, 1))
+	var dd: PackedFloat64Array = Fisica.StringShape("DD", 1.0, oy, fy, oz, fz, 0.8, 201)
+	var nn: PackedFloat64Array = Fisica.StringShape("NN", 1.0, oy, fy, oz, fz, 0.8, 201)
+	var dsn := PI / 200.0
+	# Pendiente en los extremos con la fórmula de tres puntos (error O(Δσ²)).
+	var dnn := absf(-3.0 * nn[0] + 4.0 * nn[2] - nn[4]) / (2.0 * dsn) + absf(-3.0 * nn[400] + 4.0 * nn[398] - nn[396]) / (2.0 * dsn)
+	# La cerrada cumple la ecuación de ondas también en la costura σ = 0 = 2π (vecino del otro lado).
+	var hc := 1e-3
+	var c0: PackedFloat64Array = Fisica.StringShape("cerrada", 1.0, oy, fy, oz, fz, 0.8, 400)
+	var cp: PackedFloat64Array = Fisica.StringShape("cerrada", 1.0, oy, fy, oz, fz, 0.8 + hc, 400)
+	var cmn: PackedFloat64Array = Fisica.StringShape("cerrada", 1.0, oy, fy, oz, fz, 0.8 - hc, 400)
+	var dsc := TAU / 400.0
+	var ctt := (cp[0] - 2.0 * c0[0] + cmn[0]) / (hc * hc)
+	var css := (c0[2] - 2.0 * c0[0] + c0[798]) / (dsc * dsc)
+	check(absf(dd[0]) < 1e-12 and absf(dd[400]) < 1e-12 and dnn < 0.01 and absf(ctt - css) / maxf(absf(ctt), 1.0) < 2e-3,
+		"Contorno: Dirichlet X = 0 en los extremos, Neumann ∂X/∂σ = 0 (pendiente %s) y la cerrada es periódica (ondas sin salto en σ = 0 = 2π)" % LabUI.sci(dnn, 1))
+
+func _t_modulo_cuerdas() -> void:
+	lab.open_module("cuerdas")
+	await get_tree().process_frame
+	if not _abierto("cuerdas"):
+		return
+	var cm = lab.module
+	check(cm.nivel() == 1 and cm.info().contains("bosón gauge"), "Módulo «Cuerdas»: un cuanto α₋₁ʸ en la abierta bosónica es el bosón gauge sin masa")
+	check(cm.cargar({"teoria": "bosonica", "cuerda": "cerrada", "oc_y": [1, 0, 0, 0], "oc_z": [1, 0, 0, 0]}) == "" and cm.info().contains("gravitón"),
+		"Cuerdas: la cerrada con N = Ñ = 1 es el gravitón (con B y el dilatón)")
+	check(cm.cargar({"teoria": "bosonica", "cuerda": "cerrada", "oc_y": [1, 0, 0, 0], "oc_z": [0, 1, 0, 0]}) == "" and cm.info().contains("no físico"),
+		"Cuerdas: una cerrada con N ≠ Ñ no es un estado físico (emparejamiento de niveles)")
+	check(cm.cargar({"teoria": "bosonica", "cuerda": "abierta", "oc_y": [0, 0, 0, 0], "oc_z": [0, 0, 0, 0]}) == "" and cm.info().contains("taquión"),
+		"Cuerdas: el vacío de la abierta bosónica es un taquión")
+	check(cm.cargar({"teoria": "super", "cuerda": "abierta", "oc_y": [0, 0, 0, 0], "oc_z": [0, 0, 0, 0]}) == "" and cm.info().contains("gaugino"),
+		"Cuerdas: en la supercuerda el nivel más bajo es el bosón gauge con su gaugino (sin taquión)")
+	check(cm.cargar({"teoria": "x", "cuerda": "abierta", "oc_y": [0, 0, 0, 0], "oc_z": [0, 0, 0, 0]}) != "" and cm.cargar({"teoria": "bosonica", "cuerda": "abierta", "oc_y": [9, 0, 0, 0], "oc_z": [0, 0, 0, 0]}) != "",
+		"Cuerdas: estados no válidos se rechazan")
+	check(cm.cargar({"teoria": "bosonica", "cuerda": "abierta", "oc_y": [1, 0, 0, 0], "oc_z": [0, 0, 0, 0], "vista": 1, "n_cuerdas": 2000}) == ""
+		and cm.many.multimesh.instance_count == 2000 and cm.many.visible, "Cuerdas: la vista «muchas» con 2000 cuerdas en la GPU")
+	if "bench" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
+		cm.cargar({"teoria": "bosonica", "cuerda": "abierta", "oc_y": [1, 0, 0, 0], "oc_z": [0, 0, 0, 0], "vista": 1, "n_cuerdas": 5000})
+		if not lab.playing:
+			lab.toggle_play()
+		for i in 60:
+			await get_tree().process_frame
+		var t0 := Time.get_ticks_usec()
+		for i in 120:
+			await get_tree().process_frame
+		var fps := 120.0 / ((Time.get_ticks_usec() - t0) / 1e6)
+		check(fps >= 55.0, "Rendimiento: 5000 cuerdas vibrando en la GPU a %.0f FPS (objetivo: 1000 o más a 60)" % fps)
