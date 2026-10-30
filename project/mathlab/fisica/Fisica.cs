@@ -60,6 +60,52 @@ public partial class Fisica : Node
     public double[] SpinObservables(double[] psi, int n, double w0, double j, double d, double g) => CadenaEspines.Observables(psi, n, w0, j, d, g);
     public double SpinGroundEnergy(int n, double w0, double j, double d) => CadenaEspines.GroundEnergy(n, w0, j, d);
 
+    // --- Construcción de materia ---
+    public string ElementSymbol(int z) => z >= 0 && z < Materia.Simbolos.Length ? Materia.Simbolos[z] : "?";
+    public string ElementName(int z) => z >= 0 && z < Materia.Nombres.Length ? Materia.Nombres[z] : "?";
+    public int ElementCount() => Materia.Simbolos.Length - 1;
+    public string AtomConfiguration(int z, int electrones) => Materia.Configuration(z, electrones);
+    public bool IsMadelungException(int z) => Materia.IsMadelungException(z);
+    public double NucleusBinding(int z, int n) => Materia.Binding(z, n);
+
+    /// <summary>Núcleo (Z, N): datos de NUBASE2020 si los hay; si no, la fórmula semiempírica.</summary>
+    public Dictionary NucleusInfo(int z, int n)
+    {
+        EnsureParticles();
+        var r = Materia.Nucleus(z, n);
+        var modos = new Godot.Collections.Array();
+        foreach (var m in r.modos)
+            modos.Add(new Dictionary { { "tipo", m.Tipo }, { "fraccion", m.Fraccion }, { "z", m.Z }, { "n", m.N },
+                { "nombre", Materia.NucleusName(m.Z, m.N) }, { "nota", m.Nota } });
+        return new Dictionary
+        {
+            { "nombre", Materia.NucleusName(z, n) }, { "ligado", r.ligado }, { "estable", r.estable }, { "dato", r.dato },
+            { "medio", r.medio }, { "medio_s", r.medioS }, { "modos", modos }, { "B", r.b }, { "B_A", z + n > 0 ? r.b / (z + n) : 0.0 },
+            { "radio_fm", Materia.RadiusFm(z + n) }, { "nota", r.nota }, { "masa_atomica_MeV", Materia.AtomicMass(z, n) },
+        };
+    }
+
+    /// <summary>Hadrón con esos quarks: id de la tabla (o ""), tipo, motivo si no vale y alternativas.</summary>
+    public Dictionary HadronFromQuarks(string[] quarks)
+    {
+        EnsureParticles();
+        var (id, tipo, motivo, alt) = Materia.Hadron(quarks);
+        return new Dictionary { { "id", id }, { "tipo", tipo }, { "motivo", motivo }, { "alternativas", alt } };
+    }
+
+    /// <summary>Molécula: enlaces [i, j, orden] que saturan las valencias y posiciones 3D, o el motivo.</summary>
+    public Dictionary MoleculeBonds(int[] z, int seed)
+    {
+        var (ok, motivo, enlaces) = Materia.Molecule(z);
+        var arr = new Godot.Collections.Array();
+        foreach (var e in enlaces) arr.Add(new[] { e[0], e[1], e[2] });
+        return new Dictionary { { "ok", ok }, { "motivo", motivo }, { "enlaces", arr },
+            { "posiciones", ok ? Materia.Layout(z.Length, enlaces, seed) : System.Array.Empty<double>() } };
+    }
+
+    public double[] QuarkoniumLevels(double mq, double alphaS, double sigma, int l, int niveles) =>
+        Materia.Quarkonium(mq, alphaS, sigma, l, niveles);
+
     // --- Modelo Estándar: tabla, conservación y desintegraciones ---
     const string TablaPdg = "res://mathlab/fisica/datos/particulas_pdg.json";
 

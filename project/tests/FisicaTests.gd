@@ -56,6 +56,8 @@ func run() -> void:
 	await _t_modulo_desintegraciones()
 	_t_bateria()
 	await _t_modulo_bateria()
+	_t_materia()
+	await _t_modulo_materia()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -341,13 +343,23 @@ func _t_pilar() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var before := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	var ids := []
+	for m in MathLab.MODULES:
+		if int(m["pilar"]) == 4:
+			ids.append(m["id"])
+	ids.append("onda")
+	var fallidos := {}
 	for i in 20:
-		for id in ["hidrogeno", "particulas", "onda"]:
+		for id in ids:
 			lab.open_module(id)
+			if lab.module_id != id:
+				fallidos[id] = true      # el script no compila: el laboratorio se queda con el anterior
 			await get_tree().process_frame
 	await get_tree().process_frame
+	await get_tree().process_frame
 	var after := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
-	check(absf(after - before) <= 5.0, "Montar y desmontar 20 veces hidrógeno y partículas no deja nodos sueltos (%d → %d)" % [before, after])
+	check(fallidos.is_empty() and absf(after - before) <= 5.0, "Montar y desmontar 20 veces los %d módulos de física moderna no deja nodos sueltos (%d → %d)%s" % [
+		ids.size() - 1, before, after, "" if fallidos.is_empty() else "; no se abren: " + ", ".join(fallidos.keys())])
 
 # --- Fase 4a: Modelo Estándar, conservación, desintegraciones y Lorentz ------------------
 
@@ -584,3 +596,99 @@ func _t_modulo_bateria() -> void:
 		"Batería: la carga llega a ≈ Nω₀ (%.3f) y la descarga la devuelve (quedan %.3f ω₀)" % [e_carga, bm.stored()])
 	check(lab.info_label.text.contains("Ergotropía") or bm.info().contains("Ergotropía"), "Batería: energía, potencia y ergotropía en la información")
 	check(bm.cargar({"n": 20, "w0": 1.0, "g": 1.0, "J": 0.0, "delta": 0.0}) != "", "Batería: N > 12 se rechaza")
+
+# --- Fase 4c: construcción de materia ----------------------------------------------------
+
+func _hadron(qs: Array) -> Dictionary:
+	return Fisica.HadronFromQuarks(PackedStringArray(qs))
+
+func _t_materia() -> void:
+	var p: Dictionary = _hadron(["u", "u", "d"])
+	var ok_h: bool = p["id"] == "p" and "Delta+" in p["alternativas"] and _hadron(["u", "d", "d"])["id"] == "n" \
+		and _hadron(["u", "d~"])["id"] == "pi+" and _hadron(["d", "d~"])["id"] == "pi0" and _hadron(["u~", "u~", "d~"])["id"] == "p~" \
+		and _hadron(["s", "s", "s"])["id"] == "Omega-" and _hadron(["c", "c~"])["id"] == "J/psi"
+	check(ok_h, "Hadrones: uud → p (también Δ⁺), udd → n, ud̄ → π⁺, dd̄ → π⁰, ūūd̄ → p̄, sss → Ω⁻, cc̄ → J/ψ")
+	var uu: Dictionary = _hadron(["u", "u"])
+	var tetra: Dictionary = _hadron(["u", "d~", "u", "d~"])
+	var ucb: Dictionary = _hadron(["u", "c", "b"])
+	check(uu["id"] == "" and str(uu["motivo"]).contains("color") and tetra["tipo"] == "exotico" and str(ucb["motivo"]).contains("tabla"),
+		"Hadrones prohibidos o sin datos: uu (color), ud̄ud̄ (exótico, no modelado), ucb (sin color pero no está en la tabla)")
+	# Cornell: límites exactos. Coulomb (σ = 0): Eₙ = −μκ²/2n², κ = 4αₛ/3; lineal (αₛ = 0): Eₙ = (σ²/2μ)^{1/3}·aₙ (ceros de Airy).
+	var mq := 1.5
+	var mu := mq / 2.0
+	var kap := 4.0 / 3.0 * 0.8
+	var lc: PackedFloat64Array = Fisica.QuarkoniumLevels(mq, 0.8, 0.0, 0, 2)
+	var lp: PackedFloat64Array = Fisica.QuarkoniumLevels(mq, 0.8, 0.0, 1, 1)
+	var e1 := -mu * kap * kap / 2.0
+	check(absf(lc[0] / e1 - 1.0) < 1e-3 and absf(lc[1] / (e1 / 4.0) - 1.0) < 1e-3 and absf(lp[0] / (e1 / 4.0) - 1.0) < 1e-3,
+		"Cornell sin confinamiento = Coulomb: E₁ = −μκ²/2 = %.4f GeV, E₂ = E₁/4 y 2P degenerado con 2S" % e1)
+	var ll: PackedFloat64Array = Fisica.QuarkoniumLevels(mq, 0.0, 0.18, 0, 2)
+	var esc := pow(0.18 * 0.18 / (2.0 * mu), 1.0 / 3.0)
+	check(absf(ll[0] / (esc * 2.338107410) - 1.0) < 1e-3 and absf(ll[1] / (esc * 4.087949444) - 1.0) < 1e-3,
+		"Cornell sin Coulomb = potencial lineal: Eₙ = (σ²/2μ)^{1/3}·aₙ con los ceros de Airy (%.4f y %.4f GeV)" % [esc * 2.338107410, esc * 4.087949444])
+	var he4: Dictionary = Fisica.NucleusInfo(2, 2)
+	var h3: Dictionary = Fisica.NucleusInfo(1, 2)
+	var u238: Dictionary = Fisica.NucleusInfo(92, 146)
+	var k40: Dictionary = Fisica.NucleusInfo(19, 21)
+	var fk := 0.0
+	for m in k40["modos"]:
+		fk += float(m["fraccion"])
+	check(bool(he4["estable"]) and bool(he4["dato"]) and h3["medio"] == "12,32 años" and h3["modos"][0]["nombre"] == "³He"
+		and u238["modos"][0]["nombre"] == "²³⁴Th" and absf(fk - 1.0) < 1e-12,
+		"Núcleos (NUBASE2020): ⁴He estable; ³H β⁻ en 12,32 años → ³He; ²³⁸U α → ²³⁴Th; ⁴⁰K β⁻ 89,28 % + CE 10,72 %")
+	var fe: Dictionary = Fisica.NucleusInfo(26, 30)
+	check(absf(float(fe["B_A"]) / 8.790 - 1.0) < 0.02, "Fórmula semiempírica: B/A del ⁵⁶Fe = %.3f MeV (medido 8,790 MeV)" % fe["B_A"])
+	var he2: Dictionary = Fisica.NucleusInfo(2, 0)
+	var he5: Dictionary = Fisica.NucleusInfo(2, 3)
+	var fe62: Dictionary = Fisica.NucleusInfo(26, 36)
+	var fe50: Dictionary = Fisica.NucleusInfo(26, 24)
+	var pu: Dictionary = Fisica.NucleusInfo(94, 145)
+	var pred: bool = not bool(he2["ligado"]) and he5["modos"][0]["tipo"] == "n" and fe62["modos"][0]["tipo"] == "β⁻" \
+		and fe50["modos"][0]["tipo"] == "β⁺" and pu["modos"].any(func(m): return m["tipo"] == "α")
+	check(pred, "Predicciones de la fórmula: ²He no ligado; ⁵He emite un neutrón; ⁶²Fe β⁻; ⁵⁰Fe β⁺; ²³⁹Pu α")
+	# Límite de la fórmula: al ⁶⁰Fe (β⁻ real, Q ≈ 0,24 MeV) le da Q_β⁻ < 0 y lo predice estable.
+	check(bool(Fisica.NucleusInfo(26, 34)["estable"]) and not bool(Fisica.NucleusInfo(26, 34)["dato"]),
+		"Límite conocido: la fórmula predice estable el ⁶⁰Fe (es β⁻ con Q ≈ 0,24 MeV; error típico de unas décimas de MeV)")
+	var conf_ok: bool = Fisica.AtomConfiguration(1, 1) == "1s¹" and Fisica.AtomConfiguration(8, 8) == "1s² 2s² 2p⁴" \
+		and Fisica.AtomConfiguration(24, 24).ends_with("3d⁵ 4s¹") and Fisica.AtomConfiguration(29, 29).ends_with("3d¹⁰ 4s¹") \
+		and Fisica.AtomConfiguration(26, 24) == "1s² 2s² 2p⁶ 3s² 3p⁶ 3d⁶" and Fisica.AtomConfiguration(46, 46).ends_with("4d¹⁰") \
+		and Fisica.AtomConfiguration(1, 2) == "1s²" and Fisica.AtomConfiguration(103, 103).contains("7p¹")
+	check(conf_ok, "Configuraciones: H 1s¹, O 1s²2s²2p⁴, Cr …3d⁵4s¹, Cu …3d¹⁰4s¹, Fe²⁺ …3d⁶ (pierde los 4s), Pd …4d¹⁰, H⁻ 1s², Lr …7p¹")
+	var h2o: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([8, 1, 1]), 1)
+	var co2: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([6, 8, 8]), 1)
+	var n2: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([7, 7]), 1)
+	var ch4: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([6, 1, 1, 1, 1]), 1)
+	var ordenes := func(d: Dictionary) -> Array:
+		var o := []
+		for e in d["enlaces"]:
+			o.append(e[2])
+		o.sort()
+		return o
+	check(bool(h2o["ok"]) and ordenes.call(h2o) == [1, 1] and ordenes.call(co2) == [2, 2] and ordenes.call(n2) == [3] and ordenes.call(ch4) == [1, 1, 1, 1],
+		"Moléculas: H₂O (dos enlaces sencillos), CO₂ (dos dobles), N₂ (triple), CH₄ (cuatro sencillos)")
+	var h3m: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([1, 1, 1]), 1)
+	var he2m: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([2, 2]), 1)
+	var c2: Dictionary = Fisica.MoleculeBonds(PackedInt32Array([6, 6]), 1)
+	check(not bool(h3m["ok"]) and str(h3m["motivo"]).contains("impar") and str(he2m["motivo"]).contains("noble") and not bool(c2["ok"]),
+		"Moléculas imposibles con su motivo: H₃ (valencias impares), He₂ (gas noble), C₂ (haría falta un enlace cuádruple)")
+
+func _t_modulo_materia() -> void:
+	lab.open_module("materia")
+	await get_tree().process_frame
+	if not _abierto("materia"):
+		return
+	var mm = lab.module
+	check(mm.resultado["tipo"] == "hadron" and mm.resultado["id"] == "p" and mm.info().contains("sin color"), "Módulo «Construcción de materia»: u u d forma un protón")
+	check(mm.cargar({"items": ["p", "p", "n", "n", "e-", "e-"]}) == "" and mm.resultado["tipo"] == "atomo" and mm.info().contains("1s²"),
+		"Materia: p p n n e⁻ e⁻ es un átomo de helio (1s²)")
+	mm.cargar({"items": ["p", "n", "n"]})
+	mm.desintegrar()
+	check(mm.items.count("p") == 2 and mm.items.count("n") == 1 and mm.info().contains("β⁻") and mm.info().contains("conserva"),
+		"Materia: el tritio se desintegra (β⁻) en ³He y la información comprueba las leyes")
+	check(mm.cargar({"items": ["u", "u"]}) == "" and mm.resultado["tipo"] == "error" and mm.info().contains("color"),
+		"Materia: u u no forma un hadrón y dice por qué (color)")
+	check(mm.cargar({"items": ["Z:1", "Z:1", "Z:8"]}) == "" and mm.info().contains("H₂O"), "Materia: dos H y un O forman H₂O")
+	check(mm.cargar({"items": ["zzz"]}) != "", "Materia: una pieza desconocida se rechaza")
+	var l0: PackedFloat64Array = Fisica.QuarkoniumLevels(mm.m_c, mm.alpha_s, mm.sigma, 0, 2)
+	var split := (l0[1] - l0[0]) * 1000.0
+	check(absf(split / mm.PSI_SPLIT_MEV - 1.0) < 0.15, "Charmonio con los parámetros por defecto: 2S − 1S = %.0f MeV (PDG 589 MeV, dentro del 15 %%)" % split)

@@ -64,6 +64,8 @@ const MODULES := [
 		"desc": "Partículas del Modelo Estándar (PDG 2026): desintegraciones con vidas medias y fracciones reales, trazas en un campo B y leyes de conservación en cada vértice."},
 	{"id": "bateria", "pilar": 4, "nombre": "Batería cuántica", "ruta": "res://mathlab/modules/BateriaModule.gd",
 		"desc": "Cadena de hasta 12 espines: carga, almacenamiento y descarga con evolución exacta; energía, potencia, ergotropía y esferas de Bloch."},
+	{"id": "materia", "pilar": 4, "nombre": "Construcción de materia", "ruta": "res://mathlab/modules/MateriaModule.gd",
+		"desc": "Con quarks, nucleones, electrones y átomos: hadrones (Cornell), núcleos que se desintegran, átomos e iones y moléculas, con el motivo cuando algo no se puede formar."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

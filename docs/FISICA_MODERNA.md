@@ -2,7 +2,7 @@
 
 Simuladores de **partículas y mecánica cuántica** y de **teoría de cuerdas** dentro del
 Laboratorio matemático de MechaForge (Godot 4.7 .NET), según
-`prompt-simuladores-fisica-robusto.md`. Estado: arquitectura **aprobada**; Fases 2 (núcleo) y 3 (hidrógeno y partículas) **hechas**.
+`prompt-simuladores-fisica-robusto.md`. Estado: arquitectura **aprobada**; Fases 2 (núcleo), 3 (hidrógeno y partículas) y 4 (módulo 1 completo) **hechas**.
 
 ## 1. Decisiones
 
@@ -167,3 +167,37 @@ típica). Barra del laboratorio: ⏭ (un paso), ↶ ↷ (deshacer y rehacer), «
 - Errores encontrados por el camino: los métodos del autoload de C# no tienen tipo para
   `:=` en GDScript (hay que tiparlos); sin la comprobación de que el módulo abierto es el
   pedido, una prueba miraba el módulo anterior cuando el script no compilaba.
+
+## 10. Fase 4 (módulo 1 completo): hecha
+
+La caja de arena pasó a ser un módulo propio (`materia`) y las desintegraciones otro
+(`desintegraciones`), en lugar de crecer `particulas`: tres paneles de controles distintos.
+
+- **Datos** (`datos/particulas_pdg.json`, PDG 2026 de pdgLive y `mass_width_2026.txt`):
+  6 quarks, 6 leptones, γ, g, W, Z, H y 31 hadrones (85 con las antipartículas, que se
+  generan con los canales conjugados); carga, B y espín como enteros (×3, ×3, ×2).
+  Núcleos: 17 radiactivos y 33 estables de NUBASE2020 (vida media, modos, fracciones).
+- **Conservación** (`Particulas.cs`): carga, B, Lₑ, L_μ, L_τ, energía y paridad de
+  fermiones, con el motivo. Los 46 canales de la tabla las cumplen todas (prueba los datos).
+- **`desintegraciones`**: cámara de burbujas con cinemática relativista exacta (dos
+  cuerpos cerrado; tres o más con GENBOD), vuelo βγcτ·(−ln U), hélices exactas en B,
+  cadena de desintegraciones y comprobación del cuadrimomento en cada vértice; ficha de
+  cada partícula con buscador.
+- **`particulas`**: campo B uniforme (Boris, en la GPU y en C#) y líneas de campo E.
+- **`bateria`**: cadena XXZ de hasta 12 espines con cargador resonante; Krylov
+  adaptativo (un paso con N = 12 en 7,6 ms), ergotropía global y local, esferas de Bloch.
+- **`materia`**: hadrones (color, identificación en la tabla), potencial de Cornell con
+  cuerda que se rompe y espectro del charmonio (2S − 1S = 570 MeV con los valores por
+  defecto, PDG 589 MeV), núcleos (datos o fórmula semiempírica) que se desintegran,
+  átomos e iones (Madelung con las 20 excepciones) y moléculas por valencias.
+- Comprobado con límites exactos: Cornell = Coulomb (σ = 0) y = potencial lineal con los
+  ceros de Airy (αₛ = 0); batería sin interacción = Nω₀ sin²(gt) (error 3·10⁻¹³); Boris
+  = ciclotrón; vuelo medio del π⁺ = βγcτ; fracciones del K⁺ dentro de 2,3σ.
+
+**Límites y lo que no se hizo** (para la Fase 7 o fuera de alcance):
+- «Arrastrar y soltar» es «pulsar para añadir» al recipiente.
+- Sin desintegraciones de W, Z, H, Σ, Ξ, Ω, D ni B (vidas medias sí; canales no).
+- Los rayos γ nucleares se nombran (⁶⁰Co, ¹³⁷ᵐBa) pero no hay esquemas de niveles.
+- Sin condensado de Bose-Einstein (Gross-Pitaevskii, opcional en el encargo).
+- La fórmula semiempírica falla por décimas de MeV: predice estable el ⁶⁰Fe (real β⁻).
+- Molécula = valencias saturadas: no distingue enlaces iónicos y la geometría es de muelles.
