@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace MechaForge;
@@ -105,6 +106,82 @@ public static class Coulomb
         double pot = 0;
         foreach (double s in part) pot += s;
         return new[] { kin, pot, px, py, pz };
+    }
+
+    /// <summary>
+    /// Rotación de Boris en un campo B uniforme según z durante h (fuerza de Lorentz q v × B en
+    /// unidades atómicas): t = (q/m)·B·h/2, s = 2t/(1 + t²); v' = v + v × t; v ← v + v' × s.
+    /// Conserva |v| exactamente; gira un ángulo 2·atan(qBh/2m) por paso (Boris, 1970).
+    /// </summary>
+    public static float[] Rotate(float[] p, float[] v, double bz, double h)
+    {
+        var o = (float[])v.Clone();
+        for (int i = 0; i < v.Length; i += 4)
+        {
+            double t = p[i + 3] * v[i + 3] * bz * h * 0.5, s = 2.0 * t / (1.0 + t * t);
+            double vx = v[i], vy = v[i + 1];
+            double px = vx + vy * t, py = vy - vx * t;
+            o[i] = (float)(vx + py * s); o[i + 1] = (float)(vy - px * s);
+        }
+        return o;
+    }
+
+    /// <summary>
+    /// Líneas del campo E de las cargas: de cada carga positiva salen k líneas (direcciones de una
+    /// espiral de Fibonacci) que siguen E/|E| con RK4 de paso ds hasta acercarse a una negativa,
+    /// salir del cubo |x| ≤ lim o dar maxSteps pasos. Sin positivas, salen de las negativas hacia −E.
+    /// Devuelve x, y, z de los puntos, con un NaN entre líneas.
+    /// </summary>
+    public static float[] FieldLines(float[] p, double eps2, int k, int maxSteps, double ds, double lim)
+    {
+        int n = p.Length / 4;
+        var o = new List<float>();
+        bool hayPos = false;
+        for (int i = 0; i < n; i++) if (p[4 * i + 3] > 0) { hayPos = true; break; }
+        double signo = hayPos ? 1.0 : -1.0;
+        (double, double, double) Dir(double x, double y, double z)
+        {
+            double ex = 0, ey = 0, ez = 0;
+            for (int j = 0; j < n; j++)
+            {
+                double dx = x - p[4 * j], dy = y - p[4 * j + 1], dz = z - p[4 * j + 2];
+                double r2 = dx * dx + dy * dy + dz * dz + eps2, s = p[4 * j + 3] / (r2 * Math.Sqrt(r2));
+                ex += s * dx; ey += s * dy; ez += s * dz;
+            }
+            double m = Math.Sqrt(ex * ex + ey * ey + ez * ez);
+            return m > 0 ? (signo * ex / m, signo * ey / m, signo * ez / m) : (0, 0, 0);
+        }
+        for (int i = 0; i < n; i++)
+        {
+            if (Math.Sign(p[4 * i + 3]) != (int)signo) continue;
+            for (int a = 0; a < k; a++)
+            {
+                double cz = 1.0 - 2.0 * (a + 0.5) / k, sz = Math.Sqrt(1.0 - cz * cz), f = a * 2.399963229728653;
+                double x = p[4 * i] + 0.05 * sz * Math.Cos(f), y = p[4 * i + 1] + 0.05 * sz * Math.Sin(f), z = p[4 * i + 2] + 0.05 * cz;
+                for (int st = 0; st < maxSteps; st++)
+                {
+                    o.Add((float)x); o.Add((float)y); o.Add((float)z);
+                    var (k1x, k1y, k1z) = Dir(x, y, z);
+                    var (k2x, k2y, k2z) = Dir(x + 0.5 * ds * k1x, y + 0.5 * ds * k1y, z + 0.5 * ds * k1z);
+                    var (k3x, k3y, k3z) = Dir(x + 0.5 * ds * k2x, y + 0.5 * ds * k2y, z + 0.5 * ds * k2z);
+                    var (k4x, k4y, k4z) = Dir(x + ds * k3x, y + ds * k3y, z + ds * k3z);
+                    x += ds / 6 * (k1x + 2 * k2x + 2 * k3x + k4x);
+                    y += ds / 6 * (k1y + 2 * k2y + 2 * k3y + k4y);
+                    z += ds / 6 * (k1z + 2 * k2z + 2 * k3z + k4z);
+                    if (Math.Abs(x) > lim || Math.Abs(y) > lim || Math.Abs(z) > lim) break;
+                    bool llega = false;
+                    for (int j = 0; j < n && !llega; j++)
+                    {
+                        if (Math.Sign(p[4 * j + 3]) == (int)signo) continue;
+                        double dx = x - p[4 * j], dy = y - p[4 * j + 1], dz = z - p[4 * j + 2];
+                        llega = dx * dx + dy * dy + dz * dz < 0.0016;
+                    }
+                    if (llega) { o.Add((float)x); o.Add((float)y); o.Add((float)z); break; }
+                }
+                o.Add(float.NaN); o.Add(float.NaN); o.Add(float.NaN);
+            }
+        }
+        return o.ToArray();
     }
 
     /// <summary>[cinética, potencial, px, py, pz] en O(N), con la potencial de las fuerzas (½ Σ U_i).</summary>

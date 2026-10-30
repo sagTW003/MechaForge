@@ -59,7 +59,9 @@ const MODULES := [
 	{"id": "hidrogeno", "pilar": 4, "nombre": "Átomo de hidrógeno", "ruta": "res://mathlab/modules/HidrogenoModule.gd",
 		"desc": "Orbitales exactos ψₙₗₘ como nube de puntos de |ψ|² con la fase en color; energías, ⟨r⟩ y nodos."},
 	{"id": "particulas", "pilar": 4, "nombre": "Partículas y fuerza de Coulomb", "ruta": "res://mathlab/modules/ParticulasModule.gd",
-		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; energía y momento."},
+		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; campo B (Lorentz) y líneas de campo."},
+	{"id": "desintegraciones", "pilar": 4, "nombre": "Desintegraciones y cámara de burbujas", "ruta": "res://mathlab/modules/DesintegracionesModule.gd",
+		"desc": "Partículas del Modelo Estándar (PDG 2026): desintegraciones con vidas medias y fracciones reales, trazas en un campo B y leyes de conservación en cada vértice."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

@@ -50,6 +50,104 @@ public partial class Fisica : Node
     public double[] CoulombEnergy(float[] p, float[] v, double eps2) => Coulomb.Energy(p, v, eps2);
     public double[] CoulombEnergyFromForces(float[] v, float[] f) => Coulomb.EnergyFromForces(v, f);
     public bool AllFinite(float[] a) => Coulomb.AllFinite(a);
+    public float[] CoulombRotate(float[] p, float[] v, double bz, double h) => Coulomb.Rotate(p, v, bz, h);
+    public float[] FieldLines(float[] p, double eps2, int k, int maxSteps, double ds, double lim) =>
+        Coulomb.FieldLines(p, eps2, k, maxSteps, ds, lim);
+
+    // --- Modelo Estándar: tabla, conservación y desintegraciones ---
+    const string TablaPdg = "res://mathlab/fisica/datos/particulas_pdg.json";
+
+    void EnsureParticles()
+    {
+        if (!Particulas.Loaded)
+            Particulas.Load(Godot.FileAccess.GetFileAsString(TablaPdg));
+    }
+
+    public string ParticlesSource() { EnsureParticles(); return Particulas.Fuente; }
+
+    /// <summary>Ids de la tabla (con las antipartículas), en el orden del archivo.</summary>
+    public string[] ParticleIds() { EnsureParticles(); return System.Linq.Enumerable.ToArray(Particulas.Ids); }
+
+    /// <summary>Ficha de una partícula para el inspector (y las pruebas).</summary>
+    public Dictionary ParticleInfo(string id)
+    {
+        EnsureParticles();
+        var p = Particulas.Get(id);
+        var canales = new Godot.Collections.Array();
+        double tot = 0;
+        foreach (var d in p.Desint) tot += d.Br;
+        for (int i = 0; i < p.Desint.Count; i++)
+            canales.Add(new Dictionary { { "br", p.Desint[i].Br }, { "br_norm", p.Desint[i].Br / tot },
+                { "texto", Desintegraciones.ChannelText(p, i) }, { "productos", p.Desint[i].Productos } });
+        return new Dictionary
+        {
+            { "id", p.Id }, { "simbolo", p.Simbolo }, { "nombre", p.Nombre }, { "tipo", p.Tipo },
+            { "masa_MeV", p.MasaMeV }, { "carga3", p.Carga3 }, { "carga", Particulas.Fraccion(p.Carga3) },
+            { "J2", p.J2 }, { "espin", p.J2 % 2 == 0 ? (p.J2 / 2).ToString() : p.J2 + "/2" },
+            { "B3", p.B3 }, { "B", Particulas.Fraccion(p.B3) }, { "Le", p.Le }, { "Lmu", p.Lmu }, { "Ltau", p.Ltau },
+            { "vida_s", double.IsInfinity(p.VidaS) ? -1.0 : p.VidaS }, { "quarks", p.Quarks }, { "color", p.Color },
+            { "nota", p.Nota }, { "anti", p.AntiId }, { "canales", canales },
+        };
+    }
+
+    /// <summary>Leyes que incumple «entrada → salida» (vacío: ninguna).</summary>
+    public string[] Conservation(string[] entrada, string[] salida, bool decay)
+    {
+        EnsureParticles();
+        return Particulas.Violations(entrada, salida, decay).ToArray();
+    }
+
+    public double TwoBodyP(double M, double m1, double m2) => Desintegraciones.TwoBodyP(M, m1, m2);
+
+    /// <summary>
+    /// Suceso en la cámara de burbujas: por traza, su partícula, la traza padre, los puntos (m),
+    /// los cuadrimomentos al nacer y al final, si se desintegra (canal y leyes incumplidas).
+    /// </summary>
+    public Godot.Collections.Array DecayEvent(string id, double p, double bz, double radio, int profundidad, int seed)
+    {
+        EnsureParticles();
+        var o = new Godot.Collections.Array();
+        foreach (var t in Desintegraciones.Event(id, p, bz, radio, profundidad, seed))
+        {
+            var pts = new Vector3[t.Puntos.Count];
+            for (int i = 0; i < pts.Length; i++) pts[i] = new Vector3((float)t.Puntos[i][0], (float)t.Puntos[i][1], (float)t.Puntos[i][2]);
+            var part = Particulas.Get(t.Id);
+            o.Add(new Dictionary
+            {
+                { "id", t.Id }, { "simbolo", part.Simbolo }, { "padre", t.Padre }, { "puntos", pts },
+                { "carga3", part.Carga3 }, { "neutrino", part.Tipo == "lepton" && part.Carga3 == 0 },
+                { "p0", new[] { t.P0.E, t.P0.X, t.P0.Y, t.P0.Z } }, { "p1", new[] { t.P1.E, t.P1.X, t.P1.Y, t.P1.Z } },
+                { "decae", t.Decae }, { "longitud_m", t.LongitudM },
+                { "canal", t.Canal >= 0 ? Desintegraciones.ChannelText(part, t.Canal) : "" },
+                { "violaciones", t.Violaciones.ToArray() },
+            });
+        }
+        return o;
+    }
+
+    /// <summary>Para las pruebas: cuántas veces sale cada canal en n desintegraciones.</summary>
+    public int[] SampleChannels(string id, int n, int seed)
+    {
+        EnsureParticles();
+        var p = Particulas.Get(id);
+        var rng = new Random(seed);
+        var c = new int[p.Desint.Count];
+        for (int i = 0; i < n; i++) c[Desintegraciones.ChooseChannel(p, rng)]++;
+        return c;
+    }
+
+    /// <summary>Para las pruebas: longitud de vuelo media (m) de n partículas con momento p (GeV/c), sin campo.</summary>
+    public double MeanDecayLength(string id, double p, int n, int seed)
+    {
+        EnsureParticles();
+        // Semillas de un solo generador: con semillas consecutivas, el primer número de cada
+        // Random de .NET sale casi equiespaciado y la muestra no sería aleatoria.
+        var semillas = new Random(seed);
+        double s = 0;
+        for (int i = 0; i < n; i++)
+            s += Desintegraciones.Event(id, p, 0.0, 1e9, 1, semillas.Next())[0].LongitudM;
+        return s / n;
+    }
 
     // --- Buffers de MultiMesh (12 valores de la transformación + 4 de color o de datos) ---
 

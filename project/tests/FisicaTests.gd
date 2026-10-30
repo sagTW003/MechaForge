@@ -50,6 +50,10 @@ func run() -> void:
 	_t_hidrogeno()
 	await _t_modulo_hidrogeno()
 	await _t_modulo_particulas()
+	_t_modelo_estandar()
+	_t_desintegraciones()
+	_t_lorentz()
+	await _t_modulo_desintegraciones()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -342,3 +346,170 @@ func _t_pilar() -> void:
 	await get_tree().process_frame
 	var after := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
 	check(absf(after - before) <= 5.0, "Montar y desmontar 20 veces hidrógeno y partículas no deja nodos sueltos (%d → %d)" % [before, after])
+
+# --- Fase 4a: Modelo Estándar, conservación, desintegraciones y Lorentz ------------------
+
+func _t_modelo_estandar() -> void:
+	var ids := Array(Fisica.ParticleIds())
+	var basicas := 0
+	for k in ["u", "d", "s", "c", "b", "t", "e-", "nu_e", "mu-", "nu_mu", "tau-", "nu_tau", "gamma", "g", "W+", "Z", "H"]:
+		if k in ids:
+			basicas += 1
+	check(basicas == 17, "Modelo Estándar: 6 quarks, 6 leptones, γ, g, W, Z y H en la tabla (%d partículas con las antipartículas)" % ids.size())
+	var ep: Dictionary = Fisica.ParticleInfo("e+")
+	var pim: Dictionary = Fisica.ParticleInfo("pi-")
+	var km: Dictionary = Fisica.ParticleInfo("K-")
+	check(ep["carga3"] == 3 and ep["Le"] == -1 and str(pim["canales"][0]["texto"]) == "π⁻ → μ⁻ ν̄_μ" and str(km["quarks"]) == "u~s",
+		"Antipartículas: e⁺ con q = +1 y Lₑ = −1; π⁻ → μ⁻ ν̄_μ (canales conjugados); K⁻ = ūs")
+	var u: Dictionary = Fisica.ParticleInfo("u")
+	check(u["carga"] == "+2/3" and u["B"] == "+1/3" and u["espin"] == "1/2" and u["color"] == "triplete",
+		"Quark u: q = +2/3, B = 1/3, espín 1/2, triplete de color")
+	# Cada canal de la tabla cumple todas las leyes: comprueba lo copiado del PDG.
+	var malos := []
+	var n_canales := 0
+	for id in ids:
+		for c in Fisica.ParticleInfo(id)["canales"]:
+			n_canales += 1
+			var v: PackedStringArray = Fisica.Conservation(PackedStringArray([id]), PackedStringArray(c["productos"]), true)
+			if not v.is_empty():
+				malos.append("%s: %s" % [c["texto"], ", ".join(v)])
+	check(malos.is_empty(), "Los %d canales de la tabla conservan carga, B, Lₑ, L_μ, L_τ, energía y paridad de fermiones%s" % [
+		n_canales, "" if malos.is_empty() else ": " + "; ".join(malos)])
+	# Y las leyes detectan lo prohibido, diciendo cuál.
+	var casos := [
+		[["n"], ["p", "e-"], "leptónico electrónico"],
+		[["p"], ["e+", "gamma"], "bariónico"],
+		[["pi+"], ["mu+", "nu_mu~"], "leptónico muónico"],
+		[["mu-"], ["e-", "gamma"], "leptónico muónico"],
+		[["pi0"], ["p", "p~"], "energía"],
+		[["pi+"], ["e+", "gamma"], "momento angular"],
+		[["e-"], ["nu_e", "gamma"], "carga eléctrica"],
+	]
+	var detectados := 0
+	for cs in casos:
+		var v2: PackedStringArray = Fisica.Conservation(PackedStringArray(cs[0]), PackedStringArray(cs[1]), true)
+		if ", ".join(v2).contains(cs[2]):
+			detectados += 1
+	check(detectados == casos.size(), "Las leyes detectan lo prohibido y dicen cuál (n → p e⁻, p → e⁺γ, π⁺ → μ⁺ν̄_μ, μ⁻ → e⁻γ, π⁰ → pp̄, π⁺ → e⁺γ, e⁻ → νₑγ): %d/%d" % [detectados, casos.size()])
+	var pip: Dictionary = Fisica.ParticleInfo("pi+")
+	var eta: Dictionary = Fisica.ParticleInfo("eta")
+	var hbar := 6.62607015e-34 / TAU / 1.602176634e-19 / 1e9
+	check(absf(float(pip["vida_s"]) / 2.6033e-8 - 1.0) < 1e-12 and absf(float(eta["vida_s"]) * 1.31e-6 / hbar - 1.0) < 1e-12,
+		"Vidas medias: τ(π⁺) = 2,6033·10⁻⁸ s del PDG; τ(η) = ħ/Γ con Γ = 1,31 keV")
+
+static func _circumradius(a: Vector2, b: Vector2, c: Vector2) -> float:
+	var ab := a.distance_to(b)
+	var bc := b.distance_to(c)
+	var ca := c.distance_to(a)
+	var area2 := absf((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y))
+	return ab * bc * ca / (2.0 * area2)
+
+func _t_desintegraciones() -> void:
+	var mpi := 0.13957039
+	var mmu := 0.1056583755
+	var pstar: float = Fisica.TwoBodyP(mpi, mmu, 0.0)
+	check(absf(pstar - (mpi * mpi - mmu * mmu) / (2.0 * mpi)) < 1e-15, "Dos cuerpos: p* del π⁺ → μ⁺ν = (m_π² − m_μ²)/2m_π = %.4f MeV" % (pstar * 1000.0))
+	var n_v := 0
+	var malos := 0
+	for sd in 120:
+		for id in ["K+", "K_L", "tau-", "Lambda", "eta", "K_S"]:
+			for tr in Fisica.DecayEvent(id, 0.6, 1.5, 10.0, 4, 1000 + sd):
+				if bool(tr["decae"]):
+					n_v += 1
+					if not (tr["violaciones"] as PackedStringArray).is_empty():
+						malos += 1
+	check(n_v > 300 and malos == 0, "Sucesos: %d vértices (K⁺, K_L, K_S, τ⁻, Λ, η y sus productos) conservan todas las leyes y el cuadrimomento" % n_v)
+	var nk := 200000
+	var counts: PackedInt32Array = Fisica.SampleChannels("K+", nk, 7)
+	var canales: Array = Fisica.ParticleInfo("K+")["canales"]
+	var peor := 0.0
+	for i in counts.size():
+		var pe: float = canales[i]["br_norm"]
+		peor = maxf(peor, absf(counts[i] - nk * pe) / sqrt(nk * pe * (1.0 - pe)))
+	check(peor < 4.0, "Fracciones: 200 000 desintegraciones del K⁺ reparten los canales como el PDG (desviación máx. %.1fσ)" % peor)
+	var bgct := 1.0 / mpi * 299792458.0 * 2.6033e-8
+	var nl := 20000
+	var lm: float = Fisica.MeanDecayLength("pi+", 1.0, nl, 3)
+	var zl := absf(lm - bgct) / (bgct / sqrt(nl))
+	check(zl < 4.0, "Vuelo: longitud media del π⁺ con p = 1 GeV/c = βγcτ = %.2f m (muestra %.2f m, %.1fσ)" % [bgct, lm, zl])
+	var ev: Array = Fisica.DecayEvent("e+", 0.1, 1.0, 1.0, 1, 5)
+	var pts: PackedVector3Array = ev[0]["puntos"]
+	var a := pts[0]
+	var b := pts[pts.size() / 7]
+	var c := pts[2 * pts.size() / 7]
+	var r := _circumradius(Vector2(a.x, a.y), Vector2(b.x, b.y), Vector2(c.x, c.y))
+	var re := 0.1 / 0.299792458
+	check(absf(r / re - 1.0) < 1e-4, "Trazas: un positrón de 0,1 GeV/c en 1 T gira con R = p/(0,3qB) = %.4f m (medido %.4f m)" % [re, r])
+
+func _t_lorentz() -> void:
+	# Electrón (q = −1, m = 1) en B = 1 u.a. sin otras fuerzas: ciclotrón de radio v/ω = 1.
+	var p := PackedFloat32Array([0, 0, 0, -1])
+	var v := PackedFloat32Array([1, 0, 0, 1])
+	var h := 0.01
+	var xmin := INF
+	var xmax := -INF
+	var vmax_err := 0.0
+	for i in int(TAU / h) + 5:
+		v = PackedFloat32Array(Fisica.CoulombRotate(p, v, 1.0, h))
+		var pv := PackedFloat32Array(Fisica.CoulombDrift(p, v, h, 0.0))
+		p = pv.slice(0, 4)
+		v = pv.slice(4)
+		xmin = minf(xmin, p[0])
+		xmax = maxf(xmax, p[0])
+		vmax_err = maxf(vmax_err, absf(Vector2(v[0], v[1]).length() - 1.0))
+	check(absf((xmax - xmin) / 2.0 - 1.0) < 1e-3 and vmax_err < 1e-6,
+		"Lorentz (Boris): ciclotrón de radio v/(qB/m) = 1 a₀ (medido %.5f) y |v| constante (error %s)" % [(xmax - xmin) / 2.0, LabUI.sci(vmax_err, 1)])
+	var pd := PackedFloat32Array([-1, 0, 0, 1, 1, 0, 0, -1])
+	var pts: PackedFloat32Array = Fisica.FieldLines(pd, 1e-4, 10, 600, 0.02, 6.0)
+	var llegan := 0
+	for i in range(3, pts.size(), 3):
+		if is_nan(pts[i]) and not is_nan(pts[i - 3]):
+			if Vector3(pts[i - 3], pts[i - 2], pts[i - 1]).distance_to(Vector3(1, 0, 0)) < 0.05:
+				llegan += 1
+	check(llegan >= 6, "Líneas de campo de un dipolo: %d de 10 salen de la carga positiva y llegan a la negativa" % llegan)
+
+func _t_modulo_desintegraciones() -> void:
+	lab.open_module("desintegraciones")
+	await get_tree().process_frame
+	if not _abierto("desintegraciones"):
+		return
+	var dm = lab.module
+	check(dm.trazas.size() >= 2 and lab.info_label.text.contains("conserva todo"),
+		"Módulo «Desintegraciones»: suceso del K⁺ con su cadena y las conservaciones en la información")
+	check(dm.cargar({"particula": "Lambda", "p": 1.0, "B": 2.0, "cadena": true}) == "" and dm.trazas[0]["id"] == "Lambda",
+		"Desintegraciones: cargar otro estado (Λ, 1 GeV/c, 2 T)")
+	check(dm.cargar({"particula": "p", "p": 1.0, "B": 1.0}) != "", "Desintegraciones: una partícula estable se rechaza")
+	check(dm.ficha("mu-").contains("μ⁻ → e⁻ ν̄ₑ ν_μ") and dm.ficha("u").contains("triplete"),
+		"Ficha de partícula: canales del μ⁻ y color del quark u")
+	lab.open_module("particulas")
+	await get_tree().process_frame
+	var pm = lab.module
+	if lab.playing:
+		lab.toggle_play()
+	check(pm.cargar({"preset": 0, "n": 300, "eps": 0.1, "dt": 0.002, "caja": 3.0, "B": 1.5, "lineas": true}) == "", "Partículas: plasma con campo B y líneas de campo")
+	for i in 50:
+		pm.step(0.002)
+	pm._refresh_lines()
+	check(pm.finito() and (pm.lines_mesh.mesh as ImmediateMesh).get_surface_count() == 1, "Partículas con B: estado finito y líneas de campo dibujadas")
+	if pm.gpu != null:
+		# Mismo estado, 5 pasos de Boris en la GPU y los mismos 5 con las funciones de C#.
+		pm.sync(true)
+		var cp: PackedFloat32Array = pm.p.duplicate()
+		var cv: PackedFloat32Array = pm.v.duplicate()
+		var cf: PackedFloat32Array = pm.f.duplicate()
+		var eps2: float = pm.eps * pm.eps
+		for i in 5:
+			pm.step(0.002)
+			cv = PackedFloat32Array(Fisica.CoulombKick(cv, cf, 0.001))
+			cv = PackedFloat32Array(Fisica.CoulombRotate(cp, cv, pm.bz, 0.002))
+			cv = PackedFloat32Array(Fisica.CoulombKick(cv, cf, 0.001))
+			var pv := PackedFloat32Array(Fisica.CoulombDrift(cp, cv, 0.002, pm.caja))
+			cp = pv.slice(0, cp.size())
+			cv = pv.slice(cp.size())
+			cf = PackedFloat32Array(Fisica.CoulombForces(cp, eps2))
+		pm.sync(true)
+		var dmax := 0.0
+		for i in cp.size():
+			if i % 4 != 3:
+				dmax = maxf(dmax, absf(pm.p[i] - cp[i]))
+		check(dmax < 1e-4, "GPU: 5 pasos con campo B (Boris, kernel verlet.glsl modo 2) coinciden con C# (diferencia máx. %s a₀)" % LabUI.sci(dmax, 1))

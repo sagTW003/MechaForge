@@ -13,6 +13,8 @@ const N_MAX_GPU := 20000
 const N_MAX_CPU := 3000               # sin GPU, O(N²) en C#: más se vuelve lento
 const K_VERLET := "res://mathlab/fisica/kernels/verlet.glsl"
 const K_COULOMB := "res://mathlab/fisica/kernels/coulomb.glsl"
+const B_AU_T := 2.3505175707e5        # tesla por unidad atómica de campo magnético
+const LINEAS_MAX := 200
 
 var preset := 0
 var n_cargas := 2000
@@ -21,6 +23,9 @@ var eps := 0.1                        # suavizado (a₀)
 ## ~0,02 ħ/Eₕ, unos 11 pasos (con ε = 0,05 y Δt = 0,005, uno solo, y la energía derivaba un 1 %).
 var dt := 0.002
 var caja := 4.0                       # semilado del cubo con paredes (a₀); 0 = sin paredes
+## Campo magnético uniforme según z, en unidades atómicas (ħ/ea₀² = 2,35051757·10⁵ T, CODATA 2022).
+var bz := 0.0
+var lineas := false                   # líneas del campo E (hasta LINEAS_MAX cargas)
 var p := PackedFloat32Array()         # x, y, z, q
 var v := PackedFloat32Array()         # vx, vy, vz, 1/m
 var f := PackedFloat32Array()         # Fx, Fy, Fz, U_i (energía potencial de cada carga)
@@ -31,6 +36,8 @@ var mp := 1836.152673426
 var gpu: GpuCompute
 var mm: MultiMeshInstance3D
 var box_node: Node3D
+var lines_mesh: MeshInstance3D
+var _lines_t := 0.0
 var _dirty := true
 var _sel := -1
 var _bp: RID                          # buffers fijos de la GPU: posiciones, velocidades, fuerzas
@@ -123,37 +130,51 @@ func _forces(pp: PackedFloat32Array) -> PackedFloat32Array:
 		return gpu.coulomb(pp, _eps2())
 	return PackedFloat32Array(Fisica.CoulombForces(pp, _eps2()))
 
-## Verlet de velocidades: medio impulso, deriva, fuerzas nuevas, medio impulso.
+## Sin campo B, Verlet de velocidades: medio impulso, deriva, fuerzas nuevas, medio impulso.
+## Con campo B, Boris (1970): medio impulso eléctrico, rotación magnética, medio impulso con
+## las mismas fuerzas, deriva y fuerzas nuevas (las velocidades quedan a medio paso).
 func step(h: float) -> void:
 	if gpu:
 		var n := p.size() / 4
 		var g := ceili(n / 64.0)
 		var kv: Dictionary = gpu.kernel(K_VERLET)
 		var bufs := [_bp, _bv, _bf]
+		var fuerzas := [gpu.kernel(K_COULOMB), [_bp, _bf], _push_coulomb(n), g]
+		var pasos: Array
+		if bz == 0.0:
+			pasos = [[kv, bufs, _push_verlet(n, 0, h * 0.5, 0.0), g], [kv, bufs, _push_verlet(n, 1, h, _box()), g],
+				fuerzas, [kv, bufs, _push_verlet(n, 0, h * 0.5, 0.0), g]]
+		else:
+			pasos = [[kv, bufs, _push_verlet(n, 0, h * 0.5, 0.0), g], [kv, bufs, _push_verlet(n, 2, h, bz), g],
+				[kv, bufs, _push_verlet(n, 0, h * 0.5, 0.0), g], [kv, bufs, _push_verlet(n, 1, h, _box()), g], fuerzas]
 		# Se graba sin esperar: los pasos de un fotograma se envían juntos al leer (sync).
-		gpu.run_many([[kv, bufs, _push_verlet(n, 0, h * 0.5), g], [kv, bufs, _push_verlet(n, 1, h), g],
-			[gpu.kernel(K_COULOMB), [_bp, _bf], _push_coulomb(n), g], [kv, bufs, _push_verlet(n, 0, h * 0.5), g]], false)
+		gpu.run_many(pasos, false)
 		_stale = true
 		t += h
 		_dirty = true
 		return
 	v = PackedFloat32Array(Fisica.CoulombKick(v, f, h * 0.5))
+	if bz != 0.0:
+		v = PackedFloat32Array(Fisica.CoulombRotate(p, v, bz, h))
+		v = PackedFloat32Array(Fisica.CoulombKick(v, f, h * 0.5))
 	var pv := PackedFloat32Array(Fisica.CoulombDrift(p, v, h, _box()))
 	var k := p.size()
 	p = pv.slice(0, k)
 	v = pv.slice(k)
 	f = _forces(p)
-	v = PackedFloat32Array(Fisica.CoulombKick(v, f, h * 0.5))
+	if bz == 0.0:
+		v = PackedFloat32Array(Fisica.CoulombKick(v, f, h * 0.5))
 	t += h
 	_dirty = true
 
-func _push_verlet(n: int, modo: int, h: float) -> PackedByteArray:
+## Datos del kernel de Verlet: modo 0 impulso, 1 deriva (extra = caja), 2 rotación (extra = B).
+func _push_verlet(n: int, modo: int, h: float, extra: float) -> PackedByteArray:
 	var b := PackedByteArray()
 	b.resize(16)
 	b.encode_u32(0, n)
 	b.encode_u32(4, modo)
 	b.encode_float(8, h)
-	b.encode_float(12, _box())
+	b.encode_float(12, extra)
 	return b
 
 func _push_coulomb(n: int) -> PackedByteArray:
@@ -180,7 +201,11 @@ func sync(todo: bool = false) -> void:
 func reset() -> void:
 	_build()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_lines_t += delta
+	if lineas and _lines_t >= 0.25:
+		_lines_t = 0.0
+		_refresh_lines()
 	if not _dirty or mm == null:
 		return
 	sync()
@@ -188,6 +213,47 @@ func _process(_delta: float) -> void:
 		mm.multimesh.instance_count = p.size() / 4
 	mm.multimesh.buffer = PackedFloat32Array(Fisica.ParticleInstances(p, v, scale_xy))
 	_dirty = false
+
+## Líneas del campo E (de las positivas a las negativas, RK4 en C#) y, con campo B, sus
+## líneas: rectas verticales, porque es uniforme.
+func _refresh_lines() -> void:
+	if lines_mesh == null:
+		lines_mesh = MeshInstance3D.new()
+		lines_mesh.mesh = ImmediateMesh.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.vertex_color_use_as_albedo = true
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		lines_mesh.material_override = m
+		add_child(lines_mesh)
+	var im: ImmediateMesh = lines_mesh.mesh
+	im.clear_surfaces()
+	if not lineas:
+		return
+	var ext := (caja if _box() > 0.0 else 4.0) * 1.2
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	if p.size() / 4 <= LINEAS_MAX:
+		sync()
+		var pts := PackedFloat32Array(Fisica.FieldLines(p, maxf(_eps2(), 1e-4), 10, 300, 0.03, ext))
+		for i in range(0, pts.size() - 3, 3):
+			if is_nan(pts[i]) or is_nan(pts[i + 3]):
+				continue
+			im.surface_set_color(Color(1.0, 0.85, 0.3, 0.55))
+			im.surface_add_vertex(to_world(pts[i], pts[i + 1], pts[i + 2]))
+			im.surface_set_color(Color(1.0, 0.85, 0.3, 0.55))
+			im.surface_add_vertex(to_world(pts[i + 3], pts[i + 4], pts[i + 5]))
+	if bz != 0.0:
+		for gx in 5:
+			for gy in 5:
+				var x := (gx - 2) * ext * 0.4
+				var y := (gy - 2) * ext * 0.4
+				im.surface_set_color(Color(0.4, 0.8, 1.0, 0.35))
+				im.surface_add_vertex(to_world(x, y, -ext))
+				im.surface_set_color(Color(0.4, 0.8, 1.0, 0.35))
+				im.surface_add_vertex(to_world(x, y, ext))
+	im.surface_add_vertex(Vector3.ZERO)       # una superficie no puede quedar vacía
+	im.surface_add_vertex(Vector3.ZERO)
+	im.surface_end()
 
 ## Aristas del cubo con paredes.
 func _refresh_box() -> void:
@@ -218,6 +284,8 @@ func build_ui(pnl: VBoxContainer) -> void:
 	LabUI.slider(pnl, "Suavizado ε (a₀)", 0.0, 0.3, 0.005, eps, _on_eps, "%.3f")
 	LabUI.slider(pnl, "Paso Δt (ħ/Eₕ)", 0.0005, 0.02, 0.0005, dt, _on_dt, "%.4f")
 	LabUI.slider(pnl, "Caja con paredes (semilado, a₀; 0 = sin)", 0.0, 8.0, 0.5, caja, _on_caja, "%.1f")
+	LabUI.slider(pnl, "Campo B según z (u.a.; 1 u.a. = 2,35·10⁵ T)", -3.0, 3.0, 0.05, bz, _on_bz, "%.2f")
+	LabUI.check(pnl, "Líneas de campo (E hasta %d cargas; B)" % LINEAS_MAX, lineas, _on_lineas)
 	LabUI.note(pnl, "Cargas clásicas: los electrones (azules, pequeños) y los protones (rojos, grandes) se atraen y se repelen con la ley de Coulomb. Sin mecánica cuántica no hay átomos estables: un par electrón–protón se acerca hasta r ~ ε. En «Átomo clásico», la órbita de radio a₀ tiene la misma energía que el estado 1s (−13,6 eV), pero un electrón clásico real radiaría y caería al núcleo en unos 10⁻¹¹ s.")
 
 func _on_preset(i: int) -> void:
@@ -239,6 +307,16 @@ func _on_eps(val: float) -> void:
 func _on_dt(val: float) -> void:
 	remember()
 	dt = val
+
+func _on_bz(val: float) -> void:
+	remember()
+	bz = val
+	if lineas:
+		_refresh_lines()
+
+func _on_lineas(on: bool) -> void:
+	lineas = on
+	_refresh_lines()
 
 func _on_caja(val: float) -> void:
 	remember()
@@ -270,6 +348,8 @@ func info() -> String:
 	var s := "N = %d · fuerzas en %s · t = %.2f ħ/Eₕ = %s s\nE = %.6f Eₕ (cinética %.5f, potencial %.5f) · deriva |ΔE/E₀| = %s\nMomento total = %s mₑa₀Eₕ/ħ%s" % [
 		p.size() / 4, device(), t, LabUI.sci(t * Fisica.Constantes()["tiempo_atomico_s"], 3), e, energia[0], energia[1],
 		LabUI.sci(absf(e - e0) / maxf(absf(e0), 1e-12), 2), LabUI.sci(pt, 2), " (las paredes no lo conservan)" if _box() > 0.0 else ""]
+	if bz != 0.0:
+		s += "\nCampo B = %.2f u.a. = %s T según z (con Boris, las velocidades van a medio paso)" % [bz, LabUI.sci(bz * B_AU_T, 3)]
 	if preset == 1:
 		var r := Vector3(p[4] - p[0], p[5] - p[1], p[6] - p[2]).length()
 		s += "\nr(e–p) = %.5f a₀ · E = %.4f eV (el estado 1s: −13,6057 eV)" % [r, e * Fisica.Constantes()["hartree_eV"]]
@@ -312,7 +392,7 @@ func critical_points() -> Array:
 	return pts
 
 func estado() -> Dictionary:
-	return {"preset": preset, "n": n_cargas, "eps": eps, "dt": dt, "caja": caja}
+	return {"preset": preset, "n": n_cargas, "eps": eps, "dt": dt, "caja": caja, "B": bz, "lineas": lineas}
 
 func cargar(d: Dictionary) -> String:
 	for k in ["preset", "n", "eps", "dt", "caja"]:
@@ -327,11 +407,20 @@ func cargar(d: Dictionary) -> String:
 	eps = float(d["eps"])
 	dt = float(d["dt"])
 	caja = float(d["caja"])
+	bz = float(d.get("B", 0.0))
+	lineas = bool(d.get("lineas", false))
 	_build()
 	return ""
 
 func fidelidad() -> Array:
 	return [
+		{"subsistema": "Campo magnético (fuerza de Lorentz)", "nivel": "exacto",
+			"modelo": "Campo B externo uniforme según z integrado con el esquema de Boris: conserva |v| exactamente y gira 2·atan(qBΔt/2m) por paso (giro de ciclotrón con error O(Δt²)). No incluye el campo magnético que crean las propias cargas en movimiento",
+			"ecuaciones": "F = q v × B;  ω_c = qB/m;  r_c = mv⊥/(qB)",
+			"unidades": "B en ħ/(e·a₀²) = 2,35051757·10⁵ T (CODATA 2022)", "referencias": "Boris, Proc. 4th Conf. Numerical Simulation of Plasmas (1970); Birdsall y Langdon, Plasma Physics via Computer Simulation, §4.4"},
+		{"subsistema": "Líneas de campo E", "nivel": "exacto",
+			"modelo": "Curvas tangentes a E (suma de los campos de Coulomb, con el mismo suavizado ε) integradas con Runge-Kutta 4 desde cada carga positiva",
+			"ecuaciones": "dr/ds = E/|E|", "unidades": "a₀", "referencias": ""},
 		{"subsistema": "Fuerza entre cargas", "nivel": "aproximado",
 			"modelo": "Coulomb clásico con suavizado ε (Plummer): sin radiación, sin campo magnético y sin mecánica cuántica; un par electrón–protón no forma un átomo estable, se acerca hasta r ~ ε",
 			"ecuaciones": "Fᵢ = Σⱼ≠ᵢ qᵢqⱼ(rᵢ − rⱼ)/(r² + ε²)^{3/2}; U = Σᵢ<ⱼ qᵢqⱼ/√(r² + ε²)",
