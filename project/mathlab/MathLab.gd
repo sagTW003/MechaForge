@@ -62,6 +62,8 @@ const MODULES := [
 		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; campo B (Lorentz) y líneas de campo."},
 	{"id": "desintegraciones", "pilar": 4, "nombre": "Desintegraciones y cámara de burbujas", "ruta": "res://mathlab/modules/DesintegracionesModule.gd",
 		"desc": "Partículas del Modelo Estándar (PDG 2026): desintegraciones con vidas medias y fracciones reales, trazas en un campo B y leyes de conservación en cada vértice."},
+	{"id": "bateria", "pilar": 4, "nombre": "Batería cuántica", "ruta": "res://mathlab/modules/BateriaModule.gd",
+		"desc": "Cadena de hasta 12 espines: carga, almacenamiento y descarga con evolución exacta; energía, potencia, ergotropía y esferas de Bloch."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

@@ -54,6 +54,8 @@ func run() -> void:
 	_t_desintegraciones()
 	_t_lorentz()
 	await _t_modulo_desintegraciones()
+	_t_bateria()
+	await _t_modulo_bateria()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -513,3 +515,72 @@ func _t_modulo_desintegraciones() -> void:
 			if i % 4 != 3:
 				dmax = maxf(dmax, absf(pm.p[i] - cp[i]))
 		check(dmax < 1e-4, "GPU: 5 pasos con campo B (Boris, kernel verlet.glsl modo 2) coinciden con C# (diferencia máx. %s a₀)" % LabUI.sci(dmax, 1))
+
+# --- Fase 4b: batería cuántica ----------------------------------------------------------
+
+## Energía almacenada tras cargar t con g (sin interacción) en una cadena de n espines.
+func _carga(n: int, j: float, d: float, g: float, t: float, dt: float) -> PackedFloat64Array:
+	var psi := PackedFloat64Array(Fisica.SpinEmpty(n))
+	for i in int(round(t / dt)):
+		psi = PackedFloat64Array(Fisica.SpinStep(psi, n, j, d, g, dt))
+	return psi
+
+func _t_bateria() -> void:
+	var peor := 0.0
+	for nn in [1, 8]:
+		for tt in [0.3, 0.8, PI / 2.0]:
+			var psi := _carga(nn, 0.0, 0.0, 1.0, tt, 0.01 if tt != PI / 2.0 else PI / 200.0)
+			var o: PackedFloat64Array = Fisica.SpinObservables(psi, nn, 1.0, 0.0, 0.0, 1.0)
+			var e: float = o[0] + nn * 0.5
+			peor = maxf(peor, absf(e - nn * pow(sin(tt), 2)))
+	check(peor < 1e-9, "Batería: sin interacción la energía almacenada es Nω₀·sin²(gt) para N = 1 y 8 (error máx. %s)" % LabUI.sci(peor, 1))
+	var psi2 := PackedFloat64Array(Fisica.SpinEmpty(6))
+	var o0: PackedFloat64Array = Fisica.SpinObservables(psi2, 6, 1.0, 0.3, 0.5, 0.8)
+	for i in 500:
+		psi2 = PackedFloat64Array(Fisica.SpinStep(psi2, 6, 0.3, 0.5, 0.8, 0.02))
+	var o1: PackedFloat64Array = Fisica.SpinObservables(psi2, 6, 1.0, 0.3, 0.5, 0.8)
+	check(absf(o1[2] - 1.0) < 1e-10 and absf(o1[1] - o0[1]) < 1e-9,
+		"Batería con J = 0,3, Δ = 0,5: tras 500 pasos la norma (%s) y ⟨H_rot⟩ (Δ = %s) se conservan" % [LabUI.sci(absf(o1[2] - 1.0), 1), LabUI.sci(absf(o1[1] - o0[1]), 1)])
+	var a := _carga(6, 0.3, 0.5, 0.8, 1.0, 0.1)
+	var b := _carga(6, 0.3, 0.5, 0.8, 1.0, 0.005)
+	var dif := 0.0
+	for k in a.size():
+		dif = maxf(dif, absf(a[k] - b[k]))
+	check(dif < 1e-9, "Krylov: 10 pasos de 0,1 y 200 de 0,005 dan el mismo estado (diferencia máx. %s)" % LabUI.sci(dif, 1))
+	var pe := _carga(2, 0.4, 0.0, 0.7, 1.3, 0.01)
+	var oe: PackedFloat64Array = Fisica.SpinObservables(pe, 2, 1.0, 0.4, 0.0, 0.7)
+	var eg: float = oe[0] - Fisica.SpinGroundEnergy(2, 1.0, 0.4, 0.0)
+	var pp := _carga(2, 0.0, 0.0, 0.7, 1.3, 0.01)
+	var op: PackedFloat64Array = Fisica.SpinObservables(pp, 2, 1.0, 0.0, 0.0, 0.7)
+	var egp: float = op[0] - Fisica.SpinGroundEnergy(2, 1.0, 0.0, 0.0)
+	check(oe[3] < eg - 1e-3 and absf(op[3] - egp) < 1e-9,
+		"Ergotropía: sin interacción la local es la global (%.4f); con J = 0,4 el entrelazamiento la deja por debajo (%.4f < %.4f)" % [egp, oe[3], eg])
+	check(absf(Fisica.SpinGroundEnergy(5, 1.0, 0.0, 0.0) + 2.5) < 1e-9,
+		"Batería: el mínimo de H_B sin interacción es −Nω₀/2 (Lanczos)")
+	var p12 := PackedFloat64Array(Fisica.SpinEmpty(12))
+	var t0 := Time.get_ticks_usec()
+	for i in 5:
+		p12 = PackedFloat64Array(Fisica.SpinStep(p12, 12, 0.2, 0.5, 1.0, 0.02))
+	var ms := (Time.get_ticks_usec() - t0) / 5000.0
+	check(ms < 10.0, "Rendimiento: un paso con N = 12 (4096 estados) en %.1f ms (a velocidad 1 hacen falta ~50 por segundo)" % ms)
+
+func _t_modulo_bateria() -> void:
+	lab.open_module("bateria")
+	await get_tree().process_frame
+	if not _abierto("bateria"):
+		return
+	if lab.playing:
+		lab.toggle_play()
+	var bm = lab.module
+	check(bm.cargar({"n": 4, "w0": 1.0, "g": 1.0, "J": 0.0, "delta": 0.0, "auto": true, "t_carga": PI / 2.0, "t_almacen": 0.5}) == "",
+		"Módulo «Batería cuántica»: 4 espines, ciclo automático")
+	var e_carga := 0.0
+	while bm.fase == 0:
+		bm.step(0.02)
+	e_carga = bm.e_fin_carga
+	while bm.fase != 3:
+		bm.step(0.02)
+	check(absf(e_carga - 4.0) < 0.02 and absf(bm.stored()) < 0.08 and bm.finito(),
+		"Batería: la carga llega a ≈ Nω₀ (%.3f) y la descarga la devuelve (quedan %.3f ω₀)" % [e_carga, bm.stored()])
+	check(lab.info_label.text.contains("Ergotropía") or bm.info().contains("Ergotropía"), "Batería: energía, potencia y ergotropía en la información")
+	check(bm.cargar({"n": 20, "w0": 1.0, "g": 1.0, "J": 0.0, "delta": 0.0}) != "", "Batería: N > 12 se rechaza")

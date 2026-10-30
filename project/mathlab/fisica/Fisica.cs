@@ -54,6 +54,12 @@ public partial class Fisica : Node
     public float[] FieldLines(float[] p, double eps2, int k, int maxSteps, double ds, double lim) =>
         Coulomb.FieldLines(p, eps2, k, maxSteps, ds, lim);
 
+    // --- Batería cuántica (cadena de espines) ---
+    public double[] SpinEmpty(int n) => CadenaEspines.Empty(n);
+    public double[] SpinStep(double[] psi, int n, double j, double d, double g, double dt) => CadenaEspines.Step(psi, n, j, d, g, dt);
+    public double[] SpinObservables(double[] psi, int n, double w0, double j, double d, double g) => CadenaEspines.Observables(psi, n, w0, j, d, g);
+    public double SpinGroundEnergy(int n, double w0, double j, double d) => CadenaEspines.GroundEnergy(n, w0, j, d);
+
     // --- Modelo Estándar: tabla, conservación y desintegraciones ---
     const string TablaPdg = "res://mathlab/fisica/datos/particulas_pdg.json";
 
