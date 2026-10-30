@@ -24,6 +24,8 @@ public static class Unidades
     public const double MeC2_MeV = 0.51099895069;         // energía en reposo del electrón
     public const double Hartree_eV = 27.211386245981;     // Eₕ = α²·mₑc²
     public const double Bohr_m = 5.29177210544e-11;       // a₀ = ħc / (α·mₑc²)
+    public const double MpMe = 1836.152673426;            // mₚ/mₑ
+    public const double AtomicTime_s = 2.4188843265864e-17; // ħ/Eₕ
 
     public static double HartreeToEv(double eh) => eh * Hartree_eV;
     public static double EvToHartree(double ev) => ev / Hartree_eV;

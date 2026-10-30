@@ -10,6 +10,8 @@ extends RefCounted
 var rd: RenderingDevice
 var _rids: Array[RID] = []          # en orden de creación; se liberan al revés
 var _kernels := {}                  # ruta → {shader, pipeline}
+var _usets := {}                    # shader + buffers → uniform set (se reutiliza entre pasos)
+var _pending := false               # hay listas grabadas sin enviar (run_many con wait = false)
 
 ## null si no hay RenderingDevice.
 static func create() -> GpuCompute:
@@ -43,32 +45,65 @@ func write(b: RID, bytes: PackedByteArray) -> void:
 	rd.buffer_update(b, 0, bytes.size(), bytes)
 
 func read(b: RID) -> PackedByteArray:
+	flush()
 	return rd.buffer_get_data(b)
 
 ## Ejecuta el kernel con los buffers en los bindings 0, 1, … del set 0 y espera.
 func run(k: Dictionary, buffers: Array, push: PackedByteArray, groups_x: int) -> void:
-	var uniforms := []
-	for i in buffers.size():
-		var u := RDUniform.new()
-		u.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
-		u.binding = i
-		u.add_id(buffers[i])
-		uniforms.append(u)
-	var us := rd.uniform_set_create(uniforms, k["shader"], 0)
-	var cl := rd.compute_list_begin()
-	rd.compute_list_bind_compute_pipeline(cl, k["pipeline"])
-	rd.compute_list_bind_uniform_set(cl, us, 0)
-	if not push.is_empty():
-		rd.compute_list_set_push_constant(cl, push, push.size())
-	rd.compute_list_dispatch(cl, groups_x, 1, 1)
-	rd.compute_list_end()
-	rd.submit()
-	rd.sync()
-	rd.free_rid(us)
+	run_many([[k, buffers, push, groups_x]])
+
+## Varios despachos [kernel, buffers, push, grupos] seguidos y una sola espera. Cada uno va
+## en su lista de cómputo: Godot pone las barreras entre los que comparten buffers. Con
+## wait = false solo se graban: flush() los envía todos juntos (p. ej. los pasos de un
+## fotograma) y espera una sola vez.
+func run_many(steps: Array, wait: bool = true) -> void:
+	for st in steps:
+		var cl := rd.compute_list_begin()
+		rd.compute_list_bind_compute_pipeline(cl, st[0]["pipeline"])
+		rd.compute_list_bind_uniform_set(cl, _uniform_set(st[0], st[1]), 0)
+		var push: PackedByteArray = st[2]
+		if not push.is_empty():
+			rd.compute_list_set_push_constant(cl, push, push.size())
+		rd.compute_list_dispatch(cl, st[3], 1, 1)
+		rd.compute_list_end()
+	_pending = true
+	if wait:
+		flush()
+
+func flush() -> void:
+	if _pending:
+		rd.submit()
+		rd.sync()
+		_pending = false
+
+func _uniform_set(k: Dictionary, buffers: Array) -> RID:
+	var key := str(k["shader"]) + str(buffers)
+	if not _usets.has(key):
+		var uniforms := []
+		for i in buffers.size():
+			var u := RDUniform.new()
+			u.uniform_type = RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER
+			u.binding = i
+			u.add_id(buffers[i])
+			uniforms.append(u)
+		_usets[key] = rd.uniform_set_create(uniforms, k["shader"], 0)
+	return _usets[key]
+
+## Libera buffers, y antes los uniform sets guardados (dependen de ellos).
+func free_buffers(rids: Array) -> void:
+	for us in _usets.values():
+		if rd.uniform_set_is_valid(us):
+			rd.free_rid(us)
+	_usets.clear()
+	for r in rids:
+		rd.free_rid(r)
+		_rids.erase(r)
 
 func liberar() -> void:
 	if rd == null:
 		return
+	flush()
+	free_buffers([])
 	_release(rd, _rids)
 	_rids.clear()
 	_kernels.clear()
@@ -86,7 +121,8 @@ static func _release(dev: RenderingDevice, rids: Array[RID]) -> void:
 		dev.free_rid(rids[i])
 	dev.free()
 
-## Fuerzas de Coulomb en la GPU (kernels/coulomb.glsl). p = [x, y, z, q] por carga.
+## Fuerzas de Coulomb en la GPU (kernels/coulomb.glsl), con buffers de un solo uso.
+## p = [x, y, z, q] por carga; devuelve [Fx, Fy, Fz, U_i].
 func coulomb(p: PackedFloat32Array, eps2: float) -> PackedFloat32Array:
 	var n := p.size() / 4
 	var bp := buffer(p.to_byte_array())
@@ -99,10 +135,5 @@ func coulomb(p: PackedFloat32Array, eps2: float) -> PackedFloat32Array:
 	push.encode_float(4, eps2)
 	run(kernel("res://mathlab/fisica/kernels/coulomb.glsl"), [bp, bf], push, ceili(n / 64.0))
 	var out := read(bf).to_float32_array()
-	_free_now([bp, bf])
+	free_buffers([bp, bf])
 	return out
-
-func _free_now(rids: Array) -> void:
-	for r in rids:
-		rd.free_rid(r)
-		_rids.erase(r)

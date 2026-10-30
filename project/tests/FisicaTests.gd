@@ -47,6 +47,10 @@ func run() -> void:
 	_t_gpu()
 	await _t_contratos()
 	_t_guardado()
+	_t_hidrogeno()
+	await _t_modulo_hidrogeno()
+	await _t_modulo_particulas()
+	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
 
@@ -88,6 +92,15 @@ func _t_coulomb_cpu() -> void:
 		sz += f[4 * i + 2]
 		total += sqrt(f[4 * i] ** 2 + f[4 * i + 1] ** 2 + f[4 * i + 2] ** 2)
 	check(sqrt(sx * sx + sy * sy + sz * sz) / total < 1e-5, "Coulomb (C#): la suma de fuerzas de 300 cargas es nula (acción y reacción)")
+	check(absf(f2[3] + 1.0 / sqrt(1.0 + eps2)) < 1e-6, "Coulomb (C#): energía potencial de cada carga en w (U = −1/√(1 + ε²) para el par)")
+	var p3 := _cargas(300, 4)
+	var v3 := _cargas(300, 5)
+	for i in 300:
+		v3[4 * i + 3] = 1.0 if i % 2 == 0 else 1.0 / 1836.152673426
+	var ex: PackedFloat64Array = Fisica.CoulombEnergy(p3, v3, 1e-4)
+	var ef: PackedFloat64Array = Fisica.CoulombEnergyFromForces(v3, Fisica.CoulombForces(p3, 1e-4))
+	check(absf(ef[1] / ex[1] - 1.0) < 1e-5 and absf(ef[0] - ex[0]) < 1e-9 * absf(ex[0]),
+		"Coulomb (C#): la energía a partir de las fuerzas (½ Σ U_i, O(N)) coincide con la suma por pares")
 
 func _t_gpu() -> void:
 	var g := GpuCompute.create()
@@ -182,3 +195,150 @@ func _t_guardado() -> void:
 	main._apply_project_extra({"laboratorio": {"version": 1, "modulo": "calor", "estado": {}}})
 	check(rechazado and str(main.lab_state.get("modulo", "")) == "calor", "Al cargar un proyecto, un estado del laboratorio no válido se ignora y uno válido se recupera")
 	main.lab_state = {}
+
+# --- Fase 3: átomo de hidrógeno -------------------------------------------------------
+
+## Comprueba que el módulo pedido es el abierto: si su script no compila, el
+## laboratorio se queda con el anterior y las pruebas mirarían otro módulo.
+func _abierto(id: String) -> bool:
+	check(lab.module_id == id, "El módulo «%s» se abre (su script compila)" % id)
+	return lab.module_id == id
+
+func _t_hidrogeno() -> void:
+	var c: Dictionary = Fisica.Constantes()
+	check(absf(Fisica.HydrogenEnergyEv(1, false) + c["hartree_eV"] / 2.0) < 1e-12 and absf(Fisica.HydrogenEnergyEv(1, false) + 13.605693122990) < 1e-9,
+		"Hidrógeno: E₁ = −Eₕ/2 = −13,605693 eV (núcleo infinitamente pesado)")
+	check(absf(Fisica.HydrogenEnergyEv(3, false) * 9.0 - Fisica.HydrogenEnergyEv(1, false)) < 1e-12
+		and absf(Fisica.HydrogenEnergyEv(1, true) / Fisica.HydrogenEnergyEv(1, false) - c["mp_me"] / (c["mp_me"] + 1.0)) < 1e-14,
+		"Hidrógeno: Eₙ ∝ 1/n², y con masa reducida Eₙ·mₚ/(mₚ + mₑ) = %.6f eV" % Fisica.HydrogenEnergyEv(1, true))
+	var worst_norm := 0.0
+	var worst_r := 0.0
+	for nl in [[1, 0], [2, 0], [2, 1], [3, 2], [4, 1], [6, 5]]:
+		worst_norm = maxf(worst_norm, absf(Fisica.HydrogenRadialMoment(nl[0], nl[1], 0) - 1.0))
+		worst_r = maxf(worst_r, absf(Fisica.HydrogenRadialMoment(nl[0], nl[1], 1) / Fisica.HydrogenMeanR(nl[0], nl[1]) - 1.0))
+	check(worst_norm < 1e-8, "Hidrógeno: ∫R²r²dr = 1 para 1s, 2s, 2p, 3d, 4p y 6h (error máx. %s)" % LabUI.sci(worst_norm, 1))
+	check(worst_r < 1e-8, "Hidrógeno: ⟨r⟩ numérico = a₀(3n² − l(l+1))/2 (error relativo máx. %s)" % LabUI.sci(worst_r, 1))
+	var worst_y := 0.0
+	for lm in [[0, 0], [1, 1], [2, -1], [3, 3], [4, -2], [5, 0]]:
+		worst_y = maxf(worst_y, absf(Fisica.HydrogenYlmNorm(lm[0], lm[1]) - 1.0))
+	check(worst_y < 1e-8, "Hidrógeno: ∫|Yₗᵐ|²dΩ = 1 (error máx. %s)" % LabUI.sci(worst_y, 1))
+	var psi0: PackedFloat64Array = Fisica.HydrogenPsi(1, 0, 0, 0.0, 0.0, 0.0)
+	check(absf(psi0[0] * psi0[0] - 1.0 / PI) < 1e-12, "Hidrógeno: |ψ₁₀₀(0)|² = 1/(πa₀³)")
+	# La muestra reproduce ⟨r⟩ dentro del error estadístico (4σ/√N).
+	var n_s := 40000
+	var ok_all := true
+	var detalle := ""
+	for nl in [[1, 0], [3, 1], [4, 3]]:
+		var pts: PackedFloat32Array = Fisica.HydrogenSample(nl[0], nl[1], 0, n_s, 17)
+		var acc := 0.0
+		for i in n_s:
+			acc += sqrt(pts[4 * i] ** 2 + pts[4 * i + 1] ** 2 + pts[4 * i + 2] ** 2)
+		var mr: float = Fisica.HydrogenMeanR(nl[0], nl[1])
+		var sd := sqrt(Fisica.HydrogenMeanR2(nl[0], nl[1]) - mr * mr)
+		var z := absf(acc / n_s - mr) / (sd / sqrt(n_s))
+		ok_all = ok_all and z < 4.0
+		detalle += " %d%s: %.1fσ" % [nl[0], "spdfgh"[nl[1]], z]
+	check(ok_all, "Hidrógeno: el ⟨r⟩ de 40 000 puntos muestreados coincide con el exacto (%s)" % detalle.strip_edges())
+	check(Fisica.HydrogenSample(2, 2, 0, 10, 1).is_empty(), "Hidrógeno: números cuánticos no válidos (l ≥ n) no dan puntos")
+
+func _t_modulo_hidrogeno() -> void:
+	lab.open_module("hidrogeno")
+	await get_tree().process_frame
+	if not _abierto("hidrogeno"):
+		return
+	var hm = lab.module
+	check(hm.cloud.multimesh.instance_count == hm.puntos and lab.info_label.text.contains("eV"),
+		"Módulo «Átomo de hidrógeno»: %d puntos en la GPU y la energía en la información" % hm.puntos)
+	check(hm.cargar({"n": 3, "l": 2, "m": -1, "puntos": 20000}) == "" and hm.n == 3 and hm.l == 2 and hm.m == -1 and hm.cloud.multimesh.instance_count == 20000,
+		"Hidrógeno: cargar un estado (3d, m = −1, 20 000 puntos) cambia la nube")
+	check(hm.cargar({"n": 2, "l": 2, "m": 0, "puntos": 1000}) != "" and hm.n == 3, "Hidrógeno: un estado con l ≥ n se rechaza y no cambia nada")
+	hm.remember()
+	hm.cargar({"n": 1, "l": 0, "m": 0, "puntos": 20000})
+	lab.undo()
+	check(hm.n == 3 and hm.l == 2, "Hidrógeno: deshacer vuelve al orbital anterior")
+
+# --- Fase 3: partículas y Coulomb ------------------------------------------------------
+
+func _t_modulo_particulas() -> void:
+	lab.open_module("particulas")
+	await get_tree().process_frame
+	if not _abierto("particulas"):
+		return
+	if lab.playing:
+		lab.toggle_play()
+	var pm = lab.module
+	check(pm.cargar({"preset": 1, "n": 2, "eps": 0.0, "dt": 0.005, "caja": 0.0}) == "", "Partículas: preset «Átomo clásico»")
+	var e_ini: float = pm.e0
+	var r_max := 0.0
+	var steps := int(round(10.0 * TAU / sqrt((pm.mp + 1.0) / pm.mp) / 0.005))
+	for i in steps:
+		pm.step(0.005)
+		if i % 50 == 0:
+			pm.sync(true)
+			r_max = maxf(r_max, absf(Vector3(pm.p[4] - pm.p[0], pm.p[5] - pm.p[1], pm.p[6] - pm.p[2]).length() - 1.0))
+	pm.sync(true)
+	var en: PackedFloat64Array = Fisica.CoulombEnergy(pm.p, pm.v, 0.0)
+	var drift := absf(en[0] + en[1] - e_ini) / absf(e_ini)
+	check(absf(e_ini + 0.5) < 1e-6 and drift < 1e-4 and r_max < 1e-3,
+		"Partículas: 10 órbitas de Kepler con Verlet (Δt = 0,005) conservan E = −Eₕ/2 (deriva %s) y el radio (±%s a₀) [%s]" % [LabUI.sci(drift, 1), LabUI.sci(r_max, 1), pm.device()])
+	check(pm.cargar({"preset": 0, "n": 600, "eps": 0.05, "dt": 0.002, "caja": 0.0}) == "", "Partículas: plasma de 600 cargas sin paredes")
+	for i in 100:
+		pm.step(0.002)
+	pm.sync(true)
+	var e2: PackedFloat64Array = Fisica.CoulombEnergy(pm.p, pm.v, 0.0025)
+	var ptot := Vector3(e2[2], e2[3], e2[4]).length()
+	var pscale := 0.0
+	for i in 600:
+		pscale += Vector3(pm.v[4 * i], pm.v[4 * i + 1], pm.v[4 * i + 2]).length() / pm.v[4 * i + 3]
+	check(ptot / pscale < 1e-4, "Partículas: el momento total se conserva (|ΣP| / Σ|p| = %s)" % LabUI.sci(ptot / pscale, 1))
+	check(pm.finito(), "Partículas: estado finito tras la simulación")
+	pm.p[0] = NAN
+	check(not pm.finito(), "Partículas: un NaN en las posiciones se detecta (el laboratorio pausa)")
+	check(pm.cargar({"preset": 0, "n": 400, "eps": 0.05, "dt": 0.002, "caja": 2.0}) == "", "Partículas: plasma con paredes")
+	for i in 200:
+		pm.step(0.002)
+	pm.sync(true)
+	var dentro := true
+	for i in 400:
+		for k in 3:
+			dentro = dentro and absf(pm.p[4 * i + k]) <= 2.0 + 1e-4
+	check(dentro, "Partículas: con caja, ninguna carga sale de las paredes")
+	check(pm.cargar({"preset": 7, "n": 2, "eps": 0.0, "dt": 0.005, "caja": 0.0}) != "" and pm.cargar({"preset": 0}) != "",
+		"Partículas: estados no válidos se rechazan")
+	if "bench" in OS.get_cmdline_user_args() and pm.gpu != null:
+		pm.cargar({"preset": 0, "n": 10000, "eps": 0.05, "dt": 0.005, "caja": 4.0})
+		lab.toggle_play()
+		for i in 60:
+			await get_tree().process_frame
+		var t0 := Time.get_ticks_usec()
+		for i in 120:
+			await get_tree().process_frame
+		var fps := 120.0 / ((Time.get_ticks_usec() - t0) / 1e6)
+		check(fps >= 55.0, "Rendimiento: 10 000 cargas en la GPU a %.0f FPS (objetivo 60; física %.2f ms por fotograma)" % [fps, lab.physics_ms])
+		lab.toggle_play()
+
+# --- Fase 3: el pilar ------------------------------------------------------------------
+
+func _t_pilar() -> void:
+	var niveles := ["exacto", "aproximado", "ilustrativo"]
+	for m in MathLab.MODULES:
+		if int(m["pilar"]) != 4:
+			continue
+		lab.open_module(m["id"])
+		await get_tree().process_frame
+		var f: Array = lab.module.fidelidad() if lab.module_id == m["id"] else []
+		var bien := not f.is_empty()
+		for s in f:
+			bien = bien and str(s.get("nivel", "")) in niveles and str(s.get("modelo", "")) != "" and str(s.get("unidades", "")) != ""
+		check(bien and not lab.model_button.disabled, "«%s» declara modelo, nivel de fidelidad y unidades de cada subsistema" % m["nombre"])
+	lab.open_module("onda")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var before := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	for i in 20:
+		for id in ["hidrogeno", "particulas", "onda"]:
+			lab.open_module(id)
+			await get_tree().process_frame
+	await get_tree().process_frame
+	var after := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	check(absf(after - before) <= 5.0, "Montar y desmontar 20 veces hidrógeno y partículas no deja nodos sueltos (%d → %d)" % [before, after])

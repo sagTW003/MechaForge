@@ -2,7 +2,7 @@
 
 Simuladores de **partículas y mecánica cuántica** y de **teoría de cuerdas** dentro del
 Laboratorio matemático de MechaForge (Godot 4.7 .NET), según
-`prompt-simuladores-fisica-robusto.md`. Estado: arquitectura **aprobada**; Fase 2 (núcleo compartido) **hecha**.
+`prompt-simuladores-fisica-robusto.md`. Estado: arquitectura **aprobada**; Fases 2 (núcleo) y 3 (hidrógeno y partículas) **hechas**.
 
 ## 1. Decisiones
 
@@ -146,3 +146,24 @@ suite `mffisica`.
 Hecho y medido en la RTX 5060: Coulomb con 10 000 cargas (subida, cálculo y lectura)
 en **1,22 ms**; la GPU coincide con la referencia en C# (error 1,4·10⁻⁵ de la fuerza
 típica). Barra del laboratorio: ⏭ (un paso), ↶ ↷ (deshacer y rehacer), «📐 Modelo» y 📊.
+
+## 9. Fase 3 (vertical mínimo del módulo 1): hecha
+
+- **`hidrogeno`** — orbitales exactos ψₙₗₘ (n ≤ 6) como nube de puntos muestreada de
+  |ψ|² (muestreo exacto en C#: inversa de la acumulada en r y θ, φ uniforme), con la fase
+  como color (`shaders/nube_orbital.gdshader`, la rueda del laboratorio y los planos de
+  corte). Eₙ con y sin masa reducida, ⟨r⟩, nodos y degeneración. Comprobado: E₁ =
+  −13,605693 eV, ∫R²r²dr = 1 y ∫|Yₗᵐ|²dΩ = 1 con error ~10⁻¹², ⟨r⟩ numérico frente a la
+  fórmula, |ψ₁₀₀(0)|² = 1/π y ⟨r⟩ de 40 000 puntos dentro de 0,3σ.
+- **`particulas`** — cargas clásicas (electrones y protones, mₚ/mₑ de CODATA 2022) con
+  Verlet de velocidades **entero en la GPU** (`kernels/verlet.glsl` + `coulomb.glsl`, que
+  da también la energía potencial de cada carga); los pasos de un fotograma se envían
+  juntos y la CPU solo lee las posiciones para dibujar. Presets: plasma neutro (con
+  paredes opcionales) y átomo clásico (órbita de Kepler). Comprobado: 10 órbitas con
+  deriva de energía 6·10⁻⁷ (GPU) y radio ±2·10⁻⁵ a₀; momento conservado a 3·10⁻⁸.
+- **Medido en la RTX 5060** (1920×1080): 10 000 cargas a **72 FPS** con Δt = 0,005
+  (≈ 3 pasos por fotograma, física ≈ 12 ms). El kernel de Coulomb es el directo, sin
+  memoria compartida: optimizarlo con bloques en memoria compartida queda para la Fase 7.
+- Errores encontrados por el camino: los métodos del autoload de C# no tienen tipo para
+  `:=` en GDScript (hay que tiparlos); sin la comprobación de que el módulo abierto es el
+  pedido, una prueba miraba el módulo anterior cuando el script no compilaba.

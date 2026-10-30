@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://c5e3bd6pvd6h2"
+path="res://.godot/imported/verlet.glsl-4b0d313ebe149353ddfac9ca541d5c02.res"
+
+[deps]
+
+source_file="res://mathlab/fisica/kernels/verlet.glsl"
+dest_files=["res://.godot/imported/verlet.glsl-4b0d313ebe149353ddfac9ca541d5c02.res"]
+
+[params]
+

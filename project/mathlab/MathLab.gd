@@ -9,6 +9,8 @@ extends Node3D
 ##   3. Análisis complejo: coloreado de dominio 3D, mapeos conformes y fractales.
 ##   4. Campos vectoriales: flechas, líneas de corriente y partículas, divergencia
 ##      y rotacional, teoremas de Gauss y Stokes.
+##   5. Física moderna (docs/FISICA_MODERNA.md): átomo de hidrógeno y partículas cargadas
+##      con las fuerzas en la GPU; panel «Modelo y límites» con el nivel de fidelidad.
 ## Escenario holodeck con post-procesado, cámara orbital amortiguada (perspectiva,
 ## superior 2D, isométrica), herramienta «Perturbar», tooltip 3D flotante y
 ## planos de corte X/Y/Z.
@@ -16,7 +18,7 @@ extends Node3D
 
 signal closed
 
-const PILLARS := ["EDPs y física", "Métodos numéricos", "Análisis complejo", "Campos vectoriales"]
+const PILLARS := ["EDPs y física", "Métodos numéricos", "Análisis complejo", "Campos vectoriales", "Física moderna"]
 const MODULES := [
 	{"id": "onda", "pilar": 0, "nombre": "Ecuación de onda 2D", "ruta": "res://mathlab/modules/OndaModule.gd",
 		"desc": "Membrana vibrante: pulsos, interferencia, reflexión y modos normales de un tambor."},
@@ -54,6 +56,10 @@ const MODULES := [
 		"desc": "Flechas instanciadas, gradiente, líneas de corriente, partículas, divergencia y rotacional."},
 	{"id": "teoremas", "pilar": 3, "nombre": "Teoremas de Gauss y Stokes", "ruta": "res://mathlab/modules/TeoremasModule.gd",
 		"desc": "Flujo por una esfera frente a la divergencia; circulación frente al rotacional."},
+	{"id": "hidrogeno", "pilar": 4, "nombre": "Átomo de hidrógeno", "ruta": "res://mathlab/modules/HidrogenoModule.gd",
+		"desc": "Orbitales exactos ψₙₗₘ como nube de puntos de |ψ|² con la fase en color; energías, ⟨r⟩ y nodos."},
+	{"id": "particulas", "pilar": 4, "nombre": "Partículas y fuerza de Coulomb", "ruta": "res://mathlab/modules/ParticulasModule.gd",
+		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; energía y momento."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }
@@ -263,8 +269,9 @@ func advance(sim_dt: float) -> void:
 		for i in n:
 			module.step(h)
 		_acc = 0.0 if n == MAX_SUBSTEPS else maxf(0.0, _acc - n * h)
+	var bien := module.finito()       # con la GPU, aquí se espera a que termine: cuenta como física
 	physics_ms = (Time.get_ticks_usec() - t0) / 1000.0
-	if not module.finito():
+	if not bien:
 		if playing:
 			toggle_play()
 		_status("⚠ La simulación dio NaN o ∞ y se ha pausado. Reinicia (R) o cambia los parámetros.")
