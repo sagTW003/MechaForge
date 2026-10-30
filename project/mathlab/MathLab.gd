@@ -68,6 +68,10 @@ const MODULES := [
 		"desc": "Con quarks, nucleones, electrones y átomos: hadrones (Cornell), núcleos que se desintegran, átomos e iones y moléculas, con el motivo cuando algo no se puede formar."},
 	{"id": "cuerdas", "pilar": 4, "nombre": "Cuerdas y modos normales", "ruta": "res://mathlab/modules/CuerdasModule.gd",
 		"desc": "Cuerdas abiertas y cerradas: cada modo normal es una partícula (taquión, fotón, gravitón…) con su masa α′M² = N − a; miles de cuerdas en la GPU."},
+	{"id": "compactas", "pilar": 4, "nombre": "Dimensiones compactas", "ruta": "res://mathlab/modules/CompactasModule.gd",
+		"desc": "La cuerda en un toro: momento y enrollamiento, dualidad T, simetría aumentada en R = √α′ y la quíntica de Calabi-Yau."},
+	{"id": "branas", "pilar": 4, "nombre": "D-branas y acoplamiento", "ruta": "res://mathlab/modules/BranasModule.gd",
+		"desc": "Tipos I, IIA, IIB y heteróticas: D-branas con cuerdas estiradas, grupo gauge U(N), g_s y dualidades; el espacio-tiempo se curva con lo construido."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

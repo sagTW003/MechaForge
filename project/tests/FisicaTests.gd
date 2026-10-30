@@ -60,6 +60,10 @@ func run() -> void:
 	await _t_modulo_materia()
 	_t_cuerdas()
 	await _t_modulo_cuerdas()
+	_t_compactas()
+	await _t_modulo_compactas()
+	_t_branas()
+	await _t_modulo_branas()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -778,3 +782,133 @@ func _t_modulo_cuerdas() -> void:
 			await get_tree().process_frame
 		var fps := 120.0 / ((Time.get_ticks_usec() - t0) / 1e6)
 		check(fps >= 55.0, "Rendimiento: 5000 cuerdas vibrando en la GPU a %.0f FPS (objetivo: 1000 o más a 60)" % fps)
+
+# --- Fase 6: dimensiones compactas y D-branas ----------------------------------------------
+
+## Sectores (n, w, N, Ñ) sin masa en un círculo de radio R (α′ = 1).
+func _sin_masa(sup: bool, r: float) -> int:
+	var sp: PackedFloat64Array = Fisica.CompactCircleSpectrum(sup, 1.0, r, 1000)
+	var c := 0
+	for i in range(0, sp.size(), 5):
+		if absf(sp[i + 4]) < 1e-9:
+			c += 1
+	return c
+
+func _t_compactas() -> void:
+	var r1 := PackedFloat64Array([1.7])
+	var cero := PackedInt32Array([0])
+	check(is_equal_approx(Fisica.CompactMass2(false, 1.0, r1, cero, cero, 2, 2), 4.0) and is_equal_approx(Fisica.CompactMass2(true, 1.0, r1, cero, cero, 1, 1), 4.0)
+		and is_equal_approx(Fisica.CompactMass2(false, 1.0, r1, cero, cero, 0, 0), -4.0),
+		"Toro: sin momento ni enrollamiento se recupera la cerrada sin compactificar (α′M² = 4(N − 1) bosónica, 4N tipo II; taquión −4)")
+	var peor := 0.0
+	for al in [0.5, 1.3]:
+		for r in [0.3, 0.77, 1.9, 4.2]:
+			for n in range(-2, 3):
+				for w in range(-2, 3):
+					for nl in 3:
+						var a: float = Fisica.CompactMass2(false, al, PackedFloat64Array([r]), PackedInt32Array([n]), PackedInt32Array([w]), nl, 1)
+						var b: float = Fisica.CompactMass2(false, al, PackedFloat64Array([al / r]), PackedInt32Array([w]), PackedInt32Array([n]), nl, 1)
+						peor = maxf(peor, absf(a - b) / maxf(absf(a), 1.0))
+	check(peor < 1e-12, "Dualidad T: M²(R, n, w) = M²(α′/R, w, n) en 1000 estados (error %s)" % LabUI.sci(peor, 1))
+	var m3: float = Fisica.CompactMass2(false, 1.0, PackedFloat64Array([1.0, 2.0, 0.5]), PackedInt32Array([1, 2, 0]), PackedInt32Array([1, -1, 3]), 0, 1)
+	check(Fisica.CompactLevelMatched(PackedInt32Array([1, 2, 0]), PackedInt32Array([1, -1, 3]), 0, 1)
+		and not Fisica.CompactLevelMatched(PackedInt32Array([1, 2, 0]), PackedInt32Array([1, -1, 3]), 1, 0) and is_equal_approx(m3, 1.0 + 1.0 + 1.0 + 4.0 + 2.25 - 2.0),
+		"Toro T³: la masa suma las dimensiones y el emparejamiento usa Σn_iw_i (N − Ñ = 1 − 2 + 0)")
+	var gen := _sin_masa(false, 1.37)
+	var auto := _sin_masa(false, 1.0)
+	var sup := _sin_masa(true, 1.0)
+	var neg := 0
+	for r in [0.3, 1.0, 2.5]:
+		var sp: PackedFloat64Array = Fisica.CompactCircleSpectrum(true, 1.0, r, 1000)
+		for i in range(4, sp.size(), 5):
+			neg += int(sp[i] < -1e-12)
+	check(gen == 1 and auto == 9 and sup == 1 and neg == 0,
+		"Simetría aumentada: sin masa 1 sector en R genérico y 9 en R = √α′ (4 bosones gauge más: SU(2) × SU(2)); la tipo II no la tiene y nunca da M² < 0")
+	check(Fisica.CompactEuler(5, 4) == -200 and Fisica.CompactEuler(4, 3) == 24 and Fisica.CompactEuler(3, 2) == 0 and -200 == 2 * (1 - (126 - 25)),
+		"Calabi-Yau: χ(quíntica) = −200 por la clase de Chern = 2(h¹¹ − h²¹) con h²¹ = 126 quínticas − 25 de GL(5) = 101; K3 (cuártica) 24, curva elíptica 0")
+	var cy: PackedFloat64Array = Fisica.CalabiYauSection(5, 12, 1.0)
+	var res := 0.0
+	for i in range(0, cy.size(), 4):
+		var z1 := Vector2(cy[i], cy[i + 2])
+		var z2 := Vector2(cy[i + 1], cy[i + 3])
+		var p1 := pow(z1.length(), 5) * Vector2.from_angle(5.0 * z1.angle())
+		var p2 := pow(z2.length(), 5) * Vector2.from_angle(5.0 * z2.angle())
+		res = maxf(res, (p1 + p2 - Vector2(1, 0)).length())
+	check(cy.size() == 25 * 12 * 12 * 4 and res < 1e-5,
+		"Sección de Hanson: los 3600 puntos de los 25 parches cumplen z₁⁵ + z₂⁵ = 1 (residuo %s, en float32 de Vector2)" % LabUI.sci(res, 1))
+
+func _t_modulo_compactas() -> void:
+	lab.open_module("compactas")
+	await get_tree().process_frame
+	if not _abierto("compactas"):
+		return
+	var cm = lab.module
+	check(cm.cargar({"teoria": "bosonica", "k": 1, "radio": 1.0, "n": 1, "w": 1, "N": 1, "Nt": 0, "vista": 0}) == "" and absf(cm.masa2()) < 1e-9
+		and cm.info().contains("SU(2) × SU(2)"), "Módulo «Dimensiones compactas»: en R = √α′ el estado n = w = 1, N = 1 no tiene masa (simetría aumentada)")
+	cm.cargar({"teoria": "bosonica", "k": 3, "radio": 1.6, "n": 2, "w": 1, "N": 2, "Nt": 0, "vista": 0})
+	var antes: float = cm.masa2()
+	cm.dualidad_t()
+	check(is_equal_approx(cm.radio, 0.625) and cm.n == 1 and cm.w == 2 and is_equal_approx(cm.masa2(), antes),
+		"Compactas: el botón de dualidad T cambia R por α′/R y n por w sin cambiar la masa")
+	check(cm.cargar({"teoria": "bosonica", "k": 1, "radio": 1.6, "n": 1, "w": 1, "N": 0, "Nt": 0, "vista": 0}) == "" and cm.info().contains("No cumple"),
+		"Compactas: un estado con N − Ñ ≠ n·w se marca como no físico")
+	check(cm.cargar({"teoria": "super", "k": 6, "radio": 1.0, "n": 0, "w": 0, "N": 0, "Nt": 0, "vista": 1}) == "" and cm.cy.visible
+		and cm.info().contains("χ = -200") and cm.cargar({"teoria": "super", "k": 6, "radio": 1.0, "n": 0, "w": 0, "N": 0, "Nt": 0, "vista": 0}) == ""
+		and not cm.cy.visible and cm.info().contains("no hay simetría aumentada"),
+		"Compactas: tipo II en T⁶ con la vista de la quíntica (χ = −200) y sin simetría aumentada")
+	check(cm.cargar({"teoria": "x", "k": 1, "radio": 1.0, "n": 0, "w": 0, "N": 0, "Nt": 0}) != "" and cm.cargar({"teoria": "super", "k": 7, "radio": 1.0, "n": 0, "w": 0, "N": 0, "Nt": 0}) != ""
+		and cm.cargar({"teoria": "super", "k": 6, "radio": 0.0, "n": 0, "w": 0, "N": 0, "Nt": 0}) != "", "Compactas: estados no válidos se rechazan (teoría, k > D − 4, radio)")
+
+func _t_branas() -> void:
+	check(Array(Fisica.StringType("IIA")["dp"]) == [0, 2, 4, 6, 8] and Array(Fisica.StringType("IIB")["dp"]) == [-1, 1, 3, 5, 7, 9]
+		and Array(Fisica.StringType("I")["dp"]) == [1, 5, 9] and (Fisica.StringType("HE")["dp"] as PackedInt32Array).is_empty() and Fisica.StringType("X").is_empty(),
+		"Tipos de cuerda: D-branas estables con p par en la IIA, impar en la IIB, 1, 5 y 9 en la tipo I y ninguna en las heteróticas")
+	var ok := true
+	for al in [0.6, 1.0, 1.7]:
+		for g in [0.1, 0.5, 2.0]:
+			for q in 9:
+				ok = ok and absf(Fisica.BraneTension(q, g, al) / Fisica.BraneTension(q + 1, g, al) / (TAU * sqrt(al)) - 1.0) < 1e-12
+			ok = ok and absf(Fisica.BraneTension(1, g, al) * g / Fisica.F1Tension(al) - 1.0) < 1e-12
+	check(ok, "Tensiones: T_p / T_{p+1} = 2π√α′ (dualidad T) y T_D1 = T_F1/g_s (dualidad S de la IIB)")
+	check(Fisica.StretchedMass2(0.0, 1.3, 0) == 0.0 and absf(sqrt(Fisica.StretchedMass2(2.5, 1.3, 0)) - 2.5 * Fisica.F1Tension(1.3)) < 1e-12,
+		"Cuerda abierta entre dos branas: sin masa si están juntas y M = T_F1·d estirada (tensión por longitud)")
+	var g1: Dictionary = Fisica.BraneGauge("IIA", 2, PackedFloat64Array([0.0, 1.0, 0.0]), 0.02)
+	var g2: Dictionary = Fisica.BraneGauge("IIB", 3, PackedFloat64Array([0.5, 0.5, 0.5, 0.5]), 0.02)
+	var g3: Dictionary = Fisica.BraneGauge("IIA", 4, PackedFloat64Array([0.0, 1.0, 2.0]), 0.02)
+	var g4: Dictionary = Fisica.BraneGauge("I", 5, PackedFloat64Array([0.5, 0.5]), 0.02)
+	var g5: Dictionary = Fisica.BraneGauge("I", 1, PackedFloat64Array([0.0, 0.0, 0.0]), 0.02)
+	check(g1["grupo"] == "U(2) × U(1)" and g1["vectores"] == 5 and g2["grupo"] == "U(4)" and g2["vectores"] == 16 and g3["grupo"] == "U(1)³" and g3["vectores"] == 3
+		and g4["grupo"] == "Sp(2)" and g4["vectores"] == 10 and g5["grupo"] == "O(3)" and g5["vectores"] == 3,
+		"Branas juntas: U(2) × U(1) (5 bosones gauge), U(4) (16), U(1)³ (3); tipo I: Sp(2) en D5 (10) y O(3) en D1 (3)")
+	var e8: int = Fisica.LatticeRoots(8)
+	var d16: int = Fisica.LatticeRoots(16)
+	check(e8 == 240 and d16 == 480 and 2 * (e8 + 8) == 496 and d16 + 16 == 496 and 32 * 31 / 2 == 496,
+		"Heterótica: las redes pares autoduales dan 2 × 240 raíces (E8 × E8) y 480 (Spin(32)/Z₂): 496 bosones gauge las dos, = dim SO(32), como exige la cancelación de anomalías")
+	check(is_equal_approx(16.0 * PI * Fisica.Newton10(0.3, 1.2), pow(TAU, 7) * 0.09 * pow(1.2, 4)) and is_equal_approx(Fisica.MTheoryRadius(0.5, 4.0), 1.0)
+		and is_equal_approx(pow(Fisica.AdsRadius(0.1, 100, 1.0), 4), 40.0 * PI) and is_equal_approx(1.0 / Fisica.BraneTension(0, 0.5, 4.0), Fisica.MTheoryRadius(0.5, 4.0)),
+		"g_s: 16πG₁₀ = (2π)⁷g_s²α′⁴, R₁₁ = g_s√α′ = 1/(masa de la D0) y L⁴ = 4πg_sNα′² cerca de N D3")
+
+func _t_modulo_branas() -> void:
+	lab.open_module("branas")
+	await get_tree().process_frame
+	if not _abierto("branas"):
+		return
+	var bm = lab.module
+	check(bm.cargar({"tipo": "IIA", "gs": 0.2, "p": 2, "pos": [0.0, 1.0, 0.0]}) == "" and bm.info().contains("U(2) × U(1)")
+		and bm.cuerdas.get_child_count() == 9 and bm.branas.get_child_count() == 3,
+		"Módulo «D-branas»: 3 D2 (dos juntas) dan U(2) × U(1) y 9 cuerdas abiertas, una por cada par ordenado")
+	bm.cargar({"tipo": "IIB", "gs": 0.1, "p": 3, "pos": [0.0]})
+	var h1: float = bm.profundidad(2.5, 0.0)
+	bm.cargar({"tipo": "IIB", "gs": 0.1, "p": 3, "pos": [0.0, 0.0]})
+	var h2: float = bm.profundidad(2.5, 0.0)
+	bm.cargar({"tipo": "IIB", "gs": 0.2, "p": 3, "pos": [0.0, 0.0]})
+	var h4: float = bm.profundidad(2.5, 0.0)
+	check(h1 > 0.0 and is_equal_approx(h2, 2.0 * h1) and is_equal_approx(h4, 4.0 * h1) and bm.info().contains("AdS₅"),
+		"D-branas: la rejilla se hunde ∝ g_s·N (G·T_p ∝ g_s²/g_s), y cerca de N D3 aparece AdS₅ × S⁵")
+	check(bm.cargar({"tipo": "IIA", "gs": 1.5, "p": 0, "pos": [0.0]}) == "" and bm.info().contains("fuera del régimen perturbativo") and bm.info().contains("teoría M"),
+		"D-branas: con g_s ≥ 1 avisa de que el modelo perturbativo no vale; la IIA se abre a la teoría M (D = 11)")
+	check(bm.cargar({"tipo": "HE", "gs": 0.3, "p": 0, "pos": []}) == "" and bm.pos.is_empty() and bm.branas.get_child_count() == 0 and bm.info().contains("496"),
+		"D-branas: la heterótica E8 × E8 no tiene D-branas; su grupo gauge sale de la red (496 bosones)")
+	check(bm.cargar({"tipo": "X", "gs": 0.3, "p": 2, "pos": [0.0]}) != "" and bm.cargar({"tipo": "IIA", "gs": 0.3, "p": 3, "pos": [0.0]}) != ""
+		and bm.cargar({"tipo": "IIA", "gs": 0.3, "p": 2, "pos": [0, 1, 2, 3, 0]}) != "" and bm.cargar({"tipo": "IIA", "gs": 5.0, "p": 2, "pos": [0.0]}) != "",
+		"D-branas: estados no válidos se rechazan (tipo, D3 en la IIA, más de 4 branas, g_s)")

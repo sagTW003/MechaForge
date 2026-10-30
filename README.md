@@ -743,10 +743,10 @@ powershell -ExecutionPolicy Bypass -File toolserificar.ps1 [suite ...]
 | Proyectos de ejemplo (abre y simula cada uno) | `mfejemplos` |
 | Protoboard, uniones, cochera y texturas | `mfentorno` |
 | Multímetro, protoboard multipín (DIP) y cortocircuitos | `mfmulti` |
-| Laboratorio matemático (24 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
+| Laboratorio matemático (26 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
-| Física moderna (núcleo: constantes CODATA 2022, contratos del laboratorio, guardado; hidrógeno; partículas con Coulomb, Lorentz y líneas de campo; Modelo Estándar del PDG, conservación y desintegraciones; batería cuántica; construcción de materia: hadrones, Cornell, núcleos, átomos y moléculas; cuerdas: espectro bosónico y de la supercuerda, modos normales; sin `--headless` además la GPU, y `-- mffisica bench` el rendimiento con 10 000 cargas y 5000 cuerdas) | `mffisica` |
+| Física moderna (núcleo: constantes CODATA 2022, contratos del laboratorio, guardado; hidrógeno; partículas con Coulomb, Lorentz y líneas de campo; Modelo Estándar del PDG, conservación y desintegraciones; batería cuántica; construcción de materia: hadrones, Cornell, núcleos, átomos y moléculas; cuerdas: espectro bosónico y de la supercuerda, modos normales; dimensiones compactas, dualidad T y Calabi-Yau; D-branas, tipos I/IIA/IIB/heteróticos y g_s; sin `--headless` además la GPU, y `-- mffisica bench` el rendimiento con 10 000 cargas y 5000 cuerdas) | `mffisica` |
 | Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; verificación óptica, ergonomía y holguras; las gafas montadas solo con la API; `-- mfvr fase3`, `fase4` o `fase5` solo esa parte) | `mfvr` |
 
 ## Arquitectura

@@ -227,3 +227,47 @@ La caja de arena pasó a ser un módulo propio (`materia`) y las desintegracione
 (un estado coherente), no la función de onda; solo modos n ≤ 4 con 0–3 cuantos. Las
 D-branas como objetos, las dimensiones compactas, los tipos I/IIA/IIB/heterótica y g_s son
 de la Fase 6.
+
+## 12. Fase 6 (módulo 2 completo): hecha
+
+Las D-branas, los tipos de cuerda y g_s pasaron a un módulo propio (`branas`) en lugar de
+crecer `compactas`: dos paneles de controles distintos (como `materia` en la Fase 4).
+
+- **Dominio** (`dominio/Compactas.cs` y `dominio/Branas.cs`, en doble):
+  - cuerda cerrada en un toro T^k: M² = Σ(n/R)² + Σ(wR/α′)² + (2/α′)(N + Ñ − 2a) con
+    N − Ñ = Σnw; espectro de un círculo ordenado por masa;
+  - χ de hipersuperficies de CPⁿ por la clase de Chern y la sección real de la Calabi-Yau
+    de Fermat z₁⁵ + z₂⁵ = 1 (la imagen de Hanson de la quíntica);
+  - los cinco tipos de supercuerda (I, IIA, IIB, heteróticas SO(32) y E8 × E8) con su
+    espectro sin masa, supercargas y D-branas estables; tensión de una Dp, masa de una
+    cuerda estirada, grupo gauge de branas juntas (U(N); O(k) y Sp(k) en la tipo I),
+    G₁₀, R₁₁ = g_s√α′, el radio de AdS₅ cerca de N D3, y las raíces de las redes pares
+    autoduales de dimensión 16 contadas en el programa.
+- **`compactas`** («Dimensiones compactas»): teoría (bosónica D = 26 o tipo II D = 10), número
+  k y radio R de las dimensiones compactas, momento n, enrollamiento w y osciladores N, Ñ;
+  masa, emparejamiento, botón de dualidad T, simetría aumentada en R = √α′, estados más
+  ligeros y G en D − k dimensiones. Vista «Toro» (cilindro si k = 1, toro si k ≥ 2, con la
+  cuerda enrollada w veces) y vista «Calabi-Yau» (25 parches proyectados en
+  `shaders/calabi_yau.gdshader`, con un ángulo que gira).
+- **`branas`** («D-branas y acoplamiento»): tipo de cuerda, g_s, dimensión p y hasta 4 branas
+  que se mueven, juntan y separan; una cuerda abierta por cada par ordenado (verde sin masa,
+  naranja estirada) y una rejilla que se hunde con la energía de lo construido.
+- Comprobado:
+  - sin n ni w se recupera la cerrada de la Fase 5; dualidad T en 1000 estados (error
+    2·10⁻¹⁶);
+  - 1 sector sin masa en R genérico y 9 en R = √α′ (SU(2) × SU(2)); la tipo II nunca da
+    M² < 0;
+  - χ(quíntica) = −200 = 2(1 − 101), K3 = 24 y curva elíptica 0; la sección cumple
+    z₁⁵ + z₂⁵ = 1;
+  - T_p/T_{p+1} = 2π√α′ y T_D1 = T_F1/g_s; M = T_F1·d;
+  - U(2) × U(1) con 5 bosones gauge, Sp(2) con 10 y O(3) con 3;
+  - E8 × E8 = 2 × 240 + 16 y Spin(32)/Z₂ = 480 + 16: 496 bosones gauge las dos;
+  - la rejilla escala con g_s·N.
+
+**Límites**: toro rectangular sin campo B ni líneas de Wilson; el estado lleva carga en una
+sola dimensión compacta; sin la heterótica en el toro (su simetría aumentada) ni otras
+Calabi-Yau. Las dualidades S y la teoría M son conjeturas: se muestran sus relaciones, no
+se calculan. La rejilla y la forma de las branas son ilustrativas: escalan como la física
+(∝ g_s por brana, ∝ g_s²·M por cuerda) pero no son la solución de supergravedad. La
+«materia exótica» del encargo son los estados de modos superpuestos de `cuerdas` y las
+cuerdas estiradas de `branas`, no una geometría nueva del espacio-tiempo.

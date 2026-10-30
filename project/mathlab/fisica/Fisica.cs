@@ -91,6 +91,41 @@ public partial class Fisica : Node
         return o;
     }
 
+    // --- Dimensiones compactas ---
+    public double CompactMass2(bool super, double alpha, double[] radios, int[] n, int[] w, int nl, int nr) =>
+        Compactas.Mass2(super, alpha, radios, n, w, nl, nr);
+    public bool CompactLevelMatched(int[] n, int[] w, int nl, int nr) => Compactas.LevelMatched(n, w, nl, nr);
+    public double[] CompactCircleSpectrum(bool super, double alpha, double r, int count) => Compactas.CircleSpectrum(super, alpha, r, count);
+    public long CompactEuler(int d, int n) => Compactas.HypersurfaceEuler(d, n);
+    public double[] CalabiYauSection(int n, int grid, double bmax) => Compactas.FermatSection(n, grid, bmax);
+
+    // --- D-branas y tipos de cuerda ---
+    public Dictionary StringType(string id)
+    {
+        var t = Branas.Find(id);
+        if (t == null) return new Dictionary();
+        return new Dictionary
+        {
+            { "nombre", t.Nombre }, { "supercargas", t.Supercargas }, { "orientada", t.Orientada }, { "abiertas", t.Abiertas },
+            { "quiral", t.Quiral }, { "dp", t.Dp }, { "gauge", t.Gauge }, { "sin_masa", t.SinMasa },
+        };
+    }
+
+    public double BraneTension(int p, double gs, double alpha) => Branas.Tension(p, gs, alpha);
+    public double F1Tension(double alpha) => Branas.F1Tension(alpha);
+    public double StretchedMass2(double d, double alpha, int nivel) => Branas.StretchedMass2(d, alpha, nivel);
+    public double Newton10(double gs, double alpha) => Branas.Newton10(gs, alpha);
+    public double MTheoryRadius(double gs, double alpha) => Branas.R11(gs, alpha);
+    public double AdsRadius(double gs, int n, double alpha) => Branas.AdsRadius(gs, n, alpha);
+    public long LatticeRoots(int n) => Branas.LatticeRoots(n);
+
+    /// <summary>Grupo gauge de las branas: {grupo, vectores}.</summary>
+    public Dictionary BraneGauge(string tipo, int p, double[] pos, double tol)
+    {
+        var (grupo, vectores) = Branas.GaugeGroup(tipo, p, pos, tol);
+        return new Dictionary { { "grupo", grupo }, { "vectores", vectores } };
+    }
+
     // --- Construcción de materia ---
     public string ElementSymbol(int z) => z >= 0 && z < Materia.Simbolos.Length ? Materia.Simbolos[z] : "?";
     public string ElementName(int z) => z >= 0 && z < Materia.Nombres.Length ? Materia.Nombres[z] : "?";
