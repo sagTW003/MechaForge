@@ -11,6 +11,8 @@ extends Node3D
 
 var lab: Node
 var clip_materials: Array = []
+## Números aleatorios del módulo: el laboratorio fija su semilla al abrir y al reiniciar.
+var rng := RandomNumberGenerator.new()
 var playing: bool = true
 var scale_xy: float = 1.0
 var scale_z: float = 1.0
@@ -46,6 +48,26 @@ func api_points(x: float, y: float) -> Array:
 func planar() -> bool: return false
 ## Vista inicial: {target, dist, yaw, pitch} (grados).
 func view() -> Dictionary: return {"target": Vector3(0, 0, 0), "dist": 7.5, "yaw": -35.0, "pitch": -32.0}
+
+# --- Núcleo de «Física moderna» (docs/FISICA_MODERNA.md); todo opcional ---
+## Panel «Modelo y límites»: [{subsistema, nivel: "exacto"|"aproximado"|"ilustrativo",
+## modelo, ecuaciones, unidades, referencias}].
+func fidelidad() -> Array: return []
+## Estado guardable en el proyecto (JSON). cargar() devuelve "" o el motivo del rechazo.
+func estado() -> Dictionary: return {}
+func cargar(_d: Dictionary) -> String: return ""
+## Lecturas para el panel de métricas, p. ej. {entidades}; el laboratorio añade FPS y tiempos.
+func metricas() -> Dictionary: return {}
+## false si el estado tiene NaN o ∞: el laboratorio pausa y avisa.
+func finito() -> bool: return true
+## Paso fijo en segundos de simulación (0: el paso del fotograma, como hasta ahora).
+func fixed_dt() -> float: return 0.0
+## Recursos que el árbol no libera (RIDs de GPU): se llama al desmontar el módulo.
+func liberar() -> void: pass
+## Antes de un cambio del usuario: guarda el estado para deshacer.
+func remember() -> void:
+	if lab:
+		lab.record_undo()
 
 func to_world(x: float, y: float, z: float) -> Vector3:
 	return Vector3(x * scale_xy, z * scale_z, -y * scale_xy)

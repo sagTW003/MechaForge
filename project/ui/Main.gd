@@ -334,7 +334,7 @@ func _ready() -> void:
 		ft.main = self
 		add_child(ft)
 		ft.call_deferred("run")
-	elif "mflab" in OS.get_cmdline_user_args() or "mflabtest" in OS.get_cmdline_user_args() or "mflabshot" in OS.get_cmdline_user_args() or "mfmanos" in OS.get_cmdline_user_args():
+	elif "mflab" in OS.get_cmdline_user_args() or "mflabtest" in OS.get_cmdline_user_args() or "mflabshot" in OS.get_cmdline_user_args() or "mfmanos" in OS.get_cmdline_user_args() or "mffisica" in OS.get_cmdline_user_args():
 		call_deferred("_open_math_lab")
 	elif "mfmulti" in OS.get_cmdline_user_args():
 		var mt: Node = load("res://tests/MultimetroTests.gd").new()
@@ -3985,6 +3985,7 @@ func _on_status(text: String, _seconds: float) -> void:
 func _on_new() -> void:
 	if simulator.is_running():
 		simulator.stop()
+	lab_state = {}
 	for c in parts_root.get_children():
 		_free_part(c)
 	connections.clear()
@@ -4097,6 +4098,8 @@ func _project_extra() -> Dictionary:
 			extra[k] = project_meta[k]
 	if notes_edit and notes_edit.text.strip_edges() != "":
 		extra["notas"] = notes_edit.text
+	if not lab_state.is_empty():
+		extra["laboratorio"] = lab_state
 	if _has_headset():
 		extra["visor"] = {"seguimiento": headset_rig.track_mode, "retardo_ms": headset_rig.link_ms,
 			"predistorsion": headset_rig.predistort, "cromatica": headset_rig.chroma, "calidad": headset_rig.quality,
@@ -4112,6 +4115,13 @@ func _has_headset() -> bool:
 
 func _apply_project_extra(doc: Dictionary) -> void:
 	project_meta = {}
+	lab_state = {}
+	if doc.has("laboratorio"):
+		var why := MathLab.validate_snapshot(doc["laboratorio"])
+		if why == "":
+			lab_state = doc["laboratorio"]
+		else:
+			Config.notify("El estado guardado del laboratorio no es válido (%s): se ignora." % why, 6.0)
 	if notes_edit:
 		notes_edit.text = str(doc.get("notas", ""))
 	for k in ["nombre", "descripcion"]:
@@ -5822,6 +5832,8 @@ func _update_dmm_ui() -> void:
 #region LABORATORIO MATEMÁTICO -------------------------------------------------
 
 var math_lab: Node = null
+## Módulo del laboratorio y su estado (MathLab.snapshot), guardados en el proyecto.
+var lab_state: Dictionary = {}
 
 ## Abre el Laboratorio matemático: MechaForge sale del árbol (conserva todo su
 ## estado: proyecto, cámara, paneles) y el laboratorio ocupa la ventana.
@@ -5834,8 +5846,12 @@ func _open_math_lab(start_module: String = "") -> void:
 		_set_probe_mode(false)
 	math_lab = load("res://mathlab/MathLab.gd").new()
 	math_lab.main_scene = self
+	if start_module == "" and lab_state.has("modulo"):
+		start_module = str(lab_state["modulo"])
 	if start_module != "":
 		math_lab.start_module = start_module
+		if str(lab_state.get("modulo", "")) == start_module:
+			math_lab.pending_state = lab_state
 	math_lab.closed.connect(_close_math_lab)
 	call_deferred("_swap_to_lab")
 
@@ -5859,6 +5875,11 @@ func _swap_to_lab() -> void:
 		ht.lab = math_lab
 		math_lab.add_child(ht)
 		ht.call_deferred("run")
+	elif "mffisica" in ua:
+		var ft: Node = load("res://tests/FisicaTests.gd").new()
+		ft.lab = math_lab
+		math_lab.add_child(ft)
+		ft.call_deferred("run")
 
 func _close_math_lab() -> void:
 	call_deferred("_swap_from_lab")
@@ -5867,6 +5888,11 @@ func _swap_from_lab() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var root := tree.root
 	if math_lab and math_lab.get_parent():
+		var snap: Dictionary = math_lab.snapshot()
+		# Solo hay cambios que guardar si el módulo tiene estado propio.
+		if not (snap["estado"] as Dictionary).is_empty() and snap != lab_state:
+			Config.project_dirty = true
+		lab_state = snap
 		root.remove_child(math_lab)
 		math_lab.queue_free()
 	math_lab = null

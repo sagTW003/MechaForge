@@ -18,7 +18,7 @@ $godotCon = Join-Path $root "tools\godot\Godot_v4.7.2-stable_mono_win64\Godot_v4
 $proj = Join-Path $root "project"
 if (-not (Test-Path $godotCon)) { throw "No se encuentra Godot .NET: ejecuta tools\preparar_godot.ps1" }
 if (-not $Suites) {
-    $Suites = "mftest mfelec mfphys mfrefactor mffinal mfentorno mfejemplos mfmulti mflabtest mfadjuntos mfmanos mfvr".Split(" ")
+    $Suites = "mftest mfelec mfphys mfrefactor mffinal mfentorno mfejemplos mfmulti mflabtest mfadjuntos mfmanos mfvr mffisica".Split(" ")
 }
 $fallos = @()
 

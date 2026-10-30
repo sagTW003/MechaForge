@@ -746,6 +746,7 @@ powershell -ExecutionPolicy Bypass -File toolserificar.ps1 [suite ...]
 | Laboratorio matemático (18 módulos, gráficas, integración y derivación 1D y 2D, notación de las fórmulas y API) | `mflabtest` |
 | Adjuntos del chat (PDFium, imágenes, gateway falso, reenvío sin imágenes, gráfica y notas) | `mfadjuntos` |
 | Seguimiento de manos (filtro, gestos, controlador, elección de cámara, UDP y proceso de MediaPipe) | `mfmanos` |
+| Física moderna, núcleo (constantes CODATA 2022 coherentes, Coulomb en C#, contratos del laboratorio: modelo y límites, paso fijo, semilla, NaN, deshacer, métricas y guardado; sin `--headless` además la GPU, y `-- mffisica bench` el rendimiento) | `mffisica` |
 | Visor VR casero (memoria del microcontrolador, IMU MPU-6050, materiales de impresión, masa y colisión de mallas; piezas del visor, óptica, bus I²C y registros; render estéreo con predistorsión, y sin `--headless` el render real; cabeza de prueba, perfiles, uniones fijas rígidas y seguimiento con la IMU; verificación óptica, ergonomía y holguras; las gafas montadas solo con la API; `-- mfvr fase3`, `fase4` o `fase5` solo esa parte) | `mfvr` |
 
 ## Arquitectura

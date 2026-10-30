@@ -2,7 +2,7 @@
 
 Simuladores de **partículas y mecánica cuántica** y de **teoría de cuerdas** dentro del
 Laboratorio matemático de MechaForge (Godot 4.7 .NET), según
-`prompt-simuladores-fisica-robusto.md`. Estado: **pendiente de aprobación**.
+`prompt-simuladores-fisica-robusto.md`. Estado: arquitectura **aprobada**; Fase 2 (núcleo compartido) **hecha**.
 
 ## 1. Decisiones
 
@@ -50,9 +50,18 @@ func estado() -> Dictionary: return {}
 func cargar(_d: Dictionary) -> String: return ""
 ## {entidades, fisica_ms} para el panel de métricas.
 func metricas() -> Dictionary: return {}
+## false si el estado tiene NaN o ∞: el laboratorio pausa y avisa.
+func finito() -> bool: return true
+## Paso fijo en segundos de simulación (0: el paso del fotograma).
+func fixed_dt() -> float: return 0.0
 ## Liberar RIDs de GPU al desmontar.
 func liberar() -> void: pass
+## Antes de un cambio del usuario (para deshacer); lab.record_undo() guarda estado().
+func remember() -> void
 ```
+
+Cada módulo tiene además `rng` (RandomNumberGenerator), que el laboratorio siembra con
+la semilla del panel de métricas al abrirlo y al reiniciarlo.
 
 **`Fisica`** (C#, sin estado; ejemplos):
 
@@ -126,10 +135,14 @@ puntos (en el *vertex shader*). Lo mide `-- mffisica bench` en la RTX 5060.
    modos con su masa calculada; los tipos I/IIA/IIB/heterótica cambian el espectro y las
    condiciones permitidas, no simulan dinámica.
 
-## 8. Fase 2 (núcleo compartido), si se aprueba
+## 8. Fase 2 (núcleo compartido): hecha
 
 `Fisica.cs` con `Unidades`; `GpuCompute.gd` con la prueba de Coulomb GPU frente a C#;
 contratos de `LabModule`; panel «Modelo y límites» y panel de métricas del Laboratorio;
 paso fijo, semilla y vigilancia de NaN; guardado del módulo abierto en el `.mforge`
 («laboratorio»: módulo, versión y estado, con validación) y deshacer en el Laboratorio;
 suite `mffisica`.
+
+Hecho y medido en la RTX 5060: Coulomb con 10 000 cargas (subida, cálculo y lectura)
+en **1,22 ms**; la GPU coincide con la referencia en C# (error 1,4·10⁻⁵ de la fuerza
+típica). Barra del laboratorio: ⏭ (un paso), ↶ ↷ (deshacer y rehacer), «📐 Modelo» y 📊.

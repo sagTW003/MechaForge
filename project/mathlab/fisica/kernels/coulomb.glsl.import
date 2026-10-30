@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://6cjjgghoq5my"
+path="res://.godot/imported/coulomb.glsl-0160642d0550bf1f2766def8de9dfa56.res"
+
+[deps]
+
+source_file="res://mathlab/fisica/kernels/coulomb.glsl"
+dest_files=["res://.godot/imported/coulomb.glsl-0160642d0550bf1f2766def8de9dfa56.res"]
+
+[params]
+
