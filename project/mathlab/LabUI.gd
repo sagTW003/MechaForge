@@ -5,6 +5,8 @@ extends RefCounted
 ## validación en vivo y botones. Todos devuelven el control creado y lo marcan
 ## con la meta "lab_param" (su etiqueta) para que LabApi pueda manejarlo.
 
+static var _casillas := {}                # iconos de casilla, se crean una vez (_icono_casilla)
+
 ## Notación científica legible: 1.11e-4 → "1.11×10⁻⁴" (GDScript no admite %e).
 static func sci(v: float, digits: int = 2) -> String:
 	if v == 0.0 or is_nan(v) or is_inf(v):
@@ -94,6 +96,8 @@ static func option(parent: Control, label: String, items: Array, selected: int, 
 
 static func check(parent: Control, label: String, value: bool, cb: Callable) -> CheckBox:
 	var c := CheckBox.new()
+	c.add_theme_icon_override("unchecked", _icono_casilla(false))
+	c.add_theme_icon_override("checked", _icono_casilla(true))
 	c.text = label
 	c.button_pressed = value
 	c.focus_mode = Control.FOCUS_NONE
@@ -101,6 +105,21 @@ static func check(parent: Control, label: String, value: bool, cb: Callable) -> 
 	c.toggled.connect(func(v): cb.call(v))
 	parent.add_child(c)
 	return c
+
+## Casilla de 18 px: vacía con borde claro, marcada rellena de cian (se distinguen también por la
+## forma). La del tema dibuja la vacía casi del color del panel (contraste < 3:1).
+static func _icono_casilla(marcada: bool) -> Texture2D:
+	if not _casillas.has(marcada):
+		var im := Image.create(18, 18, false, Image.FORMAT_RGBA8)
+		var tinta := Color(0.35, 0.85, 1.0) if marcada else Color(0.66, 0.72, 0.78)
+		for y in 18:
+			for x in 18:
+				var borde := x < 2 or y < 2 or x > 15 or y > 15
+				var relleno := marcada and x > 3 and y > 3 and x < 14 and y < 14
+				if borde or relleno:
+					im.set_pixel(x, y, tinta)
+		_casillas[marcada] = ImageTexture.create_from_image(im)
+	return _casillas[marcada]
 
 static func button(parent: Control, text: String, cb: Callable) -> Button:
 	var b := Button.new()

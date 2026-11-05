@@ -159,7 +159,10 @@ func _draw_hadron() -> void:
 		if anti:
 			col = Color(1, 1, 1) - col + Color(0, 0, 0, 1)
 		_ball(pts[i], 0.12, col)
-		view_root.add_child(label3d(_info(q[i])["simbolo"], pts[i] + Vector3(0, 0.22, 0), col.lightened(0.3), 0.004))
+		# La carga de color también en texto: no depender solo del color de la esfera.
+		var carga_color: String = ["rojo", "verde", "azul"][i % 3]
+		view_root.add_child(label3d("%s (%s)" % [_info(q[i])["simbolo"], ("anti" + carga_color) if anti else carga_color],
+			pts[i] + Vector3(0, 0.22, 0), col.lightened(0.3), 0.004))
 	var tube := glow_mat(Color(1.0, 0.85, 0.4), 2.5)
 	if q.size() == 2:
 		if rota:

@@ -97,6 +97,15 @@ var clip_on := Vector3.ZERO
 var clip_pos := Vector3.ZERO
 var clip_side := Vector3.ONE
 var seed_value: int = 1
+## Accesibilidad (se guardan en ruta_prefs; la calidad es el perfil de GraphicsProfiles).
+static var ruta_prefs := "user://mechaforge_lab.json"
+## false en las pruebas: los ajustes que guardó el usuario no deben cambiar sus resultados.
+var usar_prefs := true
+var reducir_movimiento := false       # los módulos abren en pausa y la cámara salta sin animarse
+var navegacion_teclado := false       # Tab recorre los controles, con borde de foco
+var settings_panel: FloatingPanel
+var _casillas_ajustes := {}           # «reducir_movimiento» / «navegacion_teclado» → CheckBox del panel
+static var _foco: StyleBoxFlat
 ## Estado guardado que aplicar al abrir (lo pasa MechaForge al cargar un proyecto).
 var pending_state: Dictionary = {}
 var physics_ms: float = 0.0
@@ -149,6 +158,8 @@ func _ready() -> void:
 	module_root.name = "Modulo"
 	add_child(module_root)
 	_build_tooltip()
+	if usar_prefs:
+		_cargar_prefs()
 	_build_ui()
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	open_pillar(0)
@@ -198,6 +209,7 @@ func open_pillar(p: int) -> void:
 		d.visible = m["id"] == module_id
 		modules_box.add_child(d)
 	modules_panel.set_title("Módulos · " + PILLARS[p])
+	_aplicar_foco()
 
 func open_module(id: String) -> void:
 	var info := module_info(id)
@@ -246,6 +258,9 @@ func open_instance(m: LabModule, info: Dictionary) -> void:
 	if cam.view_mode != LabCamera.ViewMode.PERSPECTIVA:
 		cam.set_view(cam.view_mode)
 	play_button.disabled = not module.uses_time()
+	if reducir_movimiento and playing and module.uses_time():
+		toggle_play()          # con «reducir movimiento» nada arranca solo: ▶ para empezar
+	_aplicar_foco()
 	_crit_index = -1
 	for cm in module.clip_materials:
 		apply_clip_to(cm)
@@ -574,6 +589,56 @@ func _status(t: String) -> void:
 	if status_label:
 		status_label.text = t
 
+#region AJUSTES -------------------------------------------------------------------
+
+## Perfil gráfico de MechaForge (Bajo/Medio/Alto/Ultra) aplicado a la ventana; el entorno del
+## laboratorio no se toca. Los módulos pesados lo leen al abrirse (LabModule.calidad()).
+func elegir_perfil(p: int) -> void:
+	GraphicsProfiles.apply_profile(p, null, get_viewport())
+	_status("Calidad %s: los módulos pesados la usan al volver a abrirlos." % GraphicsProfiles.profile_name(p))
+
+func ajustes() -> Dictionary:
+	return {"reducir_movimiento": reducir_movimiento, "navegacion_teclado": navegacion_teclado}
+
+## Aplica los ajustes de accesibilidad y, si «guardar», los escribe en ruta_prefs.
+func set_ajustes(d: Dictionary, guardar := true) -> void:
+	reducir_movimiento = bool(d.get("reducir_movimiento", reducir_movimiento))
+	navegacion_teclado = bool(d.get("navegacion_teclado", navegacion_teclado))
+	cam.damping = 1000.0 if reducir_movimiento else 9.0
+	for k in _casillas_ajustes:
+		(_casillas_ajustes[k] as CheckBox).set_pressed_no_signal(ajustes()[k])
+	_aplicar_foco()
+	if guardar:
+		var f := FileAccess.open(ruta_prefs, FileAccess.WRITE)
+		if f:
+			f.store_string(JSON.stringify(ajustes(), "  "))
+
+## El archivo es del usuario: lo que no sea un diccionario con valores válidos se ignora.
+func _cargar_prefs() -> void:
+	var f := FileAccess.open(ruta_prefs, FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text()) if f else null
+	set_ajustes(d if typeof(d) == TYPE_DICTIONARY else {}, false)
+
+## Con «navegación por teclado» botones, casillas, listas y deslizadores aceptan foco y lo
+## muestran; sin ella no lo toman (al hacer clic, Espacio seguiría pulsando el botón en vez de pausar).
+func _aplicar_foco() -> void:
+	if ui == null:
+		return
+	if _foco == null:
+		_foco = StyleBoxFlat.new()
+		_foco.draw_center = false
+		_foco.set_border_width_all(2)
+		_foco.border_color = Color(1.0, 0.85, 0.3)
+		_foco.set_corner_radius_all(4)
+		_foco.set_expand_margin_all(2)
+	for c in ui.find_children("*", "Control", true, false):
+		if c is BaseButton or (c is Range and not c is ScrollBar):
+			c.focus_mode = Control.FOCUS_ALL if navegacion_teclado else Control.FOCUS_NONE
+			if navegacion_teclado:
+				c.add_theme_stylebox_override("focus", _foco)
+
+#endregion
+
 #endregion
 
 #region INTERFAZ -------------------------------------------------------------------
@@ -666,6 +731,26 @@ func _build_ui() -> void:
 	var seed_box := LabUI.spin(mb, "Semilla", 0, 999999, 1, seed_value, func(v): seed_value = int(v))
 	seed_box.tooltip_text = "Semilla de los números aleatorios: con la misma semilla, «⟲ Reiniciar» repite la simulación"
 	metrics_panel.visible = false
+
+	settings_panel = FloatingPanel.new("Ajustes y accesibilidad")
+	ui.add_child(settings_panel)
+	settings_panel.position = Vector2(380, 90)
+	var ab := VBoxContainer.new()
+	ab.custom_minimum_size = Vector2(320, 0)
+	settings_panel.add_content(ab)
+	var perfiles := [GraphicsProfiles.Profile.BAJO, GraphicsProfiles.Profile.MEDIO, GraphicsProfiles.Profile.ALTO, GraphicsProfiles.Profile.ULTRA]
+	LabUI.option(ab, "Calidad:", perfiles.map(func(p): return GraphicsProfiles.PROFILE_NAMES[p]), GraphicsProfiles.current_profile, func(i):
+		elegir_perfil(perfiles[i]))
+	LabUI.note(ab, "GPU: %s · recomendado: %s. En Bajo, sin antialiasing y a menor resolución; los módulos pesados abren con menos puntos, cargas y cuerdas (se pueden subir)." % [
+		GraphicsProfiles.adapter_name if GraphicsProfiles.adapter_name != "" else "sin datos", GraphicsProfiles.profile_name(GraphicsProfiles.recommend_profile())])
+	_casillas_ajustes["reducir_movimiento"] = LabUI.check(ab, "Reducir movimiento", reducir_movimiento, func(v): set_ajustes({"reducir_movimiento": v}))
+	LabUI.note(ab, "Los módulos abren en pausa (▶ para empezar) y la cámara salta sin animación.")
+	_casillas_ajustes["navegacion_teclado"] = LabUI.check(ab, "Navegación por teclado", navegacion_teclado, func(v):
+		set_ajustes({"navegacion_teclado": v})
+		if v and modules_box.get_child_count() > 0:
+			(modules_box.get_child(0) as Control).grab_focus())
+	LabUI.note(ab, "Tab y Mayús+Tab recorren los controles; Espacio o Intro pulsan el que tiene el foco y las flechas mueven deslizadores y listas. Atajos: Espacio pausa, R reinicia, F encuadra, 1/2/3 cambian la vista, P perturba, H manos, Ctrl+Z / Ctrl+Y deshacen y rehacen, Esc vuelve a MechaForge.")
+	settings_panel.visible = false
 	call_deferred("_layout")
 
 ## Panel «Modelo y límites» con lo que declara el módulo (fidelidad()). El nivel va en
@@ -795,6 +880,8 @@ func _topbar() -> Control:
 	_tb(hb, "📊", func():
 		metrics_panel.visible = not metrics_panel.visible
 		_update_metrics(), false, "Métricas (FPS, tiempos, memoria, entidades) y semilla")
+	_tb(hb, "⚙ Ajustes", func(): settings_panel.visible = not settings_panel.visible, false,
+		"Calidad gráfica y accesibilidad: reducir movimiento y navegación por teclado")
 	return p
 
 #endregion

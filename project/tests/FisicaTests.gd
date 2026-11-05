@@ -64,6 +64,7 @@ func run() -> void:
 	await _t_modulo_compactas()
 	_t_branas()
 	await _t_modulo_branas()
+	await _t_fase7()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
 	get_tree().quit(1 if fail > 0 else 0)
@@ -912,3 +913,139 @@ func _t_modulo_branas() -> void:
 	check(bm.cargar({"tipo": "X", "gs": 0.3, "p": 2, "pos": [0.0]}) != "" and bm.cargar({"tipo": "IIA", "gs": 0.3, "p": 3, "pos": [0.0]}) != ""
 		and bm.cargar({"tipo": "IIA", "gs": 0.3, "p": 2, "pos": [0, 1, 2, 3, 0]}) != "" and bm.cargar({"tipo": "IIA", "gs": 5.0, "p": 2, "pos": [0.0]}) != "",
 		"D-branas: estados no válidos se rechazan (tipo, D3 en la IIA, más de 4 branas, g_s)")
+
+# --- Fase 7: calidad, accesibilidad y guardado --------------------------------------------
+
+func _luminancia(c: Color) -> float:
+	var lin := func(v: float) -> float: return v / 12.92 if v <= 0.04045 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * lin.call(c.r) + 0.7152 * lin.call(c.g) + 0.0722 * lin.call(c.b)
+
+## Razón de contraste WCAG 2 entre dos colores (1 a 21).
+func _contraste(a: Color, b: Color) -> float:
+	var la := _luminancia(a)
+	var lb := _luminancia(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+func _t_fase7() -> void:
+	check(not lab.usar_prefs and not lab.reducir_movimiento and not lab.navegacion_teclado,
+		"Ajustes: en las pruebas el laboratorio no lee los ajustes guardados por el usuario")
+	var sin_rd := RenderingServer.get_rendering_device() == null
+	var recomendado := GraphicsProfiles.recommend_profile()
+	check(sin_rd == (recomendado == GraphicsProfiles.Profile.BAJO),
+		"Calidad: el perfil recomendado es «Bajo» solo sin RenderingDevice (aquí: %s, GPU «%s»)" % [GraphicsProfiles.profile_name(recomendado), GraphicsProfiles.adapter_name])
+	var previo := GraphicsProfiles.current_profile
+	var puntos := []
+	var cuerdas := []
+	for perfil in [GraphicsProfiles.Profile.BAJO, GraphicsProfiles.Profile.MEDIO, GraphicsProfiles.Profile.ALTO, GraphicsProfiles.Profile.ULTRA]:
+		lab.elegir_perfil(perfil)
+		lab.open_module("hidrogeno")
+		await get_tree().process_frame
+		puntos.append(lab.module.puntos)
+		lab.open_module("cuerdas")
+		await get_tree().process_frame
+		cuerdas.append(lab.module.n_cuerdas)
+	var msaa_bajo := GraphicsProfiles.SETTINGS[GraphicsProfiles.Profile.BAJO]["msaa"]
+	lab.elegir_perfil(GraphicsProfiles.Profile.BAJO)
+	var vp_bajo := lab.get_viewport().msaa_3d == msaa_bajo and lab.get_viewport().scaling_3d_scale < 1.0
+	lab.elegir_perfil(previo)
+	check(puntos == [15000, 30000, 60000, 60000] and cuerdas == [250, 500, 1000, 1000] and vp_bajo,
+		"Calidad Bajo/Medio/Alto/Ultra: el hidrógeno abre con %s puntos y las cuerdas con %s; en Bajo, sin MSAA y a menos resolución" % [str(puntos), str(cuerdas)])
+
+	# Reducir movimiento: el módulo abre en pausa y la cámara no se anima.
+	if not lab.playing:
+		lab.toggle_play()
+	lab.set_ajustes({"reducir_movimiento": true}, false)
+	lab.open_module("cuerdas")
+	await get_tree().process_frame
+	var en_pausa := not lab.playing and lab.cam.damping >= 1000.0
+	lab.set_ajustes({"reducir_movimiento": false}, false)
+	check(en_pausa and lab.cam.damping == 9.0, "Reducir movimiento: el módulo abre en pausa y la cámara salta sin animarse; al quitarlo, vuelve la amortiguación")
+	if not lab.playing:
+		lab.toggle_play()
+
+	# Navegación por teclado: los controles toman foco, lo muestran y Tab tiene a dónde ir.
+	lab.set_ajustes({"navegacion_teclado": true}, false)
+	var sliders := lab.params_box.find_children("*", "HSlider", true, false)
+	var primero := lab.modules_box.get_child(0) as Control
+	var siguiente := primero.find_next_valid_focus()
+	var con_foco := not sliders.is_empty() and (sliders[0] as Control).focus_mode == Control.FOCUS_ALL \
+		and (sliders[0] as Control).has_theme_stylebox_override("focus") and primero.focus_mode == Control.FOCUS_ALL
+	var tab_ok := siguiente != null and siguiente != primero
+	var casilla_al_dia: bool = (lab._casillas_ajustes["navegacion_teclado"] as CheckBox).button_pressed
+	lab.set_ajustes({"navegacion_teclado": false}, false)
+	tab_ok = tab_ok and casilla_al_dia and not (lab._casillas_ajustes["navegacion_teclado"] as CheckBox).button_pressed
+	check(con_foco and tab_ok and (sliders[0] as Control).focus_mode == Control.FOCUS_NONE,
+		"Navegación por teclado: botones y deslizadores toman foco con borde visible y Tab pasa al siguiente control; apagada, no roban los atajos")
+
+	# Los ajustes se guardan y se vuelven a leer (en un archivo de prueba: el del usuario no se toca).
+	var ruta_usuario := MathLab.ruta_prefs
+	MathLab.ruta_prefs = "user://mechaforge_lab_prueba.json"
+	lab.set_ajustes({"reducir_movimiento": true, "navegacion_teclado": true})
+	lab.set_ajustes({"reducir_movimiento": false, "navegacion_teclado": false}, false)
+	lab._cargar_prefs()
+	var leidos := lab.ajustes()
+	var archivo = JSON.parse_string(FileAccess.get_file_as_string(MathLab.ruta_prefs))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(MathLab.ruta_prefs))
+	MathLab.ruta_prefs = "user://no-existe-prueba.json"
+	lab._cargar_prefs()                 # sin archivo: se quedan los valores actuales
+	var sin_archivo := lab.ajustes()
+	MathLab.ruta_prefs = ruta_usuario
+	lab.set_ajustes({"reducir_movimiento": false, "navegacion_teclado": false}, false)
+	check(leidos == {"reducir_movimiento": true, "navegacion_teclado": true} and archivo == leidos and sin_archivo == leidos,
+		"Ajustes: se guardan en user://mechaforge_lab.json y se vuelven a leer; sin archivo, no cambia nada")
+
+	# Contraste WCAG: texto ≥ 4,5:1 y símbolos sueltos ≥ 3:1 frente al fondo más claro de los paneles.
+	var fondo := Color(0.14, 0.16, 0.19)
+	var peor := 21.0
+	var donde := ""
+	var revisados := 0
+	for c in lab.ui.find_children("*", "Control", true, false):
+		var col: Color
+		var texto := ""
+		if c is Label:
+			col = c.get_theme_color("font_color")
+			texto = c.text
+		elif c is Button and not c.disabled:
+			col = c.get_theme_color("font_color")
+			texto = c.text
+		elif c is RichTextLabel:
+			col = c.get_theme_color("default_color")
+			texto = c.get_parsed_text()
+		else:
+			continue
+		if texto.strip_edges() == "":
+			continue
+		revisados += 1
+		var minimo := 3.0 if texto.strip_edges().length() <= 2 else 4.5
+		var r := _contraste(col, fondo) / minimo
+		if r < peor:
+			peor = r
+			donde = "«%s» %.2f:1" % [texto.strip_edges().left(30), _contraste(col, fondo)]
+	check(peor >= 1.0 and revisados > 50, "Contraste: los %d textos del laboratorio cumplen WCAG AA frente al fondo de los paneles (el más justo: %s)" % [revisados, donde])
+	# Controles (WCAG 1.4.11): la casilla vacía se tiene que ver, ≥ 3:1 frente al fondo.
+	var casillas := lab.ui.find_children("*", "CheckBox", true, false)
+	var casilla_peor := 21.0
+	for c in casillas:
+		var im: Image = (c as CheckBox).get_theme_icon("unchecked").get_image()
+		var mejor := 1.0
+		for y in im.get_height():
+			for x in im.get_width():
+				var px := im.get_pixel(x, y)
+				if px.a > 0.5:
+					mejor = maxf(mejor, _contraste(px, fondo))
+		casilla_peor = minf(casilla_peor, mejor)
+	check(not casillas.is_empty() and casilla_peor >= 3.0,
+		"Contraste: las %d casillas del laboratorio se ven vacías y marcadas (borde %.1f:1 frente al panel; WCAG pide 3:1)" % [casillas.size(), casilla_peor])
+
+	# Guardado de los 8 módulos: estado() → cargar() → estado() da lo mismo (regresión del esquema).
+	var malos := []
+	for m in MathLab.MODULES:
+		if int(m["pilar"]) != 4:
+			continue
+		lab.open_module(m["id"])
+		await get_tree().process_frame
+		var antes: Dictionary = lab.module.estado()
+		var err: String = lab.module.cargar(antes.duplicate(true))
+		if err != "" or JSON.stringify(lab.module.estado()) != JSON.stringify(antes):
+			malos.append("%s%s" % [m["id"], (": " + err) if err != "" else ""])
+	check(malos.is_empty(), "Guardado: el estado de los 8 módulos de física moderna se carga y queda igual%s" % ("" if malos.is_empty() else " (falla: %s)" % ", ".join(malos)))

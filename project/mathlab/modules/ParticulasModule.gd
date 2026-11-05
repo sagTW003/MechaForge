@@ -55,6 +55,7 @@ func view() -> Dictionary: return {"target": Vector3.ZERO, "dist": 8.0, "yaw": -
 func setup() -> void:
 	mp = Fisica.Constantes()["mp_me"]
 	gpu = GpuCompute.create()
+	n_cargas = mini([500, 1000, 2000][calidad()], n_max())
 	var sm := SphereMesh.new()
 	sm.radius = 1.0
 	sm.height = 2.0

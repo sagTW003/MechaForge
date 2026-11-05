@@ -39,6 +39,7 @@ func uses_time() -> bool: return true
 func view() -> Dictionary: return {"target": Vector3(0, 0.6, 0), "dist": 7.0, "yaw": -25.0, "pitch": -18.0}
 
 func setup() -> void:
+	n_cuerdas = [250, 500, 1000][calidad()]
 	var sm := SphereMesh.new()
 	sm.radius = 1.0
 	sm.height = 2.0
@@ -311,6 +312,8 @@ func info() -> String:
 		"bosones + fermiones" if teoria == "super" else "polarizaciones de los %d osciladores transversales" % (dim - 2)]
 	s += "\nEspectro: " + ", ".join(range(4).map(func(k): return "α′M² = %s (%d)" % [str(snappedf(Fisica.StringAlphaM2(teoria, cuerda, k), 0.01)), degeneracion(k)]))
 	s += "\nTensión T = 1/(2πα′) = %.4f · ℓ_s = √α′ = %.3f" % [1.0 / (TAU * alpha), sqrt(alpha)]
+	if vista == 1:
+		s += "\nColores de «muchas cuerdas» (nivel N): rojo 0 (taquión), cian 1, verde 2, amarillo 3, violeta 4 o más."
 	return s
 
 func metricas() -> Dictionary:

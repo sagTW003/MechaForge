@@ -60,6 +60,9 @@ func _ready() -> void:
 
 ## Recomienda un perfil según la GPU detectada (heurística por nombre de adaptador).
 func recommend_profile() -> int:
+	# Sin RenderingDevice (renderizador de compatibilidad o sin GPU): ni cómputo en GPU ni efectos caros.
+	if RenderingServer.get_rendering_device() == null:
+		return Profile.BAJO
 	var n := adapter_name.to_lower()
 	# Gama alta dedicada.
 	if n.contains("rtx") or n.contains("radeon rx") or n.contains("arc a"):

@@ -214,6 +214,10 @@ func _shot(ua: PackedStringArray) -> void:
 			if (bt as Button).text == "⌨":
 				(bt as Button).button_pressed = true
 				break
+	if "ajustes" in extra:
+		lab.settings_panel.visible = true
+		lab.set_ajustes({"navegacion_teclado": true}, false)
+		(lab.modules_box.get_child(0) as Control).grab_focus()
 	if "superior" in extra:
 		lab.set_view(LabCamera.ViewMode.SUPERIOR)
 	if "iso" in extra:

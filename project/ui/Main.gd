@@ -5834,6 +5834,8 @@ func _update_dmm_ui() -> void:
 var math_lab: Node = null
 ## Módulo del laboratorio y su estado (MathLab.snapshot), guardados en el proyecto.
 var lab_state: Dictionary = {}
+## Perfil gráfico al entrar al laboratorio (allí se puede cambiar; al volver se aplica también al entorno).
+var _perfil_al_abrir_lab: int = -1
 
 ## Abre el Laboratorio matemático: MechaForge sale del árbol (conserva todo su
 ## estado: proyecto, cámara, paneles) y el laboratorio ocupa la ventana.
@@ -5846,6 +5848,9 @@ func _open_math_lab(start_module: String = "") -> void:
 		_set_probe_mode(false)
 	math_lab = load("res://mathlab/MathLab.gd").new()
 	math_lab.main_scene = self
+	_perfil_al_abrir_lab = GraphicsProfiles.current_profile
+	# En las pruebas y capturas («mf…», salvo abrir el laboratorio con «mflab»), sin los ajustes guardados.
+	math_lab.usar_prefs = not Array(OS.get_cmdline_user_args()).any(func(a): return str(a).begins_with("mf") and a != "mflab")
 	if start_module == "" and lab_state.has("modulo"):
 		start_module = str(lab_state["modulo"])
 	if start_module != "":
@@ -5902,6 +5907,9 @@ func _swap_from_lab() -> void:
 		add_child(tool_server)
 	tree.current_scene = self
 	camera.make_current()
+	if GraphicsProfiles.current_profile != _perfil_al_abrir_lab:
+		GraphicsProfiles.apply_profile(GraphicsProfiles.current_profile, world_env.environment, get_viewport())
+		_refresh_profile_option()
 	Config.notify("De vuelta en MechaForge.", 3.0)
 
 ## --- API del laboratorio (SimulatorApi → LabApi). No tocan el proyecto. ---

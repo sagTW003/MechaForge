@@ -31,6 +31,7 @@ func uses_time() -> bool: return true
 func view() -> Dictionary: return {"target": Vector3.ZERO, "dist": 7.5, "yaw": -30.0, "pitch": -24.0}
 
 func setup() -> void:
+	puntos = [15000, 30000, 60000][calidad()]
 	mat = ShaderMaterial.new()
 	mat.shader = SHADER
 	register_clip(mat)

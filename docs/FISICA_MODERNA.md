@@ -271,3 +271,48 @@ se calculan. La rejilla y la forma de las branas son ilustrativas: escalan como 
 (∝ g_s por brana, ∝ g_s²·M por cuerda) pero no son la solución de supergravedad. La
 «materia exótica» del encargo son los estados de modos superpuestos de `cuerdas` y las
 cuerdas estiradas de `branas`, no una geometría nueva del espacio-tiempo.
+
+## 13. Fase 7 (optimización, accesibilidad, documentación y verificación): hecha
+
+- **Optimización**: el kernel de Coulomb (`kernels/coulomb.glsl`) lee las cargas por bloques
+  de 64 en memoria compartida. Medido en la RTX 5060: 10 000 cargas de 1,67 a **0,97 ms**
+  (subida, cálculo y lectura) y el plasma de 10 000 cargas de 70 a **79 FPS** (física de 11,9
+  a 9,8 ms por fotograma); la GPU sigue coincidiendo con C# (error 1,5·10⁻⁵).
+- **Degradación**: la calidad es el perfil de MechaForge (`rendering/GraphicsProfiles.gd`),
+  que ahora recomienda «Bajo» sin `RenderingDevice`. En el laboratorio, «⚙ Ajustes» lo cambia
+  (antialiasing y resolución de la ventana; el entorno del laboratorio no se toca) y los
+  módulos pesados abren con una carga acorde (`LabModule.calidad()`): hidrógeno 15 000 /
+  30 000 / 60 000 puntos, partículas 500 / 1000 / 2000 cargas, cuerdas 250 / 500 / 1000. Al
+  volver a MechaForge, el perfil elegido se aplica también a su entorno.
+- **Accesibilidad** (se guarda en `user://mechaforge_lab.json`; las pruebas no lo leen):
+  - *Reducir movimiento*: los módulos abren en pausa y la cámara salta sin animarse.
+  - *Navegación por teclado*: botones, casillas, listas y deslizadores toman foco con borde
+    amarillo; Tab / Mayús+Tab, Espacio o Intro y flechas. Apagada por defecto: con foco, un
+    clic dejaría Espacio pulsando el botón en vez de pausar.
+  - *Contraste*: una prueba recorre los 122 textos del laboratorio; el más justo da 5,4:1
+    frente al fondo más claro de los paneles (WCAG AA pide 4,5:1).
+  - *Casillas*: el tema dibujaba la casilla vacía casi del color del panel; ahora tienen
+    borde claro (≥ 3:1, WCAG 1.4.11) y la marcada va rellena (se distinguen también por la forma).
+  - *No solo color*: el nivel de fidelidad va en palabras; las cargas, la fase de ψ y las
+    trazas tienen su valor en el tooltip o en una etiqueta; ahora además cada quark dice su
+    carga de color («u (rojo)») y «muchas cuerdas» trae la leyenda de colores por nivel.
+
+### Criterios de aceptación
+
+| Criterio | Evidencia |
+|---|---|
+| La app sigue funcionando sin regresiones | `tools/verificar.ps1`: las 13 suites en verde (956 pruebas) |
+| Módulos con carga diferida, integrados con la navegación y el estado | Cada módulo se carga al abrirlo (`load(ruta)` en `open_module`); pilar del Laboratorio; estado en el `.mforge` |
+| 60 FPS con la carga objetivo (medido) | RTX 5060: 10 000 cargas a 79 FPS; 5000 cuerdas a 120 FPS (tope del monitor) |
+| Pruebas físicas de referencia con tolerancias | `mffisica`: E₁ = −13,605693 eV (10⁻⁹), normas de ψ (10⁻¹²), GPU = C# (1,5·10⁻⁵), Kepler (deriva 6·10⁻⁷), batería sin interacción (3·10⁻¹³), degeneraciones de cuerdas (exactas), dualidad T (2·10⁻¹⁶), raíces E8/D16⁺ (exactas) |
+| Fidelidad declarada en código y en la UI | `fidelidad()` de cada módulo y panel «📐 Modelo y límites»; una prueba exige nivel, modelo y unidades |
+| Cero errores de lint y de compilación; build de producción | gdlint sin problemas, `dotnet build` sin avisos, `--import` sin errores, ejecutable exportado con las pruebas en verde |
+| Sin fugas tras montar y desmontar 20 veces | Prueba de los 8 módulos (324 → 324 nodos) y ningún «Leaked» en la salida |
+| Escenas guardables y acciones reversibles | Estado del laboratorio validado en el `.mforge`; los 8 módulos guardan y cargan su estado sin cambios (prueba); deshacer/rehacer con Ctrl+Z / Ctrl+Y |
+
+**Pendiente del alcance del encargo**: la ecuación de Schrödinger dependiente del tiempo en 3D
+(paquetes, superposición y medición con colapso) estaba prevista (esquema de Visscher 3D, §5)
+y no se hizo en las fases 3 y 4: el hidrógeno muestra estados estacionarios y el
+entrelazamiento se ve en la batería (|r| < 1). Tampoco hay arrastrar y soltar en el arenero
+de materia (se pulsa para añadir), lector de pantalla verificado ni lectura del «reducir
+movimiento» del sistema operativo.

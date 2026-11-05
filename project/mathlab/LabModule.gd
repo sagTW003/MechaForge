@@ -64,6 +64,10 @@ func finito() -> bool: return true
 func fixed_dt() -> float: return 0.0
 ## Recursos que el árbol no libera (RIDs de GPU): se llama al desmontar el módulo.
 func liberar() -> void: pass
+## Calidad del perfil gráfico (0 baja, 1 media, 2 alta o ultra; GraphicsProfiles): los módulos
+## pesados escalan con ella sus valores por defecto, que el usuario puede subir con sus controles.
+func calidad() -> int:
+	return mini(GraphicsProfiles.current_profile, 2)
 ## Antes de un cambio del usuario: guarda el estado para deshacer.
 func remember() -> void:
 	if lab:
