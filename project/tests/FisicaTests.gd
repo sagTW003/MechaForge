@@ -1199,6 +1199,19 @@ func _t_modulo_schrodinger3d() -> void:
 		"Schrödinger 3D: medir «por qué rendija» borra la interferencia, medir la posición marca el punto y la estadística de Born se compara con |ψ|²")
 	check(sm.cargar({"preset": 9}) != "" and sm.cargar({"preset": 0, "k0": 9.0}) != "",
 		"Schrödinger 3D: estados no válidos se rechazan")
+	sm.cargar({"preset": 0})
+	var st: Dictionary = LabApi.state(lab)
+	var lectura: Dictionary = LabApi.sample(lab, -5.0, 0.0)
+	check((st["fidelidad"] as Array).size() == 4 and str(lectura.get("lectura", "")).contains("|ψ|²") and str(lectura.get("lectura", "")).contains("(-5.00"),
+		"API: lab_get_state trae el nivel de fidelidad de cada subsistema y lab_sample(x, y) lee |ψ|² en a₀ (la columna z en x = −5)")
+	# La receta de la skill «mechaforge-laboratorio», paso a paso por la API.
+	var r1: Dictionary = LabApi.set_param(lab, "Estado", "Doble rendija")
+	var r2: Dictionary = LabApi.set_param(lab, "Lado según el eje", "y")
+	var r3: Dictionary = LabApi.set_param(lab, "Medir lado", null)
+	var r4: Dictionary = LabApi.set_param(lab, "Regla de Born", null)
+	check(not r1.has("error") and not r2.has("error") and not r3.has("error") and not r4.has("error") and sm.preset == 5 and sm.eje == 1
+		and sm.medidas == 1 and sm.info().contains("Regla de Born"),
+		"API: la receta de la skill (doble rendija, medir el lado según y, regla de Born) funciona con lab_set_param")
 	if "bench" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
 		sm.cargar({"preset": 1})
 		if not lab.playing:

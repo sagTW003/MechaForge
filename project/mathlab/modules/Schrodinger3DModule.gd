@@ -45,6 +45,8 @@ func finito() -> bool: return sim == null or sim.Finito()
 
 func setup() -> void:
 	position = Vector3(0, ALTO, 0)
+	scale_xy = LADO / LADO_AU
+	scale_z = scale_xy
 	n = [32, 48, 64][calidad()]
 	sim = load("res://mathlab/fisica/Schrodinger3D.cs").new()
 	mat = ShaderMaterial.new()
@@ -124,14 +126,14 @@ func demo(extra: PackedStringArray) -> void:
 	elif "rendija" in extra:
 		cargar({"preset": 5, "k0": 2.0})
 
-# --- Coordenadas: física (x, y, z) en a₀ = mundo (x, z, y)·LADO_AU/LADO --------------------
+# --- Coordenadas: las del laboratorio (to_world / to_math) con 1 a₀ = LADO/LADO_AU del mundo -----
+# Así lab_sample(x, y) va en a₀ y lee la columna z de ese punto (api_points por defecto).
 
 func _fisica(w: Vector3) -> Vector3:
-	var p := to_local(w) * (LADO_AU / LADO)
-	return Vector3(p.x, p.z, p.y)
+	return to_math(to_local(w))
 
 func _mundo(f: Vector3) -> Vector3:
-	return to_global(Vector3(f.x, f.z, f.y) * (LADO / LADO_AU))
+	return to_global(to_world(f.x, f.y, f.z))
 
 ## El punto del rayo dentro del cubo con más |ψ|² (para el tooltip).
 func pick(origin: Vector3, dir: Vector3):

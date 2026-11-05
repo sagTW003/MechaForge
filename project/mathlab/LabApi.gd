@@ -44,6 +44,8 @@ static func state(lab: MathLab) -> Dictionary:
 		"velocidad": lab.speed,
 		"vista": ["perspectiva", "superior", "isometrica"][lab.cam.view_mode],
 		"perturbar": m.perturb_hint(),
+		# Nivel de cada subsistema (exacto / aproximado / ilustrativo): para no presentar como predicción lo ilustrativo.
+		"fidelidad": m.fidelidad(),
 		"puntos_criticos": crit,
 		"parametros": public_params(lab),
 	}

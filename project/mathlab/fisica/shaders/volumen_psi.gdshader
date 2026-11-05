@@ -2,7 +2,8 @@ shader_type spatial;
 // |ψ|² en 3D por trazado de rayos (raymarching) dentro de un cubo: cada muestra aporta
 // opacidad según la densidad y el color es la fase de ψ en la rueda del laboratorio.
 // Textura 3D (Schrodinger3D.Volumen): R = √(ρ/ρ_máx), G y B = cos y sin de arg ψ, A = V/V_máx.
-// Ejes: física (x, y, z) = mundo (x, z, y). Las paredes del potencial se ven grises.
+// Ejes como en todo el laboratorio (LabModule.to_world): física (x, y, z) = mundo (x, z, −y).
+// Las paredes del potencial se ven grises.
 render_mode unshaded, cull_front, depth_draw_never, blend_mix, shadows_disabled;
 #include "res://mathlab/shaders/common.gdshaderinc"
 
@@ -40,7 +41,7 @@ void fragment() {
 		if (clipped((MODEL_MATRIX * vec4(p, 1.0)).xyz)) {
 			continue;
 		}
-		vec4 v = texture(volumen, vec3(p.x, p.z, p.y) / lado + 0.5);
+		vec4 v = texture(volumen, vec3(p.x, -p.z, p.y) / lado + 0.5);
 		float a = 1.0 - exp(-opacidad * v.r * v.r * paso);
 		float pared = 1.0 - exp(-6.0 * v.a * paso);
 		vec3 col = hue_color(atan(v.b * 2.0 - 1.0, v.g * 2.0 - 1.0));

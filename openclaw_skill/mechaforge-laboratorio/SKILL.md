@@ -1,6 +1,6 @@
 ---
 name: mechaforge-laboratorio
-description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — graficar funciones, curvas, superficies y datos (lab_plot, también lo que venga en una imagen o un PDF), abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración y derivación numéricas (18 cuadraturas y 14 derivadas), integral doble, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática con datos.
+description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw — graficar funciones, curvas, superficies y datos (lab_plot, también lo que venga en una imagen o un PDF), abrir módulos (ondas, calor, Schrödinger, ecuaciones no lineales con 15 métodos, sistemas lineales y no lineales, optimización, interpolación 1D y 3D, integración y derivación numéricas (18 cuadraturas y 14 derivadas), integral doble, EDP numérica, coloreado de dominio, mapeos conformes, fractales, campos vectoriales, Gauss/Stokes) y de física moderna (átomo de hidrógeno, cargas con Coulomb en la GPU, desintegraciones del Modelo Estándar, batería cuántica, construcción de materia, cuerdas y modos normales, dimensiones compactas y dualidad T, D-branas y g_s, Schrödinger 3D con superposición y medición), cambiar funciones y parámetros, comparar métodos, leer resultados y explicar la matemática y la física con datos y con su nivel de fidelidad.
 ---
 
 # MechaForge — Laboratorio matemático 3D
@@ -9,13 +9,16 @@ El laboratorio muestra en 3D, en tiempo real:
 - ecuaciones en derivadas parciales;
 - métodos numéricos;
 - análisis complejo;
-- campos vectoriales.
+- campos vectoriales;
+- física moderna: partículas, mecánica cuántica y teoría de cuerdas.
 
 Úsalo cuando el humano quiera **ver o entender** algo de matemáticas, por ejemplo:
 - "enséñame el efecto túnel";
 - "¿dónde tiene polos esta función?";
 - "¿por qué diverge Jacobi?";
-- "compara Newton con bisección".
+- "compara Newton con bisección";
+- "¿qué pasa si mido por qué rendija pasó el electrón?";
+- "¿qué partícula es este modo de la cuerda?".
 
 MechaForge tiene que estar abierto. Se controla con la misma API local que la skill
 **mechaforge**: JSON-RPC 2.0 en `http://127.0.0.1:18790`, solo en esta máquina. Si
@@ -45,10 +48,10 @@ mf lab_open @{modulo="schrodinger"}
 
 | Método | Parámetros | Para qué |
 |---|---|---|
-| `lab_list_modules` | — | Los 18 módulos: `id`, pilar, nombre y descripción |
+| `lab_list_modules` | — | Los 27 módulos: `id`, pilar, nombre y descripción |
 | `lab_plot` | ver abajo | Dibuja en el módulo `graficas` (lo abre si hace falta) y devuelve `marcas` (raíces, extremos, cortes) e `info`. Es lo más rápido para «grafica esto» |
 | `lab_open` | `{"modulo":"id"}` | Abre el laboratorio en ese módulo, o cambia de módulo si ya está abierto. Si estaba cerrado responde `"status":"abriendo"`: espera 1 s y llama a `lab_get_state` |
-| `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`) y `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) |
+| `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`), `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) y `fidelidad` (en física moderna: `subsistema`, `nivel`, `modelo`, `ecuaciones`, `unidades`, `referencias`) |
 | `lab_set_param` | `{"nombre":"…","valor":…}` | Mueve un control igual que el humano (ver abajo) |
 | `lab_control` | `{"accion":"…"}` | Controles generales (ver abajo) |
 | `lab_sample` | `{"x":…,"y":…}` | Lectura en un punto; es el mismo texto que el tooltip flotante. Solo lectura |
@@ -90,8 +93,14 @@ Acciones de `lab_control`:
   «🤖 OpenClaw: …».
 - Lee `lab_get_state` antes de cambiar nada: los nombres, rangos y opciones salen de
   ahí. No los inventes.
-- Los módulos de EDP evolucionan en el tiempo (`evoluciona_en_el_tiempo: true`). Tras
-  un cambio, espera 1–4 s (`sleep 3`) antes de leer `info` o `lab_sample`.
+- Los módulos de EDP y varios de física moderna evolucionan en el tiempo
+  (`evoluciona_en_el_tiempo: true`). Tras un cambio, espera 1–4 s (`sleep 3`) antes de
+  leer `info` o `lab_sample`.
+- **En física moderna di siempre el nivel de fidelidad** de lo que explicas (campo
+  `fidelidad` de `lab_get_state`): «exacto», «aproximado» o «ilustrativo». Lo ilustrativo
+  (la forma de la rejilla de las D-branas, la proyección de la Calabi-Yau, la opacidad del
+  volumen…) no es una predicción física: no lo presentes como tal. Las unidades y las
+  fuentes también van ahí.
 - Explica con los números reales de `info`, `puntos_criticos` y `lab_sample`, y
   relaciónalos con la teoría (orden de convergencia, estabilidad, índice de un polo…).
 - `x, y` de `lab_sample` / `lab_perturb` son las coordenadas del tooltip de cada
@@ -170,6 +179,15 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `fractales` | Mandelbrot y Julia en relieve | Iteraciones máximas, Relieve, c de Julia, Vista inicial | x + iy como c (Mandelbrot) y z₀ (Julia) · elige la c de Julia |
 | `campo` | Flechas, líneas de corriente RK4, partículas, ∇·F, ∇×F, equilibrios | Campo, P, Q, R (x, y, z) =, Usar gradiente, φ =, y casillas de flechas, líneas, partículas, divergencia y rotacional | (x, y) en el plano z = c |
 | `teoremas` | Gauss (flujo frente a ∭∇·F) y Stokes (circulación frente a ∬∇×F·n) | Teorema, Campo F, Radio, Centro x/y/z, Inclinación θ, Azimut φ | (x, y, 0) |
+| `hidrogeno` | Orbitales exactos ψₙₗₘ como nube de \|ψ\|² con la fase en color; Eₙ, ⟨r⟩, nodos y degeneración | n (nivel de energía), l (momento angular), m (proyección en z), Puntos de la nube, Girar la fase | (x, y) en a₀ del plano z = 0: \|ψ\|² y arg ψ |
+| `particulas` | Miles de cargas clásicas con Coulomb (y Lorentz con B) en la GPU: plasma o átomo clásico; energía y momento conservados | Preset, Cargas N (plasma), Suavizado ε, Paso Δt, Caja con paredes, Campo B según z, Líneas de campo | (x, y) en a₀: la carga más cercana |
+| `desintegraciones` | Cámara de burbujas: partículas del PDG 2026 con vidas medias y fracciones reales, trazas en B y conservación de carga, B, L y energía en cada vértice | Partícula, Momento p (GeV/c), Campo B (T), Seguir la cadena, Disparar otra, Ficha | (x, y) en m |
+| `bateria` | Cadena de hasta 12 espines: carga, almacenamiento y descarga; energía, potencia, ergotropía global y local, esferas de Bloch (\|r\| < 1: entrelazados) | Espines N, Separación ω₀, Cargador g, Interacción J, Anisotropía Δ, Ciclo automático, Duración de la carga, Duración del almacenamiento | — |
+| `materia` | Construir hadrones (potencial de Cornell), núcleos que se desintegran, átomos e iones y moléculas; si algo no se puede formar, dice qué ley lo impide | Botones de la paleta (quarks, nucleones, e⁻, átomos), Átomo (Z), Añadir el átomo, Desintegrar, Separación de los quarks, αₛ, σ, m_c del cuarkonio | — |
+| `cuerdas` | Cuerda abierta o cerrada con sus modos normales: α′M², qué partícula es (taquión, fotón, gravitón…), estados por nivel; hasta 5000 cuerdas en la GPU | Vista, Teoría (bosónica D = 26 / supercuerda D = 10), Cuerda, Estado, α′, cuantos por modo, Cuerdas en la vista «muchas» | — |
+| `compactas` | Cuerda en un toro T^k: momento n, enrollamiento w, dualidad T, simetría aumentada en R = √α′; la quíntica de Calabi-Yau (χ = −200) | Vista, Teoría, Dimensiones compactas k, Radio R, Estado, Momento n, Enrollamiento w, Osciladores N, Osciladores Ñ, Dualidad T | — |
+| `branas` | Tipos I, IIA, IIB y heteróticas; D-branas con cuerdas estiradas (M = d/2πα′), grupo gauge U(N), g_s, G₁₀ y dualidades; rejilla que se hunde con la energía | Tipo, Acoplamiento g_s, Branas (Dp), Número de branas, Brana elegida, Posición x, Juntar todas, Separar | — |
+| `schrodinger3d` | ψ(x, y, z, t) con el esquema de Visscher: paquete libre, dos paquetes que chocan, oscilador, efecto túnel y doble rendija; medir la posición o el lado (regla de Born y colapso) | Estado, k₀, Anchura σ, Barrera V₀, Oscilador ω, Resolución del detector σ, Lado según el eje, Medir posición, Medir lado, Regla de Born | (x, y) en a₀: el máximo de \|ψ\|² a lo largo de z |
 
 ## Recetas
 
@@ -219,6 +237,30 @@ sleep 4; mf lab_get_state   # info → «máx. tras el lanzamiento T = 63.4 %»
 Repite con una anchura de 1.0 (T ≈ 26 %): la transmisión cae de forma exponencial con
 la anchura. Usa el máximo `T`, no la lectura instantánea: el paquete transmitido
 acaba absorbido en el borde del dominio.
+
+**Medición y colapso** (Schrödinger 3D):
+
+```bash
+mf lab_open '{"modulo":"schrodinger3d"}'
+mf lab_set_param '{"nombre":"Estado","valor":"Doble rendija"}'
+sleep 4; mf lab_get_state                                    # info: norma, ⟨r⟩, P(y > 0)…
+mf lab_set_param '{"nombre":"Lado según el eje","valor":"y"}'
+mf lab_set_param '{"nombre":"Medir lado"}'                 # «por qué rendija»: la interferencia desaparece
+mf lab_set_param '{"nombre":"Regla de Born"}'              # 2000 muestras frente a |ψ|²
+```
+
+El resultado de una medición sale al azar con la probabilidad de Born (es la semilla del
+laboratorio): explícalo así, no como un valor fijo. Medir cambia ψ (colapso).
+
+**Dualidad T:**
+1. `lab_open` compactas; `Radio R` = 1.6.
+2. Lee la masa en `info` y pulsa `Dualidad T`: R pasa a α′/R = 0.625, n y w se
+   intercambian y la masa no cambia.
+3. Con `Radio R` = 1 y n = w = 1, N = 1, `info` anuncia la simetría aumentada SU(2) × SU(2).
+
+**Desintegraciones:** `lab_open` desintegraciones, elige `Partícula` entre las `opciones`
+que da `lab_get_state` y pulsa `Disparar otra`; `info` lista las trazas y la conservación
+de carga, número bariónico, leptónico y energía en cada vértice.
 
 **Ceros y polos:**
 1. `lab_open` coloreado.
