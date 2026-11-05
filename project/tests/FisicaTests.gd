@@ -64,6 +64,8 @@ func run() -> void:
 	await _t_modulo_compactas()
 	_t_branas()
 	await _t_modulo_branas()
+	_t_schrodinger3d()
+	await _t_modulo_schrodinger3d()
 	await _t_fase7()
 	await _t_pilar()
 	print("[TEST] Física moderna: %d OK, %d FALLOS" % [ok, fail])
@@ -1048,4 +1050,163 @@ func _t_fase7() -> void:
 		var err: String = lab.module.cargar(antes.duplicate(true))
 		if err != "" or JSON.stringify(lab.module.estado()) != JSON.stringify(antes):
 			malos.append("%s%s" % [m["id"], (": " + err) if err != "" else ""])
-	check(malos.is_empty(), "Guardado: el estado de los 8 módulos de física moderna se carga y queda igual%s" % ("" if malos.is_empty() else " (falla: %s)" % ", ".join(malos)))
+	check(malos.is_empty(), "Guardado: el estado de los %d módulos de física moderna se carga y queda igual%s" % [MathLab.MODULES.filter(func(m): return int(m["pilar"]) == 4).size(), "" if malos.is_empty() else " (falla: %s)" % ", ".join(malos)])
+
+# --- Fase 8: Schrödinger 3D y medición ---------------------------------------------------
+
+func _s3d(n: int) -> RefCounted:
+	var s: RefCounted = load("res://mathlab/fisica/Schrodinger3D.cs").new()
+	s.Setup(n, 20.0)
+	return s
+
+func _t_schrodinger3d() -> void:
+	# Paquete libre: el centro avanza a la velocidad de grupo de la rejilla, sin(kh)/h, y se
+	# ensancha como el exacto σ√(1 + (t/2σ²)²) en la dirección transversal.
+	var s := _s3d(64)
+	var h := 20.0 / 63.0
+	s.SetPotencial("libre", 0.0, 0.0, 0.0)
+	s.AgregarPaquete(-4.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.5, 1.0, 0.0)
+	s.Normalizar()
+	s.Iniciar(0.8)
+	var e0: float = s.Energia()
+	var pasos := int(round(5.0 / s.Dt))
+	var t0 := Time.get_ticks_usec()
+	s.Paso(pasos)
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0 / pasos
+	var t: float = s.Tiempo
+	var e: PackedFloat64Array = s.Esperado()
+	var x_red := -4.0 + sin(h) / h * t
+	var sy := 1.5 * sqrt(1.0 + pow(t / (2.0 * 1.5 * 1.5), 2))
+	check(absf(e[0] - x_red) < 0.01 * absf(x_red + 4.0) and absf(e[4] / sy - 1.0) < 0.02,
+		"Schrödinger 3D libre: ⟨x⟩ = %.3f a₀ frente a %.3f (velocidad sin(kh)/h; la del continuo da %.3f) y Δy = %.3f frente al exacto %.3f a₀" % [e[0], x_red, -4.0 + t, e[4], sy])
+	check(absf(s.Norma() - 1.0) < 1e-10 and absf(s.Energia() / e0 - 1.0) < 1e-3,
+		"Schrödinger 3D: tras %d pasos la norma de Visscher se conserva (error %s) y ⟨E⟩ también (%s relativo)" % [pasos, LabUI.sci(absf(s.Norma() - 1.0), 1), LabUI.sci(absf(s.Energia() / e0 - 1.0), 1)])
+	check(ms < 40.0, "Rendimiento: un paso de Schrödinger 3D en 64³ = 262 144 celdas en %.1f ms (C# en paralelo)" % ms)
+
+	# Oscilador: el estado coherente oscila sin ensancharse; la superposición 0 + 1 tiene
+	# ⟨x⟩ = cos(ωt)/√(2ω) y ⟨E⟩ = (E₀ + E₁)/2 = 2ω.
+	var w := 0.5
+	s.Limpiar()
+	s.SetPotencial("armonico", 0.0, 0.0, w)
+	s.AgregarPaquete(2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0 / sqrt(2.0 * w), 1.0, 0.0)
+	s.Normalizar()
+	s.Iniciar(0.8)
+	s.Paso(int(round(PI / w / s.Dt)))
+	var c: PackedFloat64Array = s.Esperado()
+	var xc := 2.0 * cos(w * s.Tiempo)
+	check(absf(c[0] - xc) < 0.04 and absf(c[3] - 1.0) < 0.03,
+		"Oscilador 3D: el estado coherente llega a ⟨x⟩ = %.3f a₀ (exacto %.3f) en media oscilación sin ensancharse (Δx = %.3f, exacto 1)" % [c[0], xc, c[3]])
+	s.Limpiar()
+	s.AgregarOscilador(0, 0, 0, w, 1.0, 0.0)
+	s.AgregarOscilador(1, 0, 0, w, 1.0, 0.0)
+	s.Normalizar()
+	s.Iniciar(0.8)
+	var e01: float = s.Energia()
+	var x0: float = (s.Esperado() as PackedFloat64Array)[0]
+	s.Paso(int(round(PI / w / s.Dt)))
+	var x1: float = (s.Esperado() as PackedFloat64Array)[0]
+	var x1_ex := cos(w * s.Tiempo) / sqrt(2.0 * w)
+	check(absf(e01 / (2.0 * w) - 1.0) < 0.01 and absf(x0 - 1.0) < 0.01 and absf(x1 - x1_ex) < 0.03,
+		"Superposición φ₀ + φ₁: ⟨E⟩ = %.4f Eₕ (exacto 2ω = %.1f) y ⟨x⟩ pasa de %.3f a %.3f a₀ (exacto %.3f)" % [e01, 2.0 * w, x0, x1, x1_ex])
+
+	# Interferencia: dos paquetes con ±k₀ en el mismo sitio dan franjas cos²(k₀x).
+	var s2 := _s3d(64)
+	s2.SetPotencial("libre", 0.0, 0.0, 0.0)
+	s2.AgregarPaquete(0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 2.0, 1.0, 0.0)
+	s2.AgregarPaquete(0.0, 0.0, 0.0, -1.5, 0.0, 0.0, 2.0, 1.0, 0.0)
+	s2.Normalizar()
+	s2.Iniciar(0.8)
+	var vientre: float = (s2.ValorEn(0.0, 0.0, 0.0) as PackedFloat64Array)[0]
+	var nodo: float = (s2.ValorEn(PI / 3.0, 0.0, 0.0) as PackedFloat64Array)[0]
+	check(nodo / vientre < 0.06, "Superposición: dos paquetes con k = ±1,5 a₀⁻¹ interfieren (|ψ|² en el nodo x = π/2k₀ es el %.1f %% del vientre)" % (100.0 * nodo / vientre))
+
+	# Regla de Born y colapso: √0,7·(paquete a la izquierda) + √0,3·(a la derecha).
+	var s3 := _s3d(48)
+	s3.SetPotencial("libre", 0.0, 0.0, 0.0)
+	s3.AgregarPaquete(-4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, sqrt(0.7), 0.0)
+	s3.AgregarPaquete(4.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, sqrt(0.3), 0.0)
+	s3.Normalizar()
+	s3.Iniciar(0.8)
+	var pmas: float = s3.ProbabilidadMas(0, 0.0)
+	var g := RandomNumberGenerator.new()
+	g.seed = 7
+	var us := PackedFloat64Array()
+	for i in 4000:
+		us.append(g.randf())
+	var pos: PackedFloat64Array = s3.Muestrear(us)
+	var mas := 0
+	for i in 4000:
+		mas += int(pos[3 * i] > 0.0)
+	var desv := sqrt(0.21 / 4000.0)
+	check(absf(pmas - 0.3) < 1e-3 and absf(mas / 4000.0 - 0.3) < 3.0 * desv,
+		"Regla de Born: P(x > 0) = %.4f (exacto 0,3) y de 4000 posiciones muestreadas, %.1f %% a la derecha (±%.1f %%)" % [pmas, 100.0 * mas / 4000.0, 300.0 * desv])
+	var lado: PackedFloat64Array = s3.MedirLado(0, 0.1)
+	# Desde la capa de celdas pegada al plano (el medio paso de Visscher reparte allí un resto), ψ está entera.
+	check(lado[0] > 0.0 and absf(s3.ProbabilidadMas(0, -0.5) - 1.0) < 1e-9 and absf(s3.Norma() - 1.0) < 1e-9,
+		"Medición de lado: salió x > 0 (P = %.3f) y ψ queda entera en esa mitad, normalizada" % lado[1])
+	var s4 := _s3d(48)
+	s4.SetPotencial("libre", 0.0, 0.0, 0.0)
+	s4.AgregarPaquete(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.5, 1.0, 0.0)
+	s4.Normalizar()
+	s4.Iniciar(0.8)
+	var r: PackedFloat64Array = s4.MedirPosicion(0.37, 0.6)
+	var tras: PackedFloat64Array = s4.Esperado()
+	var dist := Vector3(tras[0] - r[0], tras[1] - r[1], tras[2] - r[2]).length()
+	check(dist < 0.3 and tras[3] < 0.8 and absf(s4.Norma() - 1.0) < 1e-9,
+		"Colapso: tras medir la posición en (%.2f, %.2f, %.2f) a₀, ψ queda ahí (a %.2f a₀) con Δx = %.2f a₀ (era 2,5) y norma 1" % [r[0], r[1], r[2], dist, tras[3]])
+
+	# Efecto túnel: con E ≈ 1,1 Eₕ pasa más por una barrera de 1 Eₕ que por una de 2,5 Eₕ.
+	var trans := []
+	for alto in [1.0, 2.5]:
+		var st := _s3d(48)
+		st.SetPotencial("barrera", alto, 1.0, 0.0)
+		st.AgregarPaquete(-5.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 1.0, 0.0)
+		st.Normalizar()
+		st.Iniciar(0.8)
+		st.Paso(int(round(7.0 / st.Dt)))
+		trans.append(st.ProbabilidadMas(0, 0.5))
+	check(trans[0] > trans[1] and trans[1] > 0.01 and trans[0] < 0.99,
+		"Efecto túnel: transmisión %.3f con V₀ = 1 Eₕ y %.3f con V₀ = 2,5 Eₕ (E ≈ 1,1 Eₕ: pasa aunque no le alcance la energía)" % [trans[0], trans[1]])
+
+	# Con Δt por encima del límite de Visscher el cálculo diverge y se detecta.
+	var si := _s3d(32)
+	si.SetPotencial("libre", 0.0, 0.0, 0.0)
+	si.AgregarPaquete(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.5, 1.0, 0.0)
+	si.Normalizar()
+	si.Iniciar(1.2)
+	si.Paso(200)
+	check(not si.Finito(), "Estabilidad: con Δt = 1,2 veces el límite 2/E_máx la norma se dispara y Finito() lo detecta (el laboratorio pausa)")
+
+func _t_modulo_schrodinger3d() -> void:
+	lab.open_module("schrodinger3d")
+	await get_tree().process_frame
+	if not _abierto("schrodinger3d"):
+		return
+	var sm = lab.module
+	await get_tree().process_frame
+	check(sm.tex != null and sm.tex.get_width() == sm.n and sm.tex.get_depth() == sm.n and lab.info_label.text.contains("Norma"),
+		"Módulo «Schrödinger 3D»: el volumen %d³ sube a una textura 3D y la información muestra la norma" % sm.n)
+	var ok_presets := true
+	for i in sm.PRESETS.size():
+		ok_presets = ok_presets and sm.cargar({"preset": i}) == "" and sm.finito()
+	check(ok_presets, "Schrödinger 3D: los %d estados iniciales arrancan (libre, superposición, oscilador, túnel, doble rendija)" % sm.PRESETS.size())
+	sm.cargar({"preset": 5, "eje": 1})
+	sm.medir_lado()
+	var tras_lado: bool = sm.info().contains("ya no hay interferencia")
+	sm.medir_posicion()
+	sm.muestrear()
+	check(tras_lado and sm.medidas == 2 and sm.marca.visible and sm.info().contains("Regla de Born"),
+		"Schrödinger 3D: medir «por qué rendija» borra la interferencia, medir la posición marca el punto y la estadística de Born se compara con |ψ|²")
+	check(sm.cargar({"preset": 9}) != "" and sm.cargar({"preset": 0, "k0": 9.0}) != "",
+		"Schrödinger 3D: estados no válidos se rechazan")
+	if "bench" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
+		sm.cargar({"preset": 1})
+		if not lab.playing:
+			lab.toggle_play()
+		for i in 30:
+			await get_tree().process_frame
+		var t0 := Time.get_ticks_usec()
+		for i in 90:
+			await get_tree().process_frame
+		var fps := 90.0 / ((Time.get_ticks_usec() - t0) / 1e6)
+		check(fps >= 55.0, "Rendimiento: Schrödinger 3D en %d³ con el volumen en la GPU a %.0f FPS (física %.1f ms por fotograma)" % [sm.n, fps, lab.physics_ms])

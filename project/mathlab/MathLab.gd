@@ -72,6 +72,8 @@ const MODULES := [
 		"desc": "La cuerda en un toro: momento y enrollamiento, dualidad T, simetría aumentada en R = √α′ y la quíntica de Calabi-Yau."},
 	{"id": "branas", "pilar": 4, "nombre": "D-branas y acoplamiento", "ruta": "res://mathlab/modules/BranasModule.gd",
 		"desc": "Tipos I, IIA, IIB y heteróticas: D-branas con cuerdas estiradas, grupo gauge U(N), g_s y dualidades; el espacio-tiempo se curva con lo construido."},
+	{"id": "schrodinger3d", "pilar": 4, "nombre": "Schrödinger 3D y medición", "ruta": "res://mathlab/modules/Schrodinger3DModule.gd",
+		"desc": "La función de onda en 3D con el tiempo: paquetes, superposiciones, efecto túnel y doble rendija; medir la posición la hace colapsar (regla de Born)."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

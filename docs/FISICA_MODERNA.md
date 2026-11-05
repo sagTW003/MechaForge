@@ -310,9 +310,39 @@ cuerdas estiradas de `branas`, no una geometría nueva del espacio-tiempo.
 | Sin fugas tras montar y desmontar 20 veces | Prueba de los 8 módulos (324 → 324 nodos) y ningún «Leaked» en la salida |
 | Escenas guardables y acciones reversibles | Estado del laboratorio validado en el `.mforge`; los 8 módulos guardan y cargan su estado sin cambios (prueba); deshacer/rehacer con Ctrl+Z / Ctrl+Y |
 
-**Pendiente del alcance del encargo**: la ecuación de Schrödinger dependiente del tiempo en 3D
-(paquetes, superposición y medición con colapso) estaba prevista (esquema de Visscher 3D, §5)
-y no se hizo en las fases 3 y 4: el hidrógeno muestra estados estacionarios y el
-entrelazamiento se ve en la batería (|r| < 1). Tampoco hay arrastrar y soltar en el arenero
-de materia (se pulsa para añadir), lector de pantalla verificado ni lectura del «reducir
+**Lo que quedaba del alcance del encargo** (la ecuación de Schrödinger dependiente del tiempo en 3D,
+con superposición y medición) se hizo en la Fase 8. Siguen sin hacerse: arrastrar y soltar en el
+arenero de materia (se pulsa para añadir), un lector de pantalla verificado y leer el «reducir
 movimiento» del sistema operativo.
+
+## 14. Fase 8 (extra: Schrödinger 3D y medición): hecha
+
+- **Solver** (`fisica/Schrodinger3D.cs`, en doble y en paralelo; como `FieldSim`, el estado vive
+  en el objeto): i ∂ψ/∂t = −½∇²ψ + Vψ en una caja de 20 a₀ con ψ = 0 en las paredes, esquema de
+  Visscher (R en t, I en t + Δt/2), Δt = 0,8 del límite 2/E_máx, laplaciano de 7 puntos. Paquetes
+  gaussianos, estados del oscilador isótropo (Hermite), potenciales libre, armónico, barrera y doble
+  rendija. Medición de posición (regla de Born y colapso gaussiano con la resolución σ del
+  detector), de lado (proyección sobre el semiespacio que salió) y muestreo de Born sin medir.
+- **`schrodinger3d`** («Schrödinger 3D y medición»): seis estados (paquete libre, dos paquetes que
+  chocan, estado coherente, superposición φ₀ + φ₁, efecto túnel y doble rendija), botones de
+  medición y estadística de Born. |ψ|² se ve como volumen trazado con rayos en la GPU
+  (`shaders/volumen_psi.gdshader`, textura 3D RGBA8: densidad, cos y sin de la fase y la pared),
+  con la rueda de fase del laboratorio, los planos de corte y el valor exacto en el tooltip.
+  Rejilla 32³ / 48³ / 64³ según la calidad.
+- Comprobado (64³ salvo donde se dice):
+  - paquete libre: Δy = 2,235 a₀ frente al exacto 2,242; el centro avanza a sin(kh)/h (error de
+    la rejilla, 1,6 % menos que el continuo con kh = 0,32);
+  - norma de Visscher conservada con error 9·10⁻¹⁴ y ⟨E⟩ con 4·10⁻⁵ en 186 pasos;
+  - estado coherente: ⟨x⟩ = −1,998 a₀ (exacto −2) a media oscilación y Δx = 0,998 (no se
+    ensancha); superposición φ₀ + φ₁: ⟨E⟩ = 0,9962 Eₕ (exacto 2ω = 1) y ⟨x⟩ de 1,000 a −1,000;
+  - interferencia de dos paquetes con ±k₀: el nodo tiene el 0,8 % del vientre;
+  - regla de Born con 4000 muestras (30,0 % frente a 30 %), colapso de posición y de lado (48³);
+  - efecto túnel: transmisión 0,686 con V₀ = 1 Eₕ y 0,218 con 2,5 Eₕ (E ≈ 1,1 Eₕ);
+  - con Δt = 1,2 veces el límite, la inestabilidad se detecta y el laboratorio pausa.
+- **Medido en la RTX 5060**: un paso de 64³ en 2,3 ms y el módulo a **102 FPS** con el volumen.
+- Verificación completa (`tools/verificar.ps1`): 13 suites en verde, **974 pruebas**; `mffisica` 170 sin
+  ventana y 177 con ventana.
+
+**Límites**: la caja refleja (sin borde absorbente: el esquema de Visscher solo admite potenciales
+reales); el colapso es instantáneo, sin dinámica del detector ni decoherencia; se guarda la
+configuración del estado inicial, no ψ (cargar vuelve a empezar la evolución).
