@@ -2,15 +2,18 @@ class_name MathLab
 extends Node3D
 ## MathLab — Laboratorio matemático 3D interactivo de MechaForge.
 ##
-## Visualiza e interactúa con funciones y ecuaciones en cuatro pilares:
-##   1. EDPs y física matemática: onda, calor y Schrödinger (en tiempo real).
-##   2. Métodos numéricos: gráficas de funciones, raíces, sistemas, optimización, interpolación y
+## Visualiza e interactúa con funciones y ecuaciones en seis pilares:
+##   1. Física clásica: onda y calor (EDPs en tiempo real) y cargas con Coulomb y Lorentz en la GPU.
+##   2. Física cuántica: Schrödinger 2D y 3D (con medición), hidrógeno, batería cuántica,
+##      desintegraciones del Modelo Estándar y construcción de materia.
+##   3. Teoría de cuerdas: modos normales, dimensiones compactas y D-branas.
+##   4. Métodos numéricos: gráficas de funciones, raíces, sistemas, optimización, interpolación y
 ##      ajuste, integración numérica y solución numérica de EDPs.
-##   3. Análisis complejo: coloreado de dominio 3D, mapeos conformes y fractales.
-##   4. Campos vectoriales: flechas, líneas de corriente y partículas, divergencia
+##   5. Análisis complejo: coloreado de dominio 3D, mapeos conformes y fractales.
+##   6. Campos vectoriales: flechas, líneas de corriente y partículas, divergencia
 ##      y rotacional, teoremas de Gauss y Stokes.
-##   5. Física moderna (docs/FISICA_MODERNA.md): átomo de hidrógeno y partículas cargadas
-##      con las fuerzas en la GPU; panel «Modelo y límites» con el nivel de fidelidad.
+## Los módulos de física moderna (docs/FISICA_MODERNA.md) declaran su nivel de fidelidad en el
+## panel «Modelo y límites».
 ## Escenario holodeck con post-procesado, cámara orbital amortiguada (perspectiva,
 ## superior 2D, isométrica), herramienta «Perturbar», tooltip 3D flotante y
 ## planos de corte X/Y/Z.
@@ -18,62 +21,62 @@ extends Node3D
 
 signal closed
 
-const PILLARS := ["EDPs y física", "Métodos numéricos", "Análisis complejo", "Campos vectoriales", "Física moderna"]
+const PILLARS := ["Física clásica", "Física cuántica", "Teoría de cuerdas", "Métodos numéricos", "Análisis complejo", "Campos vectoriales"]
 const MODULES := [
 	{"id": "onda", "pilar": 0, "nombre": "Ecuación de onda 2D", "ruta": "res://mathlab/modules/OndaModule.gd",
 		"desc": "Membrana vibrante: pulsos, interferencia, reflexión y modos normales de un tambor."},
 	{"id": "calor", "pilar": 0, "nombre": "Ecuación de calor", "ruta": "res://mathlab/modules/CalorModule.gd",
 		"desc": "Conducción térmica en una placa con materiales, fuentes y disipación."},
-	{"id": "schrodinger", "pilar": 0, "nombre": "Schrödinger (efecto túnel)", "ruta": "res://mathlab/modules/SchrodingerModule.gd",
-		"desc": "Paquete de ondas cuántico: |ψ|² como altura y la fase como color; barreras y pozos."},
-	{"id": "graficas", "pilar": 1, "nombre": "Gráficas", "ruta": "res://mathlab/modules/GraficasModule.gd",
-		"desc": "Calculadora gráfica: hasta 4 funciones con raíces, extremos y cortes; paramétricas, polares, superficies z = f(x, y) y puntos."},
-	{"id": "raices", "pilar": 1, "nombre": "Ecuaciones no lineales", "ruta": "res://mathlab/modules/RaicesModule.gd",
-		"desc": "15 métodos: bisección, regula falsi, Illinois, Ridders, Brent, Newton, Halley, secante, Steffensen, Müller, punto fijo… y su comparación."},
-	{"id": "sistemas", "pilar": 1, "nombre": "Sistemas de ecuaciones", "ruta": "res://mathlab/modules/SistemasModule.gd",
-		"desc": "Tres planos: Jacobi, Gauss-Seidel, SOR, gradiente conjugado…; eliminación geométrica, LU, Cholesky, QR."},
-	{"id": "nolineal", "pilar": 1, "nombre": "Sistemas no lineales", "ruta": "res://mathlab/modules/NoLinealesModule.gd",
-		"desc": "F(x, y) = 0: Newton, Broyden, punto fijo, Levenberg–Marquardt… y cuencas de atracción."},
-	{"id": "optimizacion", "pilar": 1, "nombre": "Optimización multivariable", "ruta": "res://mathlab/modules/OptimizacionModule.gd",
-		"desc": "Gradiente descendente y Newton sobre z = f(x, y)."},
-	{"id": "interpolacion", "pilar": 1, "nombre": "Interpolación y ajuste", "ruta": "res://mathlab/modules/InterpolacionModule.gd",
-		"desc": "Splines 3D, B-spline y Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay."},
-	{"id": "interp1d", "pilar": 1, "nombre": "Métodos de interpolación (1D)", "ruta": "res://mathlab/modules/InterpolacionMetodosModule.gd",
-		"desc": "Lagrange, Newton, splines, Hermite, PCHIP, Akima, Floater–Hormann…; Runge y Chebyshev."},
-	{"id": "integracion", "pilar": 1, "nombre": "Integración y derivación (2D)", "ruta": "res://mathlab/modules/IntegracionModule.gd",
-		"desc": "Integral doble en a ≤ x ≤ b, c(x) ≤ y ≤ d(x) con 19 métodos (producto, Romberg, Gauss, cubatura, iteradas adaptativas, Genz–Malik, Monte Carlo…) y derivadas parciales, laplaciano, gradiente y direccional con 11 métodos."},
-	{"id": "calculo", "pilar": 1, "nombre": "Integración y derivación (1D)", "ruta": "res://mathlab/modules/CalculoModule.gd",
-		"desc": "18 cuadraturas (Newton–Cotes, Romberg, Gauss, Kronrod, tanh-sinh, Monte Carlo…) y 14 derivadas numéricas (diferencias, Richardson, paso complejo, automática, simbólica…)."},
-	{"id": "edp1d", "pilar": 1, "nombre": "EDP numérica (calor 1D)", "ruta": "res://mathlab/modules/EdpNumericaModule.gd",
-		"desc": "Explícito, implícito y Crank-Nicolson: estabilidad y error en superficies espacio-tiempo."},
-	{"id": "coloreado", "pilar": 2, "nombre": "Coloreado de dominio 3D", "ruta": "res://mathlab/modules/ColoreadoModule.gd",
-		"desc": "|f(z)| como altura y arg f(z) como color; ceros, polos y cortes de rama."},
-	{"id": "conforme", "pilar": 2, "nombre": "Mapeos conformes", "ruta": "res://mathlab/modules/ConformeModule.gd",
-		"desc": "Deformación animada de rejillas: eᶻ, z², 1/z, Joukowsky, Möbius…"},
-	{"id": "fractales", "pilar": 2, "nombre": "Fractales (Mandelbrot y Julia)", "ruta": "res://mathlab/modules/FractalesModule.gd",
-		"desc": "Conjuntos de Mandelbrot y Julia en relieve; clic para elegir c."},
-	{"id": "campo", "pilar": 3, "nombre": "Campos vectoriales 3D", "ruta": "res://mathlab/modules/CampoModule.gd",
-		"desc": "Flechas instanciadas, gradiente, líneas de corriente, partículas, divergencia y rotacional."},
-	{"id": "teoremas", "pilar": 3, "nombre": "Teoremas de Gauss y Stokes", "ruta": "res://mathlab/modules/TeoremasModule.gd",
-		"desc": "Flujo por una esfera frente a la divergencia; circulación frente al rotacional."},
-	{"id": "hidrogeno", "pilar": 4, "nombre": "Átomo de hidrógeno", "ruta": "res://mathlab/modules/HidrogenoModule.gd",
-		"desc": "Orbitales exactos ψₙₗₘ como nube de puntos de |ψ|² con la fase en color; energías, ⟨r⟩ y nodos."},
-	{"id": "particulas", "pilar": 4, "nombre": "Partículas y fuerza de Coulomb", "ruta": "res://mathlab/modules/ParticulasModule.gd",
+	{"id": "particulas", "pilar": 0, "nombre": "Partículas y fuerza de Coulomb", "ruta": "res://mathlab/modules/ParticulasModule.gd",
 		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; campo B (Lorentz) y líneas de campo."},
-	{"id": "desintegraciones", "pilar": 4, "nombre": "Desintegraciones y cámara de burbujas", "ruta": "res://mathlab/modules/DesintegracionesModule.gd",
-		"desc": "Partículas del Modelo Estándar (PDG 2026): desintegraciones con vidas medias y fracciones reales, trazas en un campo B y leyes de conservación en cada vértice."},
-	{"id": "bateria", "pilar": 4, "nombre": "Batería cuántica", "ruta": "res://mathlab/modules/BateriaModule.gd",
-		"desc": "Cadena de hasta 12 espines: carga, almacenamiento y descarga con evolución exacta; energía, potencia, ergotropía y esferas de Bloch."},
-	{"id": "materia", "pilar": 4, "nombre": "Construcción de materia", "ruta": "res://mathlab/modules/MateriaModule.gd",
-		"desc": "Con quarks, nucleones, electrones y átomos: hadrones (Cornell), núcleos que se desintegran, átomos e iones y moléculas, con el motivo cuando algo no se puede formar."},
-	{"id": "cuerdas", "pilar": 4, "nombre": "Cuerdas y modos normales", "ruta": "res://mathlab/modules/CuerdasModule.gd",
-		"desc": "Cuerdas abiertas y cerradas: cada modo normal es una partícula (taquión, fotón, gravitón…) con su masa α′M² = N − a; miles de cuerdas en la GPU."},
-	{"id": "compactas", "pilar": 4, "nombre": "Dimensiones compactas", "ruta": "res://mathlab/modules/CompactasModule.gd",
-		"desc": "La cuerda en un toro: momento y enrollamiento, dualidad T, simetría aumentada en R = √α′ y la quíntica de Calabi-Yau."},
-	{"id": "branas", "pilar": 4, "nombre": "D-branas y acoplamiento", "ruta": "res://mathlab/modules/BranasModule.gd",
-		"desc": "Tipos I, IIA, IIB y heteróticas: D-branas con cuerdas estiradas, grupo gauge U(N), g_s y dualidades; el espacio-tiempo se curva con lo construido."},
-	{"id": "schrodinger3d", "pilar": 4, "nombre": "Schrödinger 3D y medición", "ruta": "res://mathlab/modules/Schrodinger3DModule.gd",
+	{"id": "schrodinger", "pilar": 1, "nombre": "Schrödinger (efecto túnel)", "ruta": "res://mathlab/modules/SchrodingerModule.gd",
+		"desc": "Paquete de ondas cuántico: |ψ|² como altura y la fase como color; barreras y pozos."},
+	{"id": "schrodinger3d", "pilar": 1, "nombre": "Schrödinger 3D y medición", "ruta": "res://mathlab/modules/Schrodinger3DModule.gd",
 		"desc": "La función de onda en 3D con el tiempo: paquetes, superposiciones, efecto túnel y doble rendija; medir la posición la hace colapsar (regla de Born)."},
+	{"id": "hidrogeno", "pilar": 1, "nombre": "Átomo de hidrógeno", "ruta": "res://mathlab/modules/HidrogenoModule.gd",
+		"desc": "Orbitales exactos ψₙₗₘ como nube de puntos de |ψ|² con la fase en color; energías, ⟨r⟩ y nodos."},
+	{"id": "bateria", "pilar": 1, "nombre": "Batería cuántica", "ruta": "res://mathlab/modules/BateriaModule.gd",
+		"desc": "Cadena de hasta 12 espines: carga, almacenamiento y descarga con evolución exacta; energía, potencia, ergotropía y esferas de Bloch."},
+	{"id": "desintegraciones", "pilar": 1, "nombre": "Desintegraciones y cámara de burbujas", "ruta": "res://mathlab/modules/DesintegracionesModule.gd",
+		"desc": "Partículas del Modelo Estándar (PDG 2026): desintegraciones con vidas medias y fracciones reales, trazas en un campo B y leyes de conservación en cada vértice."},
+	{"id": "materia", "pilar": 1, "nombre": "Construcción de materia", "ruta": "res://mathlab/modules/MateriaModule.gd",
+		"desc": "Con quarks, nucleones, electrones y átomos: hadrones (Cornell), núcleos que se desintegran, átomos e iones y moléculas, con el motivo cuando algo no se puede formar."},
+	{"id": "cuerdas", "pilar": 2, "nombre": "Cuerdas y modos normales", "ruta": "res://mathlab/modules/CuerdasModule.gd",
+		"desc": "Cuerdas abiertas y cerradas: cada modo normal es una partícula (taquión, fotón, gravitón…) con su masa α′M² = N − a; miles de cuerdas en la GPU."},
+	{"id": "compactas", "pilar": 2, "nombre": "Dimensiones compactas", "ruta": "res://mathlab/modules/CompactasModule.gd",
+		"desc": "La cuerda en un toro: momento y enrollamiento, dualidad T, simetría aumentada en R = √α′ y la quíntica de Calabi-Yau."},
+	{"id": "branas", "pilar": 2, "nombre": "D-branas y acoplamiento", "ruta": "res://mathlab/modules/BranasModule.gd",
+		"desc": "Tipos I, IIA, IIB y heteróticas: D-branas con cuerdas estiradas, grupo gauge U(N), g_s y dualidades; el espacio-tiempo se curva con lo construido."},
+	{"id": "graficas", "pilar": 3, "nombre": "Gráficas", "ruta": "res://mathlab/modules/GraficasModule.gd",
+		"desc": "Calculadora gráfica: hasta 4 funciones con raíces, extremos y cortes; paramétricas, polares, superficies z = f(x, y) y puntos."},
+	{"id": "raices", "pilar": 3, "nombre": "Ecuaciones no lineales", "ruta": "res://mathlab/modules/RaicesModule.gd",
+		"desc": "15 métodos: bisección, regula falsi, Illinois, Ridders, Brent, Newton, Halley, secante, Steffensen, Müller, punto fijo… y su comparación."},
+	{"id": "sistemas", "pilar": 3, "nombre": "Sistemas de ecuaciones", "ruta": "res://mathlab/modules/SistemasModule.gd",
+		"desc": "Tres planos: Jacobi, Gauss-Seidel, SOR, gradiente conjugado…; eliminación geométrica, LU, Cholesky, QR."},
+	{"id": "nolineal", "pilar": 3, "nombre": "Sistemas no lineales", "ruta": "res://mathlab/modules/NoLinealesModule.gd",
+		"desc": "F(x, y) = 0: Newton, Broyden, punto fijo, Levenberg–Marquardt… y cuencas de atracción."},
+	{"id": "optimizacion", "pilar": 3, "nombre": "Optimización multivariable", "ruta": "res://mathlab/modules/OptimizacionModule.gd",
+		"desc": "Gradiente descendente y Newton sobre z = f(x, y)."},
+	{"id": "interpolacion", "pilar": 3, "nombre": "Interpolación y ajuste", "ruta": "res://mathlab/modules/InterpolacionModule.gd",
+		"desc": "Splines 3D, B-spline y Bézier; mínimos cuadrados; superficies por IDW, RBF y Delaunay."},
+	{"id": "interp1d", "pilar": 3, "nombre": "Métodos de interpolación (1D)", "ruta": "res://mathlab/modules/InterpolacionMetodosModule.gd",
+		"desc": "Lagrange, Newton, splines, Hermite, PCHIP, Akima, Floater–Hormann…; Runge y Chebyshev."},
+	{"id": "integracion", "pilar": 3, "nombre": "Integración y derivación (2D)", "ruta": "res://mathlab/modules/IntegracionModule.gd",
+		"desc": "Integral doble en a ≤ x ≤ b, c(x) ≤ y ≤ d(x) con 19 métodos (producto, Romberg, Gauss, cubatura, iteradas adaptativas, Genz–Malik, Monte Carlo…) y derivadas parciales, laplaciano, gradiente y direccional con 11 métodos."},
+	{"id": "calculo", "pilar": 3, "nombre": "Integración y derivación (1D)", "ruta": "res://mathlab/modules/CalculoModule.gd",
+		"desc": "18 cuadraturas (Newton–Cotes, Romberg, Gauss, Kronrod, tanh-sinh, Monte Carlo…) y 14 derivadas numéricas (diferencias, Richardson, paso complejo, automática, simbólica…)."},
+	{"id": "edp1d", "pilar": 3, "nombre": "EDP numérica (calor 1D)", "ruta": "res://mathlab/modules/EdpNumericaModule.gd",
+		"desc": "Explícito, implícito y Crank-Nicolson: estabilidad y error en superficies espacio-tiempo."},
+	{"id": "coloreado", "pilar": 4, "nombre": "Coloreado de dominio 3D", "ruta": "res://mathlab/modules/ColoreadoModule.gd",
+		"desc": "|f(z)| como altura y arg f(z) como color; ceros, polos y cortes de rama."},
+	{"id": "conforme", "pilar": 4, "nombre": "Mapeos conformes", "ruta": "res://mathlab/modules/ConformeModule.gd",
+		"desc": "Deformación animada de rejillas: eᶻ, z², 1/z, Joukowsky, Möbius…"},
+	{"id": "fractales", "pilar": 4, "nombre": "Fractales (Mandelbrot y Julia)", "ruta": "res://mathlab/modules/FractalesModule.gd",
+		"desc": "Conjuntos de Mandelbrot y Julia en relieve; clic para elegir c."},
+	{"id": "campo", "pilar": 5, "nombre": "Campos vectoriales 3D", "ruta": "res://mathlab/modules/CampoModule.gd",
+		"desc": "Flechas instanciadas, gradiente, líneas de corriente, partículas, divergencia y rotacional."},
+	{"id": "teoremas", "pilar": 5, "nombre": "Teoremas de Gauss y Stokes", "ruta": "res://mathlab/modules/TeoremasModule.gd",
+		"desc": "Flujo por una esfera frente a la divergencia; circulación frente al rotacional."},
 ]
 
 enum Tool { ORBITAR, PERTURBAR }

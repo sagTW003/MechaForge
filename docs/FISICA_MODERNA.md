@@ -346,3 +346,18 @@ movimiento» del sistema operativo.
 **Límites**: la caja refleja (sin borde absorbente: el esquema de Visscher solo admite potenciales
 reales); el colapso es instantáneo, sin dinámica del detector ni decoherencia; se guarda la
 configuración del estado inicial, no ψ (cargar vuelve a empezar la evolución).
+
+## 15. Los pilares de física (después de la 0.5.0)
+
+A petición del usuario, los módulos de física se reparten en tres pilares en lugar de «EDPs y
+física» y «Física moderna»:
+
+| Pilar | Módulos |
+|---|---|
+| Física clásica | `onda`, `calor`, `particulas` |
+| Física cuántica | `schrodinger` (2D), `schrodinger3d`, `hidrogeno`, `bateria`, `desintegraciones`, `materia` |
+| Teoría de cuerdas | `cuerdas`, `compactas`, `branas` |
+
+Solo cambia dónde aparecen (`MathLab.PILLARS` y el campo `pilar` de `MODULES`); los `id`, el
+estado guardado en los `.mforge` y la API siguen igual, salvo el nombre del pilar que devuelven
+`lab_list_modules` y `lab_get_state`. Las pruebas de física moderna eligen sus 9 módulos por `id`.

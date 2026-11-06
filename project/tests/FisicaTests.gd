@@ -5,6 +5,8 @@ extends Node
 ##   «-- mffisica bench» mide Coulomb con 10 000 cargas en la GPU.
 
 var lab: MathLab
+## Los módulos de física moderna (en los pilares de física clásica, cuántica y de cuerdas).
+const MODERNA := ["particulas", "schrodinger3d", "hidrogeno", "bateria", "desintegraciones", "materia", "cuerdas", "compactas", "branas"]
 var ok: int = 0
 var fail: int = 0
 
@@ -339,7 +341,7 @@ func _t_modulo_particulas() -> void:
 func _t_pilar() -> void:
 	var niveles := ["exacto", "aproximado", "ilustrativo"]
 	for m in MathLab.MODULES:
-		if int(m["pilar"]) != 4:
+		if not m["id"] in MODERNA:
 			continue
 		lab.open_module(m["id"])
 		await get_tree().process_frame
@@ -354,7 +356,7 @@ func _t_pilar() -> void:
 	var before := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
 	var ids := []
 	for m in MathLab.MODULES:
-		if int(m["pilar"]) == 4:
+		if m["id"] in MODERNA:
 			ids.append(m["id"])
 	ids.append("onda")
 	var fallidos := {}
@@ -1042,7 +1044,7 @@ func _t_fase7() -> void:
 	# Guardado de los 8 módulos: estado() → cargar() → estado() da lo mismo (regresión del esquema).
 	var malos := []
 	for m in MathLab.MODULES:
-		if int(m["pilar"]) != 4:
+		if not m["id"] in MODERNA:
 			continue
 		lab.open_module(m["id"])
 		await get_tree().process_frame
@@ -1050,7 +1052,7 @@ func _t_fase7() -> void:
 		var err: String = lab.module.cargar(antes.duplicate(true))
 		if err != "" or JSON.stringify(lab.module.estado()) != JSON.stringify(antes):
 			malos.append("%s%s" % [m["id"], (": " + err) if err != "" else ""])
-	check(malos.is_empty(), "Guardado: el estado de los %d módulos de física moderna se carga y queda igual%s" % [MathLab.MODULES.filter(func(m): return int(m["pilar"]) == 4).size(), "" if malos.is_empty() else " (falla: %s)" % ", ".join(malos)])
+	check(malos.is_empty(), "Guardado: el estado de los %d módulos de física moderna se carga y queda igual%s" % [MODERNA.size(), "" if malos.is_empty() else " (falla: %s)" % ", ".join(malos)])
 
 # --- Fase 8: Schrödinger 3D y medición ---------------------------------------------------
 

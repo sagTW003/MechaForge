@@ -5,12 +5,14 @@ description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw —
 
 # MechaForge — Laboratorio matemático 3D
 
-El laboratorio muestra en 3D, en tiempo real:
-- ecuaciones en derivadas parciales;
-- métodos numéricos;
-- análisis complejo;
-- campos vectoriales;
-- física moderna: partículas, mecánica cuántica y teoría de cuerdas.
+El laboratorio muestra en 3D, en tiempo real, seis pilares (el `pilar` de `lab_list_modules`):
+- **Física clásica**: onda, calor y cargas con Coulomb y Lorentz;
+- **Física cuántica**: Schrödinger 2D y 3D (con medición), hidrógeno, batería cuántica,
+  desintegraciones y construcción de materia;
+- **Teoría de cuerdas**: modos normales, dimensiones compactas y D-branas;
+- **Métodos numéricos**;
+- **Análisis complejo**;
+- **Campos vectoriales**.
 
 Úsalo cuando el humano quiera **ver o entender** algo de matemáticas, por ejemplo:
 - "enséñame el efecto túnel";
