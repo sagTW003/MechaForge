@@ -337,20 +337,41 @@ func _t_celeste() -> void:
 		dmax = maxf(dmax, Vector2(s4[0] - Lj[3][0], s4[1] - Lj[3][1]).length())
 	check(absf(s[0] - L[1][0]) > 1e-3 and absf(Celeste.jacobi(s, mu) - c0) < 1e-10 and dmax < 0.15,
 		"Celeste 1: la nave se escapa de L2 (equilibrio inestable) y oscila alrededor de L4 de Júpiter (estable, Δ ≤ %.2f); RK4 conserva la constante de Jacobi" % dmax)
-	# 2. Ceres: sin ruido se recupera la órbita; con el error de Piazzi, la predicción a < 0,5°.
-	var real := Celeste.polar(Celeste.CERES, 41.0 + 323.0)
-	var o0 := Celeste.observar(Celeste.CERES, 22, 41.0, 0.0, 1)
-	var a0 := Celeste.ajustar(o0, 1)
-	var o1 := Celeste.observar(Celeste.CERES, 22, 41.0, 1e-4, 1)
-	var ch := Celeste.ajustar(o1, 0)
-	var qr := Celeste.ajustar(o1, 1)
-	var err := Celeste.error_prediccion(Celeste.predecir(qr, o1, 364.0), real)
-	check(absf(float(a0["a"]) - 2.7675) < 1e-6 and absf(float(a0["e"]) - 0.0785) < 1e-7 and err[0] < 0.5 and absf(ch["c"][1] - qr["c"][1]) < 1e-6,
-		"Celeste 2: sin ruido el ajuste da a = %.6f UA, e = %.6f; con 0,01 %% de error Ceres reaparece a %.2f° de la predicción; Cholesky y QR coinciden" % [a0["a"], a0["e"], err[0]])
-	var largo := Celeste.ajustar(Celeste.observar(Celeste.CERES, 22, 1680.0, 1e-4, 1), 0)
-	check(float(ch["kappa"]) > 1e5 * float(largo["kappa"]) and absf(float(ch["kappa_M"]) ** 2 - float(ch["kappa"])) < 1e-6 * float(ch["kappa"]),
-		"Celeste 2: el arco corto (41 días) da κ(MᵀM) = %s, frente a %s con la órbita entera; κ(MᵀM) = κ(M)²" % [LabUI.sci(ch["kappa"], 1), LabUI.sci(largo["kappa"], 1)])
-	# 3. Marte: el mínimo de la efeméride cae el día que publica la NASA; interpolar mejora la tabla.
+	# 2. Ceres: la velocidad por derivación numérica (orden de cada fórmula) y la órbita con la EDO.
+	var o0 := Celeste.observar(Celeste.CERES, 41.0, 0.0, 1)
+	var ev := []
+	for mm in 4:
+		ev.append(float(Celeste.predecir(o0, 5, mm, 2, 1.0, 364.0)["err_v"]))
+	var oc := log(float(Celeste.predecir(o0, 10, 2, 2, 1.0, 364.0)["err_v"]) / float(Celeste.predecir(o0, 5, 2, 2, 1.0, 364.0)["err_v"])) / log(2.0)
+	var ofw := log(float(Celeste.predecir(o0, 10, 0, 2, 1.0, 364.0)["err_v"]) / ev[0]) / log(2.0)
+	check(ev[0] > 1e-3 and ev[2] < 1e-4 and ev[3] < 1e-7 and absf(oc - 2.0) < 0.1 and absf(ofw - 1.0) < 0.1,
+		"Celeste 2: sin ruido y h = 5 días, error de la velocidad %s (adelante, orden %.2f), %s (centrada, orden %.2f) y %s (5 puntos)" % [
+		LabUI.sci(ev[0], 1), ofw, LabUI.sci(ev[2], 1), oc, LabUI.sci(ev[3], 1)])
+	var o1 := Celeste.observar(Celeste.CERES, 41.0, 1e-4, 1)
+	var rc := Celeste.predecir(o1, 10, 2, 2, 1.0, 364.0)
+	var rf := Celeste.predecir(o1, 10, 0, 2, 1.0, 364.0)
+	check(float(rc["error"][0]) < 0.1 and float(rf["error"][0]) > 1.0 and absf(float(rc["a"]) - 2.7675) < 0.01 and Celeste.predecir(o1, 30, 3, 2, 1.0, 364.0).is_empty(),
+		"Celeste 2: con 0,01 %% de error y diferencias centradas (h = 10 días) Ceres reaparece a %.3f° de la predicción (adelante: %.2f°), a = %.4f UA; sin observaciones suficientes no hay respuesta" % [rc["error"][0], rf["error"][0], rc["a"]])
+	var px := Celeste.posicion_xy(Celeste.CERES, 21.0)
+	var pv := Celeste.velocidad_real(Celeste.CERES, 21.0)
+	var s0 := PackedFloat64Array([px[0], px[1], pv[0], pv[1]])
+	var preal := Celeste.posicion_xy(Celeste.CERES, 364.0)
+	var po := []
+	for integ in 3:
+		var e2 := []
+		for hh in [2.0, 1.0]:
+			var sf: PackedFloat64Array = Celeste.propagar(s0, 343.0, hh, integ)["s"]
+			e2.append(sqrt(pow(sf[0] - preal[0], 2) + pow(sf[1] - preal[1], 2)))
+		po.append(log(e2[0] / e2[1]) / log(2.0))
+	check(absf(po[0] - 1.0) < 0.15 and absf(po[1] - 2.0) < 0.15 and absf(po[2] - 4.0) < 0.3,
+		"Celeste 2: con el estado exacto, la EDO converge con orden %.2f (Euler), %.2f (Heun) y %.2f (RK4)" % po)
+	# 3. Marte: el mínimo de la efeméride cae el día que publica la NASA; más nodos, menos error.
+	var xs := PackedFloat64Array([1.0, 2.0, 4.0, 7.0])
+	var xe := PackedFloat64Array([0.0, 1.0, 2.0, 3.0])
+	var ys := PackedFloat64Array([3.0, -1.0, 2.0, 5.0])
+	check(absf(Celeste.lagrange_en(xs, ys, 3.3) - Celeste.newton_en(xs, Celeste.diferencias_divididas(xs, ys), 3.3)) < 1e-12
+		and absf(Celeste.lagrange_en(xe, ys, 1.7) - Celeste.gregory_en(0.0, 1.0, Celeste.diferencias_finitas(ys), 1.7)) < 1e-12,
+		"Celeste 3: Lagrange, Newton (diferencias divididas) y Newton–Gregory dan el mismo polinomio con los mismos nodos")
 	var malos := []
 	for i in 2:
 		var ac: Array = Celeste.ACERCAMIENTOS[i]
@@ -358,34 +379,34 @@ func _t_celeste() -> void:
 		var ref := Celeste.minimo_referencia(jn - 10.0, jn + 10.0)
 		var w := Celeste.ventana(i)
 		var tb := Celeste.tabla(w[0], w[1], 20.0)
-		var M := Celeste.spline(tb[0], tb[1])
-		var e_t := absf(Celeste.minimo(tb[0], tb[1], 0)[0] - ref[0])
-		var e_p := absf(Celeste.minimo(tb[0], tb[1], 1)[0] - ref[0])
-		var e_s := absf(Celeste.minimo(tb[0], tb[1], 2, M)[0] - ref[0])
-		var ei := Celeste.error_interpolacion(tb[0], tb[1], M, 200)
-		if absf(ref[0] - jn) > 1.0 or absf(ref[1] * Celeste.KM_UA / 1e6 - float(ac[3])) > 0.1 or e_p > 0.25 or e_s > 0.25 or e_t < 1.0 or ei[1] > ei[0] / 5.0:
-			malos.append("%d (ref %s, tabla %.2f d, parábola %.2f d, spline %.2f d)" % [ac[0], Celeste.fecha(ref[0]), e_t, e_p, e_s])
-	check(malos.is_empty(), "Celeste 3: los acercamientos de Marte de 2025 y 2027 caen el día de la NASA; con nodos cada 20 días la parábola y el spline aciertan a < 6 h y el menor nodo no%s" % ("" if malos.is_empty() else ": " + ", ".join(malos)))
-	# 4. La caída: 64,57 días; las cuadraturas que evalúan f(R) dan ∞; el cambio de variable, exacto.
+		var e := []
+		for mm in 3:
+			e.append(absf(Celeste.minimo(tb[0], tb[1], mm)[0] - ref[0]) * 24.0)
+		if absf(ref[0] - jn) > 1.0 or absf(ref[1] * Celeste.KM_UA / 1e6 - float(ac[3])) > 0.1 or e[0] > 6.0 or e[1] > e[0] or e[2] > e[1]:
+			malos.append("%d (ref %s; errores %.2f, %.2f, %.2f h)" % [ac[0], Celeste.fecha(ref[0]), e[0], e[1], e[2]])
+	check(malos.is_empty(), "Celeste 3: los acercamientos de Marte de 2025 y 2027 caen el día de la NASA; con nodos cada 20 días el error baja al subir el grado (2, 4, 6)%s" % ("" if malos.is_empty() else ": " + ", ".join(malos)))
+	# 4. La caída: 64,57 días; ningún método evalúa f(R); los de r = R·sen²u, exactos.
 	var ex := Celeste.t_caida(1.0)
-	var cm := Celeste.convergencia(2, 1.0)
-	var cg := Celeste.convergencia(3, 1.0)
-	var ts := absf(float(Celeste.cuadratura(4, 16, 1.0)["valor"]) - ex)
-	var cv := absf(float(Celeste.cuadratura(6, 8, 1.0)["valor"]) - ex)
-	check(absf(ex - 64.5689) < 1e-3 and is_inf(float(Celeste.cuadratura(0, 16, 1.0)["valor"])) and absf(float(cm[-1][3]) - 0.5) < 0.05 and absf(float(cg[-1][3]) - 1.0) < 0.05 and ts < 1e-10 and cv < 1e-12,
-		"Celeste 4: caída en %.4f días; trapecio ∞, punto medio p = %.2f, Gauss p = %.2f, tanh-sinh %s y r = R·sen²u %s" % [ex, cm[-1][3], cg[-1][3], LabUI.sci(ts, 1), LabUI.sci(cv, 1)])
+	var cr := Celeste.convergencia(0, 1.0)
+	var cm := Celeste.convergencia(1, 1.0)
+	var cg := Celeste.convergencia(2, 1.0)
+	var ts := absf(float(Celeste.cuadratura(3, 16, 1.0)["valor"]) - ex)
+	var cv := 0.0
+	for mm in range(Celeste.CAMBIO_VAR, Celeste.METODOS_INT.size()):
+		cv = maxf(cv, absf(float(Celeste.cuadratura(mm, 16, 1.0)["valor"]) - ex))
+	check(absf(ex - 64.5689) < 1e-3 and absf(float(cr[-1][3]) - 0.5) < 0.05 and absf(float(cm[-1][3]) - 0.5) < 0.05 and absf(float(cg[-1][3]) - 1.0) < 0.05 and ts < 1e-10 and cv < 1e-12,
+		"Celeste 4: caída en %.4f días; rectángulos p = %.2f, punto medio p = %.2f, Gauss p = %.2f, tanh-sinh %s; trapecio, Simpson 1/3 y 3/8 y Romberg con r = R·sen²u: %s" % [ex, cr[-1][3], cm[-1][3], cg[-1][3], LabUI.sci(ts, 1), LabUI.sci(cv, 1)])
 	var edo := Celeste.caida_edo(1.0, 0.01)
 	check(absf(float(edo["t"]) - float(edo["exacto"])) < 1e-3, "Celeste 4: la EDO con RK4 (h = 0,01 días) choca con el Sol en el día %.4f (exacto %.4f)" % [edo["t"], edo["exacto"]])
-	# 5. Mercurio: 42,98″ por siglo extrapolando con RK4 y Verlet; Euler no sirve.
+	# 5. Mercurio: 42,98″ por siglo extrapolando con RK4 y Heun; Euler no sirve.
 	var teo := Celeste.precesion_teorica()
-	var rk := Celeste.extrapolar(1, 0.1, 5.0)
-	var vv := Celeste.extrapolar(2, 0.1, 5.0)
 	var eu := Celeste.extrapolar(0, 0.1, 5.0)
-	check(absf(teo - 42.98) < 0.01 and absf(float(rk["resultado"]) - teo) < 0.2 and absf(float(vv["resultado"]) - teo) < 0.2 and absf(float(eu["resultado"]) - teo) > 5.0,
-		"Celeste 5: precesión de Mercurio %.2f″ (RK4) y %.2f″ (Verlet) frente a %.2f″ de la relatividad; Euler da %.1f″" % [rk["resultado"], vv["resultado"], teo, eu["resultado"]])
-	var dv: float = Celeste.medir_precesion(2, 0.1, 0.0, 5.0)["deriva"]
-	var de: float = Celeste.medir_precesion(0, 0.1, 0.0, 5.0)["deriva"]
-	check(dv < 1e-3 and de > 0.05, "Celeste 5: Verlet (simpléctico) no deriva en energía (%s) y Euler sí (%s)" % [LabUI.sci(dv, 1), LabUI.sci(de, 1)])
+	var he := Celeste.extrapolar(1, 0.1, 5.0)
+	var rk := Celeste.extrapolar(2, 0.1, 5.0)
+	check(absf(teo - 42.98) < 0.01 and absf(float(rk["resultado"]) - teo) < 0.1 and absf(float(he["resultado"]) - teo) < 0.2 and absf(float(eu["resultado"]) - teo) > 5.0,
+		"Celeste 5: precesión de Mercurio %.3f″ (RK4) y %.2f″ (Heun) frente a %.2f″ de la relatividad; Euler da %.1f″" % [rk["resultado"], he["resultado"], teo, eu["resultado"]])
+	check(float(rk["deriva"]) < float(he["deriva"]) and float(he["deriva"]) < 1e-3 and float(eu["deriva"]) > 0.05,
+		"Celeste 5: deriva de energía en 5 vueltas: RK4 %s < Heun %s < Euler %s" % [LabUI.sci(rk["deriva"], 1), LabUI.sci(he["deriva"], 1), LabUI.sci(eu["deriva"], 1)])
 	# El módulo: cada pregunta se monta, avanza y muestra su tabla.
 	var vacias := []
 	for q in 5:
@@ -394,9 +415,10 @@ func _t_celeste() -> void:
 		m._controles()
 		for f in 30:
 			m.step(1.0 / 30.0)
-		if m.info().length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
+		var txt: String = m.info()
+		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
 			vacias.append(q + 1)
-	check(vacias.is_empty(), "Celeste: las cinco preguntas se montan, se animan y dan su tabla y su CSV%s" % ("" if vacias.is_empty() else " (fallan: %s)" % str(vacias)))
+	check(vacias.is_empty(), "Celeste: las cinco preguntas se montan, se animan y dan su respuesta, su interpretación y su CSV%s" % ("" if vacias.is_empty() else " (fallan: %s)" % str(vacias)))
 	m.pregunta = 0
 	m._montar()
 	var k0: int = m._k

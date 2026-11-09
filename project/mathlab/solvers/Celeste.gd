@@ -5,17 +5,18 @@ extends RefCounted
 ## Cinco preguntas sobre el movimiento de los astros, cada una resuelta con un método numérico:
 ##   1. ¿Dónde se estaciona el telescopio James Webb? Puntos de Lagrange por bisección, secante y
 ##      Newton; una nave en el problema restringido de tres cuerpos, con RK4.
-##   2. ¿Cómo encontró Gauss a Ceres? Mínimos cuadrados: ecuaciones normales (Cholesky) y QR.
-##   3. ¿Cuándo estará Marte más cerca? Ecuación de Kepler por Newton e interpolación de una tabla.
+##   2. ¿Cómo encontró Gauss a Ceres? La velocidad por derivación numérica de las posiciones
+##      observadas y la órbita propagada con una EDO (Euler, Heun o RK4).
+##   3. ¿Cuándo estará Marte más cerca? Ecuación de Kepler por Newton e interpolación de una tabla
+##      (Lagrange, diferencias divididas de Newton, Newton–Gregory).
 ##   4. Si la Tierra se detuviera, ¿cuánto tardaría en caer al Sol? Integral impropia y EDO.
-##   5. ¿Por qué gira la órbita de Mercurio? Euler, RK4 y Verlet; ajuste lineal y extrapolación.
+##   5. ¿Por qué gira la órbita de Mercurio? Euler, Heun y RK4; mínimos cuadrados y extrapolación.
 ## Funciones puras y deterministas: las pruebas las comparan con los valores exactos o reales.
 ## Unidades: UA, días y masas solares (GM☉ = k², k la constante gaussiana); el problema de tres
 ## cuerpos usa unidades canónicas (distancia entre los primarios = 1, movimiento medio = 1).
 ## Los números van en float de 64 bits y nunca en Vector2/Vector3, que son de 32.
 
 const Raices := preload("res://mathlab/modules/RaicesModule.gd")
-const Sistemas := preload("res://mathlab/modules/SistemasModule.gd")
 
 const K := 0.01720209895                  # constante gaussiana: √(GM☉) en UA^{3/2}/día
 const GM := K * K
@@ -92,6 +93,58 @@ static func recta(pts: Array) -> PackedFloat64Array:
 		sxx += (float(p[0]) - mx) * (float(p[0]) - mx)
 	var m := sxy / sxx if sxx > 0.0 else 0.0
 	return PackedFloat64Array([m, my - m * mx])
+
+## Mínimo [t, f(t)] de una función unimodal en [a, b] por sección áurea (tolerancia en t).
+static func seccion_aurea(f: Callable, a: float, b: float, tol: float = 1e-6) -> PackedFloat64Array:
+	var g := (sqrt(5.0) - 1.0) / 2.0
+	var c := b - g * (b - a)
+	var d := a + g * (b - a)
+	var fc: float = f.call(c)
+	var fd: float = f.call(d)
+	while b - a > tol:
+		if fc < fd:
+			b = d
+			d = c
+			fd = fc
+			c = b - g * (b - a)
+			fc = f.call(c)
+		else:
+			a = c
+			c = d
+			fc = fd
+			d = a + g * (b - a)
+			fd = f.call(d)
+	var t := 0.5 * (a + b)
+	return PackedFloat64Array([t, f.call(t)])
+
+## Cholesky de una matriz 3×3 simétrica definida positiva y solución de A·x = b (vacío si A no
+## es definida positiva).
+static func cholesky3(A: Array, b: Array) -> PackedFloat64Array:
+	var L := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+	for i in 3:
+		for j in i + 1:
+			var sum: float = A[i][j]
+			for k in j:
+				sum -= L[i][k] * L[j][k]
+			if i == j:
+				if sum <= 0.0:
+					return PackedFloat64Array()
+				L[i][i] = sqrt(sum)
+			else:
+				L[i][j] = sum / L[j][j]
+	var z := PackedFloat64Array([0.0, 0.0, 0.0])
+	for i in 3:
+		var sum: float = b[i]
+		for k in i:
+			sum -= L[i][k] * z[k]
+		z[i] = sum / L[i][i]
+	var x := PackedFloat64Array([0.0, 0.0, 0.0])
+	for i in range(2, -1, -1):
+		var sum: float = z[i]
+		for k in range(i + 1, 3):
+			sum -= L[k][i] * x[k]
+		x[i] = sum / L[i][i]
+	return x
 
 ## Fecha juliana (UT ≈ TT: la diferencia de un minuto no cambia nada aquí).
 static func jd(y: int, m: int, d: float) -> float:
@@ -285,145 +338,107 @@ static func jacobi(s: PackedFloat64Array, mu: float) -> float:
 ## en oposición (longitud heliocéntrica ≈ la de la Tierra, 100,5°).
 const CERES := {"a": 2.7675, "e": 0.0785, "peri": 153.9, "M0": -0.8193}
 const TIERRA_1801 := 100.5               # longitud heliocéntrica de la Tierra el 1-ene-1801 (°)
-const METODOS_LS := ["Ecuaciones normales + Cholesky", "QR (Gram–Schmidt modificado)"]
+const METODOS_DER := ["Diferencia hacia adelante", "Diferencia hacia atrás", "Diferencia centrada (3 puntos)", "Centrada de 5 puntos"]
+const ORDEN_DER := [1, 1, 2, 4]
 
-## n observaciones (t, r, θ) repartidas en «arco» días desde el descubrimiento, con un error
-## gaussiano de σ relativo en r y de σ radianes en θ (la misma semilla da los mismos datos).
-static func observar(orb: Dictionary, n: int, arco: float, sigma: float, semilla: int) -> Array:
+## Posición [x, y] (UA) de una órbita en t (días).
+static func posicion_xy(orb: Dictionary, t: float) -> PackedFloat64Array:
+	var p := polar(orb, t)
+	return PackedFloat64Array([p[0] * cos(p[1]), p[0] * sin(p[1])])
+
+## Una observación por día durante «arco» días: [t, x, y] con un error gaussiano de σ·r en cada
+## coordenada (la misma semilla da los mismos datos).
+static func observar(orb: Dictionary, arco: float, sigma: float, semilla: int) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = semilla
 	var obs := []
-	for i in n:
-		var t := arco * i / maxf(1.0, n - 1.0)
-		var p := polar(orb, t)
-		obs.append([t, p[0] * (1.0 + sigma * rng.randfn()), p[1] + sigma * rng.randfn()])
+	for i in int(arco) + 1:
+		var p := polar(orb, i)
+		var e := sigma * p[0]
+		obs.append([float(i), p[0] * cos(p[1]) + e * rng.randfn(), p[0] * sin(p[1]) + e * rng.randfn()])
 	return obs
 
-## Cholesky de una matriz 3×3 simétrica definida positiva y solución de A·x = b (vacío si A no
-## es definida positiva).
-static func cholesky3(A: Array, b: Array) -> PackedFloat64Array:
-	var L := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
-	for i in 3:
-		for j in i + 1:
-			var s: float = A[i][j]
-			for k in j:
-				s -= L[i][k] * L[j][k]
-			if i == j:
-				if s <= 0.0:
-					return PackedFloat64Array()
-				L[i][i] = sqrt(s)
-			else:
-				L[i][j] = s / L[j][j]
-	var z := PackedFloat64Array([0.0, 0.0, 0.0])
-	for i in 3:
-		var s: float = b[i]
-		for k in i:
-			s -= L[i][k] * z[k]
-		z[i] = s / L[i][i]
-	var x := PackedFloat64Array([0.0, 0.0, 0.0])
-	for i in range(2, -1, -1):
-		var s: float = z[i]
-		for k in range(i + 1, 3):
-			s -= L[k][i] * x[k]
-		x[i] = s / L[i][i]
-	return x
+## Velocidad [vx, vy] (UA/día) en la observación c con la fórmula m y paso h = k días:
+## adelante (x(t+h) − x(t))/h, atrás (x(t) − x(t−h))/h, centrada (x(t+h) − x(t−h))/(2h) y de
+## 5 puntos (x(t−2h) − 8x(t−h) + 8x(t+h) − x(t+2h))/(12h). Vacío si faltan observaciones.
+static func velocidad(obs: Array, c: int, k: int, m: int) -> PackedFloat64Array:
+	var idx: Array = [[0, 1], [-1, 0], [-1, 1], [-2, -1, 1, 2]][m]
+	var w: Array = [[-1.0, 1.0], [-1.0, 1.0], [-0.5, 0.5], [1.0 / 12.0, -8.0 / 12.0, 8.0 / 12.0, -1.0 / 12.0]][m]
+	var v := PackedFloat64Array([0.0, 0.0])
+	for i in idx.size():
+		var j: int = c + int(idx[i]) * k
+		if j < 0 or j >= obs.size():
+			return PackedFloat64Array()
+		v[0] += float(w[i]) * float(obs[j][1]) / k
+		v[1] += float(w[i]) * float(obs[j][2]) / k
+	return v
 
-## Mínimos cuadrados de 1/r = A + B·cos θ + C·sen θ (una cónica con el Sol en un foco).
-## metodo 0: ecuaciones normales (MᵀM)c = Mᵀy por Cholesky; 1: QR de M por Gram–Schmidt
-## modificado y R·c = Qᵀy, que no eleva al cuadrado el número de condición.
-## Devuelve {c, N (MᵀM), kappa (de MᵀM), kappa_M, rms, a, e, peri (°), valido}.
-static func ajustar(obs: Array, metodo: int) -> Dictionary:
-	var n := obs.size()
-	var q := PackedFloat64Array()          # columnas de M, una tras otra: q[j·n + i]
-	q.resize(3 * n)
-	var y := PackedFloat64Array()
-	y.resize(n)
-	for i in n:
-		var th: float = obs[i][2]
-		q[i] = 1.0
-		q[n + i] = cos(th)
-		q[2 * n + i] = sin(th)
-		y[i] = 1.0 / float(obs[i][1])
-	var N := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
-	var rhs := [0.0, 0.0, 0.0]
-	for j in 3:
-		for k in 3:
-			var s := 0.0
-			for i in n:
-				s += q[j * n + i] * q[k * n + i]
-			N[j][k] = s
-		var sy := 0.0
-		for i in n:
-			sy += q[j * n + i] * y[i]
-		rhs[j] = sy
-	var c := PackedFloat64Array()
-	if metodo == 0:
-		c = cholesky3(N, rhs)
-	else:
-		var R := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
-		for j in 3:
-			for k in j:
-				var rkj := 0.0
-				for i in n:
-					rkj += q[k * n + i] * q[j * n + i]
-				R[k][j] = rkj
-				for i in n:
-					q[j * n + i] -= rkj * q[k * n + i]
-			var nrm := 0.0
-			for i in n:
-				nrm += q[j * n + i] * q[j * n + i]
-			nrm = sqrt(nrm)
-			R[j][j] = nrm
-			if nrm > 0.0:
-				for i in n:
-					q[j * n + i] /= nrm
-		var z := [0.0, 0.0, 0.0]
-		for j in 3:
-			for i in n:
-				z[j] += q[j * n + i] * y[i]
-		if R[0][0] != 0.0 and R[1][1] != 0.0 and R[2][2] != 0.0:
-			c = PackedFloat64Array([0.0, 0.0, 0.0])
-			for j in range(2, -1, -1):
-				var s: float = z[j]
-				for k in range(j + 1, 3):
-					s -= R[j][k] * c[k]
-				c[j] = s / R[j][j]
-	var ev: Array = Sistemas.sym_eigenvalues(N)
-	var kappa: float = float(ev[2]) / float(ev[0]) if float(ev[0]) > 0.0 else INF
-	var res := {"c": c, "N": N, "kappa": kappa, "kappa_M": sqrt(kappa), "valido": false, "metodo": metodo}
-	if c.size() != 3 or not (c[0] > 0.0):
-		return res
-	var rms := 0.0
-	for i in n:
-		var th: float = obs[i][2]
-		rms += pow(c[0] + c[1] * cos(th) + c[2] * sin(th) - y[i], 2)
-	res["rms"] = sqrt(rms / n)
-	var e := sqrt(c[1] * c[1] + c[2] * c[2]) / c[0]
-	res["e"] = e
-	res["peri"] = rad_to_deg(atan2(c[2], c[1]))
-	res["p"] = 1.0 / c[0]
-	res["a"] = 1.0 / c[0] / (1.0 - e * e) if e < 1.0 else INF
-	res["valido"] = e < 1.0
-	return res
-
-## Posición [r, θ] predicha en t con la órbita ajustada; la época (anomalía media en t = 0) es
-## la media circular de Mᵢ − n·tᵢ de las observaciones. Vacío si la cónica no es una elipse.
-static func predecir(aj: Dictionary, obs: Array, t: float) -> PackedFloat64Array:
-	if not aj.get("valido", false):
-		return PackedFloat64Array()
-	var a: float = aj["a"]
-	var e: float = aj["e"]
+## Velocidad real (analítica) de la órbita: Ė = n/(1 − e cos E) y (−a sen E, b cos E)·Ė en el
+## plano de la órbita, girado la longitud del perihelio ϖ.
+static func velocidad_real(orb: Dictionary, t: float) -> PackedFloat64Array:
+	var a: float = orb["a"]
+	var e: float = orb["e"]
 	var n := K / pow(a, 1.5)
-	var peri := deg_to_rad(float(aj["peri"]))
-	var sx := 0.0
-	var sy := 0.0
-	for o in obs:
-		var f: float = float(o[2]) - peri
-		var E := 2.0 * atan2(sqrt(1.0 - e) * sin(0.5 * f), sqrt(1.0 + e) * cos(0.5 * f))
-		var M0: float = E - e * sin(E) - n * float(o[0])
-		sx += cos(M0)
-		sy += sin(M0)
-	return polar({"a": a, "e": e, "peri": aj["peri"], "M0": atan2(sy, sx)}, t)
+	var E: float = kepler(float(orb["M0"]) + n * t, e)[0]
+	var ed := n / (1.0 - e * cos(E))
+	var vx := -a * sin(E) * ed
+	var vy := a * sqrt(1.0 - e * e) * cos(E) * ed
+	var w := deg_to_rad(float(orb["peri"]))
+	return PackedFloat64Array([vx * cos(w) - vy * sin(w), vx * sin(w) + vy * cos(w)])
+
+## Semieje y excentricidad del estado [x, y, vx, vy]: vis-viva 1/a = 2/r − v²/GM; con el momento
+## angular L = x·v_y − y·v_x, p = L²/GM y e = √(1 − p/a).
+static func elementos(st: PackedFloat64Array) -> PackedFloat64Array:
+	var r := sqrt(st[0] * st[0] + st[1] * st[1])
+	var a := 1.0 / (2.0 / r - (st[2] * st[2] + st[3] * st[3]) / GM)
+	var L := st[0] * st[3] - st[1] * st[2]
+	return PackedFloat64Array([a, sqrt(maxf(0.0, 1.0 - L * L / GM / a))])
+
+## Integra la EDO de dos cuerpos r̈ = −GM·r/r³ desde el estado st durante «dias» con el
+## integrador (0 Euler, 1 Heun, 2 RK4) y paso h; el último paso se acorta para acabar justo.
+## {s: estado final, pts: [x₀, y₀, x₁, y₁, …] de cada paso, pasos}.
+static func propagar(st: PackedFloat64Array, dias: float, h: float, integ: int) -> Dictionary:
+	var pts := PackedFloat64Array([st[0], st[1]])
+	var t := 0.0
+	var n := 0
+	while t < dias - 1e-9 and n < 200000:
+		var hh := minf(h, dias - t)
+		st = paso(st, hh, 0.0, integ)
+		t += hh
+		n += 1
+		pts.append(st[0])
+		pts.append(st[1])
+	return {"s": st, "pts": pts, "pasos": n}
+
+## La pregunta completa: la velocidad en la observación central con la fórmula m y paso k días,
+## la órbita que da (a, e) y su propagación con la EDO hasta t_pred. {v, v_real, err_v (relativo),
+## a, e, s, pts, pasos, pred: [r, θ], error: [°, UA]}, o {} si faltan observaciones para ese h.
+static func predecir(obs: Array, k: int, m: int, integ: int, h_edo: float, t_pred: float) -> Dictionary:
+	var c := obs.size() / 2
+	var v := velocidad(obs, c, k, m)
+	if v.size() != 2:
+		return {}
+	var tc: float = obs[c][0]
+	var st := PackedFloat64Array([obs[c][1], obs[c][2], v[0], v[1]])
+	var vr := velocidad_real(CERES, tc)
+	var prop := propagar(st, t_pred - tc, h_edo, integ)
+	var sf: PackedFloat64Array = prop["s"]
+	var pred := PackedFloat64Array([sqrt(sf[0] * sf[0] + sf[1] * sf[1]), atan2(sf[1], sf[0])])
+	var el := elementos(st)
+	return {"v": v, "v_real": vr, "err_v": sqrt(pow(v[0] - vr[0], 2) + pow(v[1] - vr[1], 2)) / sqrt(vr[0] * vr[0] + vr[1] * vr[1]),
+		"a": el[0], "e": el[1], "s": st, "pts": prop["pts"], "pasos": prop["pasos"], "pred": pred,
+		"error": error_prediccion(pred, polar(CERES, t_pred))}
+
+## Error de la predicción (°) con cada paso k = 1, 2, … de la fórmula m: el h óptimo equilibra el
+## truncamiento (∝ hᵖ) con el ruido de las posiciones, que la fórmula amplifica (∝ σ/h).
+static func barrido_h(obs: Array, m: int, integ: int, h_edo: float, t_pred: float, kmax: int = 40) -> Array:
+	var filas := []
+	for k in range(1, kmax + 1):
+		var r := predecir(obs, k, m, integ, h_edo, t_pred)
+		if r.is_empty():
+			break
+		filas.append([k, r["error"][0]])
+	return filas
 
 ## Error de una predicción [r, θ] frente a la posición real: [ángulo visto desde el Sol (°),
 ## distancia (UA)].
@@ -452,7 +467,7 @@ const ACERCAMIENTOS := [[2025, 1, 12, 96.08, [2024, 9], [2025, 5]], [2027, 2, 20
 static func ventana(i: int) -> PackedFloat64Array:
 	var ac: Array = ACERCAMIENTOS[i]
 	return PackedFloat64Array([jd(ac[4][0], ac[4][1], 1.0), jd(ac[5][0], ac[5][1], 1.0)])
-const METODOS_MIN := ["Menor valor de la tabla", "Parábola por 3 nodos (Lagrange)", "Spline cúbico natural"]
+const METODOS_MIN := ["Lagrange, grado 2 (3 nodos)", "Newton en diferencias divididas, grado 4 (5 nodos)", "Newton–Gregory hacia adelante, grado 6 (7 nodos)"]
 
 ## Posición heliocéntrica [x, y, z] (UA, eclíptica J2000) en la fecha juliana j, más las
 ## iteraciones de Newton que necesitó la ecuación de Kepler.
@@ -499,122 +514,97 @@ static func tabla(j0: float, j1: float, paso: float) -> Array:
 		j += paso
 	return [ts, ds]
 
-## Spline cúbico natural: las segundas derivadas Mᵢ en los nodos, del sistema tridiagonal
-## hᵢ₋₁Mᵢ₋₁ + 2(hᵢ₋₁ + hᵢ)Mᵢ + hᵢMᵢ₊₁ = 6(Δᵢ − Δᵢ₋₁), con M₀ = Mₙ = 0 (algoritmo de Thomas).
-static func spline(xs: PackedFloat64Array, ys: PackedFloat64Array) -> PackedFloat64Array:
-	var n := xs.size()
-	var M := PackedFloat64Array()
-	M.resize(n)
-	M.fill(0.0)
-	var m := n - 2
-	if m < 1:
-		return M
-	var lo := PackedFloat64Array()
-	var di := PackedFloat64Array()
-	var up := PackedFloat64Array()
-	var rhs := PackedFloat64Array()
-	for i in range(1, n - 1):
-		var h0 := xs[i] - xs[i - 1]
-		var h1 := xs[i + 1] - xs[i]
-		lo.append(h0)
-		di.append(2.0 * (h0 + h1))
-		up.append(h1)
-		rhs.append(6.0 * ((ys[i + 1] - ys[i]) / h1 - (ys[i] - ys[i - 1]) / h0))
-	for i in range(1, m):
-		var w := lo[i] / di[i - 1]
-		di[i] -= w * up[i - 1]
-		rhs[i] -= w * rhs[i - 1]
-	M[m] = rhs[m - 1] / di[m - 1]
-	for i in range(m - 2, -1, -1):
-		M[i + 1] = (rhs[i] - up[i] * M[i + 2]) / di[i]
-	return M
-
-static func _tramo(xs: PackedFloat64Array, x: float) -> int:
-	return clampi(xs.bsearch(x) - 1, 0, xs.size() - 2)
-
-## Valor (der = 0) o derivada (der = 1) del spline en x.
-static func spline_en(xs: PackedFloat64Array, ys: PackedFloat64Array, M: PackedFloat64Array, x: float, der: int = 0) -> float:
-	var i := _tramo(xs, x)
-	var h := xs[i + 1] - xs[i]
-	var A := xs[i + 1] - x
-	var B := x - xs[i]
-	var ca := ys[i] / h - M[i] * h / 6.0
-	var cb := ys[i + 1] / h - M[i + 1] * h / 6.0
-	if der == 1:
-		return -M[i] * A * A / (2.0 * h) + M[i + 1] * B * B / (2.0 * h) - ca + cb
-	return M[i] * A * A * A / (6.0 * h) + M[i + 1] * B * B * B / (6.0 * h) + ca * A + cb * B
-
-## Interpolación lineal de la tabla en x.
-static func lineal_en(xs: PackedFloat64Array, ys: PackedFloat64Array, x: float) -> float:
-	var i := _tramo(xs, x)
-	return lerpf(ys[i], ys[i + 1], (x - xs[i]) / (xs[i + 1] - xs[i]))
-
-## Mínimo [t, d] de la tabla con un método: 0 el menor nodo; 1 el vértice de la parábola por
-## los tres nodos de alrededor; 2 el del spline natural (raíz de S′ por bisección). Los nodos
-## están equiespaciados.
-static func minimo(ts: PackedFloat64Array, ds: PackedFloat64Array, metodo: int, M: PackedFloat64Array = PackedFloat64Array()) -> PackedFloat64Array:
+## Los nodos de la tabla que usa el método: 3, 5 o 7 centrados en el menor valor (grados 2, 4 y 6;
+## con un número par de nodos el polinomio quedaría torcido hacia un lado). [primero, cuántos].
+static func nodos_min(ds: PackedFloat64Array, metodo: int) -> PackedInt32Array:
 	var i := 1
 	for k in range(1, ds.size() - 1):
 		if ds[k] < ds[i]:
 			i = k
-	if metodo == 0:
-		return PackedFloat64Array([ts[i], ds[i]])
-	var h := ts[i + 1] - ts[i]
-	if metodo == 1:
-		var den := ds[i - 1] - 2.0 * ds[i] + ds[i + 1]
-		var num := ds[i - 1] - ds[i + 1]
-		return PackedFloat64Array([ts[i] + 0.5 * h * num / den, ds[i] - num * num / (8.0 * den)])
-	if M.size() != ts.size():
-		M = spline(ts, ds)
-	var a := ts[i - 1]
-	var b := ts[i + 1]
-	for k in 60:
-		var c := 0.5 * (a + b)
-		if spline_en(ts, ds, M, c, 1) < 0.0:
-			a = c
-		else:
-			b = c
-	var t := 0.5 * (a + b)
-	return PackedFloat64Array([t, spline_en(ts, ds, M, t)])
+	var n := 2 * metodo + 3
+	var i0 := i - metodo - 1
+	return PackedInt32Array([clampi(i0, 0, ds.size() - n), n])
+
+## Lagrange: p(t) = Σⱼ yⱼ·Πₘ≠ⱼ (t − tₘ)/(tⱼ − tₘ).
+static func lagrange_en(xs: PackedFloat64Array, ys: PackedFloat64Array, x: float) -> float:
+	var p := 0.0
+	for j in xs.size():
+		var l := 1.0
+		for m in xs.size():
+			if m != j:
+				l *= (x - xs[m]) / (xs[j] - xs[m])
+		p += ys[j] * l
+	return p
+
+## Diferencias divididas de Newton: los coeficientes f[t₀], f[t₀,t₁], f[t₀,t₁,t₂], …
+static func diferencias_divididas(xs: PackedFloat64Array, ys: PackedFloat64Array) -> PackedFloat64Array:
+	var c := ys.duplicate()
+	for k in range(1, xs.size()):
+		for i in range(xs.size() - 1, k - 1, -1):
+			c[i] = (c[i] - c[i - 1]) / (xs[i] - xs[i - k])
+	return c
+
+## p(t) = c₀ + c₁(t − t₀) + c₂(t − t₀)(t − t₁) + …, evaluado por Horner.
+static func newton_en(xs: PackedFloat64Array, c: PackedFloat64Array, x: float) -> float:
+	var p := c[c.size() - 1]
+	for i in range(c.size() - 2, -1, -1):
+		p = p * (x - xs[i]) + c[i]
+	return p
+
+## Diferencias finitas hacia adelante en el primer nodo: Δ⁰y₀, Δ¹y₀, Δ²y₀, …
+static func diferencias_finitas(ys: PackedFloat64Array) -> PackedFloat64Array:
+	var d := ys.duplicate()
+	var out := PackedFloat64Array([d[0]])
+	for k in range(1, ys.size()):
+		for i in ys.size() - k:
+			d[i] = d[i + 1] - d[i]
+		out.append(d[0])
+	return out
+
+## Newton–Gregory hacia adelante (nodos equiespaciados): con s = (t − t₀)/h,
+## p = y₀ + sΔy₀ + s(s − 1)/2!·Δ²y₀ + s(s − 1)(s − 2)/3!·Δ³y₀ + …
+static func gregory_en(t0: float, h: float, d: PackedFloat64Array, x: float) -> float:
+	var sv := (x - t0) / h
+	var p := 0.0
+	var term := 1.0
+	for k in d.size():
+		p += term * d[k]
+		term *= (sv - k) / (k + 1)
+	return p
+
+## El polinomio interpolante de cada método por sus nodos, como función de t.
+static func interpolante(ts: PackedFloat64Array, ds: PackedFloat64Array, metodo: int) -> Callable:
+	var nm := nodos_min(ds, metodo)
+	var xs := ts.slice(nm[0], nm[0] + nm[1])
+	var ys := ds.slice(nm[0], nm[0] + nm[1])
+	match metodo:
+		0:
+			return func(x: float) -> float: return lagrange_en(xs, ys, x)
+		1:
+			var c := diferencias_divididas(xs, ys)
+			return func(x: float) -> float: return newton_en(xs, c, x)
+	var d := diferencias_finitas(ys)
+	return func(x: float) -> float: return gregory_en(xs[0], xs[1] - xs[0], d, x)
+
+## Mínimo [t, d] según el método: el del polinomio interpolante, por sección áurea entre los
+## nodos vecinos del menor valor de la tabla.
+static func minimo(ts: PackedFloat64Array, ds: PackedFloat64Array, metodo: int) -> PackedFloat64Array:
+	var i := 1
+	for k in range(1, ds.size() - 1):
+		if ds[k] < ds[i]:
+			i = k
+	return seccion_aurea(interpolante(ts, ds, metodo), ts[i - 1], ts[i + 1], 1e-6)
 
 ## Referencia sin tabla: sección áurea sobre la efeméride en [a, b] hasta 10⁻⁶ días.
 static func minimo_referencia(a: float, b: float) -> PackedFloat64Array:
-	var g := (sqrt(5.0) - 1.0) / 2.0
-	var c := b - g * (b - a)
-	var d := a + g * (b - a)
-	var fc := distancia_tm(c)
-	var fd := distancia_tm(d)
-	while b - a > 1e-6:
-		if fc < fd:
-			b = d
-			d = c
-			fd = fc
-			c = b - g * (b - a)
-			fc = distancia_tm(c)
-		else:
-			a = c
-			c = d
-			fc = fd
-			d = a + g * (b - a)
-			fd = distancia_tm(d)
-	var t := 0.5 * (a + b)
-	return PackedFloat64Array([t, distancia_tm(t)])
-
-## Error máximo (UA) de la interpolación lineal y del spline entre los nodos de la tabla.
-static func error_interpolacion(ts: PackedFloat64Array, ds: PackedFloat64Array, M: PackedFloat64Array, muestras: int = 400) -> PackedFloat64Array:
-	var el := 0.0
-	var es := 0.0
-	for k in muestras + 1:
-		var x := lerpf(ts[0], ts[-1], float(k) / muestras)
-		var d := distancia_tm(x)
-		el = maxf(el, absf(lineal_en(ts, ds, x) - d))
-		es = maxf(es, absf(spline_en(ts, ds, M, x) - d))
-	return PackedFloat64Array([el, es])
+	return seccion_aurea(distancia_tm, a, b, 1e-6)
 
 # --- 4. La caída al Sol -----------------------------------------------------------------------
 
-const METODOS_INT := ["Trapecio", "Simpson", "Punto medio", "Gauss–Legendre", "Tanh-sinh",
-	"r = R·sen²u + trapecio", "r = R·sen²u + Simpson"]
+const METODOS_INT := ["Rectángulos por la izquierda", "Punto medio", "Gauss–Legendre", "Tanh-sinh",
+	"Trapecio con r = R·sen²u", "Simpson 1/3 con r = R·sen²u", "Simpson 3/8 con r = R·sen²u", "Romberg con r = R·sen²u"]
+## Los métodos desde este índice integran en u (cambio de variable r = R·sen²u).
+const CAMBIO_VAR := 4
 
 ## Integrando del tiempo de caída desde el reposo en r = R: dt/dr = 1/√(2GM(1/r − 1/R)) en
 ## días/UA (1/r − 1/R se escribe (R − r)/(rR), sin cancelación). Diverge como 1/√(R − r) en
@@ -636,8 +626,9 @@ static func t_caida(R: float, r: float = 0.0) -> float:
 	var x := clampf(r / R, 0.0, 1.0)
 	return sqrt(R * R * R / (2.0 * GM)) * (sqrt(x * (1.0 - x)) + acos(sqrt(x)))
 
-## La integral con el método m y n subintervalos (n puntos en Gauss–Legendre; en tanh-sinh, n
-## fija los niveles de refinamiento). Lo que devuelve Quadrature más «variable»: "r", "u" o "w".
+## La integral con el método m y n subintervalos (n puntos en Gauss–Legendre; en tanh-sinh y en
+## Romberg, n fija los niveles: Romberg llega a n subintervalos). Ninguno evalúa f(R) = ∞.
+## Lo que devuelve Quadrature más «variable»: "r", "u" o "w".
 ## Tanh-sinh integra en w = R − r: sus nodos se acercan a 10⁻³⁰ del extremo singular y, escritos
 ## como r = R − w, se redondearían a R.
 static func cuadratura(m: int, n: int, R: float) -> Dictionary:
@@ -647,22 +638,24 @@ static func cuadratura(m: int, n: int, R: float) -> Dictionary:
 	var d: Dictionary
 	match m:
 		0:
-			d = Quadrature.trapezoid(f, 0.0, R, n)
+			d = Quadrature.rect_left(f, 0.0, R, n)
 		1:
-			d = Quadrature.simpson(f, 0.0, R, n)
-		2:
 			d = Quadrature.midpoint(f, 0.0, R, n)
-		3:
+		2:
 			d = Quadrature.gauss_legendre(f, 0.0, R, n)
-		4:
+		3:
 			d = Quadrature.tanh_sinh(fw, 0.0, R, 1e-15, clampi(int(round(log(float(n)) / log(2.0))) - 2, 1, 8))
 			d["variable"] = "w"
 			return d
-		5:
+		4:
 			d = Quadrature.trapezoid(g, 0.0, PI / 2.0, n)
-		_:
+		5:
 			d = Quadrature.simpson(g, 0.0, PI / 2.0, n)
-	d["variable"] = "u" if m >= 5 else "r"
+		6:
+			d = Quadrature.simpson38(g, 0.0, PI / 2.0, n)
+		_:
+			d = Quadrature.romberg(g, 0.0, PI / 2.0, clampi(int(round(log(float(n)) / log(2.0))) + 1, 2, 10))
+	d["variable"] = "u" if m >= CAMBIO_VAR else "r"
 	return d
 
 ## Tabla de convergencia del método m: [[n, valor, error, orden observado], …] con
@@ -718,8 +711,8 @@ static func caida_edo(R: float, h: float) -> Dictionary:
 # --- 5. La precesión de Mercurio --------------------------------------------------------------
 
 const MERCURIO := {"a": 0.387098, "e": 0.205630}
-const INTEGRADORES := ["Euler explícito", "Runge–Kutta 4", "Verlet (simpléctico)"]
-const ORDEN_INTEG := [1, 4, 2]
+const INTEGRADORES := ["Euler explícito", "Heun (Euler mejorado)", "Runge–Kutta 4"]
+const ORDEN_INTEG := [1, 2, 4]
 ## Exageraciones de la corrección relativista para extrapolar a λ = 1.
 const LAMBDAS := [0.0, 1.0e4, 2.0e4, 3.0e4, 4.0e4]
 
@@ -753,7 +746,8 @@ static func _fac(x: float, y: float, b: float) -> float:
 	var r2 := x * x + y * y
 	return -GM * (1.0 + b / r2) / (r2 * sqrt(r2))
 
-## Un paso del integrador: 0 Euler explícito, 1 RK4, 2 Verlet de velocidad.
+## Un paso del integrador: 0 Euler explícito, 1 Heun (predictor de Euler y corrector con la media
+## de las pendientes), 2 Runge–Kutta 4. Sirve para Ceres (b = 0) y para Mercurio.
 static func paso(s: PackedFloat64Array, h: float, b: float, integ: int) -> PackedFloat64Array:
 	var x := s[0]
 	var y := s[1]
@@ -763,13 +757,14 @@ static func paso(s: PackedFloat64Array, h: float, b: float, integ: int) -> Packe
 	match integ:
 		0:
 			return PackedFloat64Array([x + h * vx, y + h * vy, vx + h * f * x, vy + h * f * y])
-		2:
-			var vxh := vx + 0.5 * h * f * x
-			var vyh := vy + 0.5 * h * f * y
-			var xn := x + h * vxh
-			var yn := y + h * vyh
-			var fn := _fac(xn, yn, b)
-			return PackedFloat64Array([xn, yn, vxh + 0.5 * h * fn * xn, vyh + 0.5 * h * fn * yn])
+		1:
+			var xp := x + h * vx
+			var yp := y + h * vy
+			var vxp := vx + h * f * x
+			var vyp := vy + h * f * y
+			var fp := _fac(xp, yp, b)
+			return PackedFloat64Array([x + 0.5 * h * (vx + vxp), y + 0.5 * h * (vy + vyp),
+				vx + 0.5 * h * (f * x + fp * xp), vy + 0.5 * h * (f * y + fp * yp)])
 	var x2 := x + 0.5 * h * vx
 	var y2 := y + 0.5 * h * vy
 	var vx2 := vx + 0.5 * h * f * x
@@ -843,11 +838,15 @@ static func medir_precesion(integ: int, h: float, lam: float, vueltas: float) ->
 static func extrapolar(integ: int, h: float, vueltas: float, lams: Array = LAMBDAS) -> Dictionary:
 	var pts := []
 	var ok := true
+	var deriva := NAN
 	for lam in lams:
-		var p := float(medir_precesion(integ, h, float(lam), vueltas)["precesion"])
+		var med := medir_precesion(integ, h, float(lam), vueltas)
+		var p := float(med["precesion"])
 		ok = ok and is_finite(p)
 		pts.append([float(lam), p])
-	var res := {"puntos": pts, "teorico": precesion_teorica(), "resultado": NAN, "recta": NAN, "ordenada": NAN}
+		if float(lam) == 0.0:
+			deriva = med["deriva"]
+	var res := {"puntos": pts, "teorico": precesion_teorica(), "resultado": NAN, "recta": NAN, "ordenada": NAN, "deriva": deriva}
 	if not ok or pts.size() < 3:
 		return res
 	var N := [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]

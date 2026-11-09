@@ -4,32 +4,34 @@ extends LabModule
 ## la escena 3D del Sol, los planetas y sus órbitas:
 ##   1. Puntos de Lagrange: las iteraciones de bisección, secante y Newton sobre la curva f(x) cuyas
 ##      raíces son L1, L2 y L3, encima del potencial efectivo; una nave suelta en L1–L5 (RK4).
-##   2. Ceres: las observaciones, sus residuos y la órbita ajustada por mínimos cuadrados
-##      (Cholesky y QR), y dónde predice que reaparecerá.
+##   2. Ceres: las observaciones, la velocidad que da cada fórmula de derivación numérica (flechas)
+##      y la órbita que integra la EDO desde ahí, con sus pasos, hasta el día de la reaparición.
 ##   3. Marte: la tabla de efemérides (ecuación de Kepler por Newton) como nodos sobre las órbitas
-##      y en un tablero, con los interpolantes y el mínimo de cada método.
+##      y en un tablero, con los polinomios de Lagrange, Newton y Newton–Gregory y sus mínimos.
 ##   4. La caída al Sol: los nodos de cada cuadratura como barras del integrando sobre el camino de
 ##      la caída, y la Tierra cayendo con RK4.
-##   5. Mercurio: Euler, RK4 y Verlet a la vez, la roseta de perihelios y la extrapolación a λ = 1.
+##   5. Mercurio: Euler, Heun y RK4 a la vez, la roseta de perihelios y la extrapolación a λ = 1.
+## En «Información», la respuesta según el método elegido, la tabla de todos y su interpretación.
 ## Los cálculos están en solvers/Celeste.gd (funciones puras, probadas en LabTests).
 
 const PREGUNTAS := [
 	"1 · ¿Dónde se estaciona el James Webb? (raíces)",
-	"2 · ¿Cómo encontró Gauss a Ceres? (mínimos cuadrados)",
+	"2 · ¿Cómo encontró Gauss a Ceres? (derivación numérica y EDO)",
 	"3 · ¿Cuándo estará Marte más cerca? (interpolación)",
 	"4 · ¿Cuánto tardaría la Tierra en caer al Sol? (integración)",
 	"5 · ¿Por qué gira la órbita de Mercurio? (EDO)",
 ]
 const COL_RAIZ := [Color(1.0, 0.62, 0.2), Color(1.0, 0.4, 0.85), Color(0.3, 0.9, 1.0)]
-const COL_INTEG := [Color(1.0, 0.4, 0.3), Color(0.3, 0.85, 1.0), Color(0.5, 1.0, 0.5)]
+const COL_INTEG := [Color(1.0, 0.4, 0.3), Color(1.0, 0.85, 0.3), Color(0.3, 0.85, 1.0)]
 const COL_MIN := [Color(0.8, 0.8, 0.88), Color(1.0, 0.62, 0.2), Color(0.3, 0.9, 1.0)]
-const COL_LS := [Color(1.0, 0.62, 0.2), Color(0.3, 0.9, 1.0)]
+const COL_DER := [Color(1.0, 0.62, 0.2), Color(1.0, 0.4, 0.85), Color(0.3, 0.9, 1.0), Color(0.5, 1.0, 0.55)]
 const ORO := Color(1.0, 0.85, 0.35)
 const GRIS := Color(0.6, 0.68, 0.8)
 const LP := ["L1", "L2", "L3", "L4", "L5"]
 const SUB := ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"]
 const PASOS_EDO := [1.0, 0.5, 0.1, 0.05, 0.01, 0.001]
 const PASOS_ORB := [2.0, 1.0, 0.5, 0.25, 0.1, 0.05, 0.01]
+const PASOS_CERES := [5.0, 2.0, 1.0, 0.5]
 ## Aspecto de cada astro: paradas del degradado que colorea el ruido de su superficie.
 const ASPECTO := {
 	"Tierra": [[0.0, Color(0.04, 0.12, 0.4)], [0.5, Color(0.1, 0.33, 0.75)], [0.56, Color(0.22, 0.5, 0.24)], [0.78, Color(0.5, 0.42, 0.28)], [1.0, Color(0.95, 0.95, 0.97)]],
@@ -58,18 +60,20 @@ var nave_lp := 1
 var nave_km := 1000.0
 var vista_todo := false
 # 2 · Ceres
-var n_obs := 22
 var arco := 41.0
 var ruido := 0.01               # % de error de cada posición
 var hueco := 323.0
 var semilla_obs := 1
-var metodo_ls := 2              # 0 Cholesky, 1 QR, 2 los dos
+var metodo_der := 2             # 0–3 (Celeste.METODOS_DER), o 4: todas
+var h_der := 10.0               # paso h de la derivada (días)
+var edo_ceres := 2              # integrador de la órbita (Celeste.INTEGRADORES)
+var paso_ceres := 1.0           # paso de la EDO (días)
 # 3 · Marte
 var acercamiento := 0
 var paso_tabla := 20.0
 var metodo_min := 3             # 0–2, o 3: todos
 # 4 · Caída
-var metodo_int := 2
+var metodo_int := 5
 var n_int := 16
 var h_edo := 0.05
 # 5 · Mercurio
@@ -84,6 +88,8 @@ var dinamico: Node3D            # lo que se rehace al avanzar el método
 var _q_box: VBoxContainer
 var _opt_pregunta: OptionButton
 var _info := ""
+var _interp := ""               # la interpretación, debajo de la respuesta
+var _ancho_info := -1.0         # ancho del panel «Información» antes de abrir el módulo
 var _csv: Array = []
 var _t := 0.0
 var _rotulo: Label3D
@@ -105,15 +111,15 @@ var _nave_mi: MeshInstance3D
 var _traza := PackedVector3Array()
 # 2
 var _obs: Array = []
-var _aj: Array = []
+var _preds: Array = []
+var _barrido: Array = []
+var _err_edo := 0.0
 var _ceres_mi: MeshInstance3D
 var _tierra_mi: MeshInstance3D
 # 3
 var _tb: Array = []
-var _Mspl := PackedFloat64Array()
 var _mins: Array = []
 var _ref := PackedFloat64Array()
-var _ei := PackedFloat64Array()
 var _kep := 0.0
 var _j := 0.0
 var _marte_mi: MeshInstance3D
@@ -142,8 +148,8 @@ func uses_time() -> bool: return true
 func formula() -> String:
 	match pregunta:
 		0: return "f(x) = ∂Ω/∂x = x − (1−μ)(x+μ)/|x+μ|³ − μ(x−1+μ)/|x−1+μ|³ = 0   ·   Newton: xₖ₊₁ = xₖ − f(xₖ)/f′(xₖ)"
-		1: return "1/r = A + B·cos θ + C·sen θ   ·   (MᵀM)c = Mᵀy por Cholesky   ·   M = QR → Rc = Qᵀy"
-		2: return "E − e·sen E = M (Newton)   ·   d(t) = |r_Marte(t) − r_Tierra(t)|   ·   spline natural: S″(t₀) = S″(tₙ) = 0"
+		1: return "v(t) ≈ (x(t+h) − x(t−h))/(2h)   ·   r̈ = −GM·r/r³ (Euler, Heun, RK4)   ·   1/a = 2/r − v²/GM"
+		2: return "E − e·sen E = M (Newton)   ·   p(t) = Σ yⱼ·ℓⱼ(t) = c₀ + c₁(t − t₀) + …   ·   mín. de p por sección áurea"
 		3: return "t = ∫₀ᴿ dr / √(2GM(1/r − 1/R))   ·   r = R·sen²u   ·   exacto: T/(4√2)"
 	return "r̈ = −GM·r/r³·(1 + 3λL²/(c²r²))   ·   P(λ) ≈ c₀ + c₁λ + c₂λ²   ·   la relatividad: c₁"
 
@@ -161,6 +167,10 @@ func view() -> Dictionary:
 	return {"target": Vector3(0, 0.2, 0), "dist": 7.4, "yaw": -20.0, "pitch": -34.0}
 
 func setup() -> void:
+	# La respuesta y su interpretación son largas: el panel «Información», más ancho y más bajo.
+	if lab and lab.get("info_label") != null:
+		_ancho_info = lab.info_label.custom_minimum_size.x
+		lab.info_label.custom_minimum_size.x = 560.0
 	add_child(_estrellas())
 	escena = Node3D.new()
 	add_child(escena)
@@ -168,6 +178,11 @@ func setup() -> void:
 
 func reset() -> void:
 	_montar()
+
+func liberar() -> void:
+	if lab and lab.get("info_label") != null and _ancho_info > 0.0:
+		lab.info_label.custom_minimum_size.x = _ancho_info
+		lab.info_panel.reset_size()
 
 ## Rehace la escena y los cálculos de la pregunta actual.
 func _montar() -> void:
@@ -444,6 +459,22 @@ static func _miles(v: float) -> String:
 		o += s[i]
 	return ("−" if v < 0.0 else "") + o
 
+## 3 → «³» (para los órdenes O(h³)).
+static func _sup(n: int) -> String:
+	var d := {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"}
+	var o := ""
+	for ch in str(n):
+		o += d[ch]
+	return o
+
+## La interpretación, debajo de la respuesta y de la tabla.
+func _bloque_interp() -> String:
+	return "\n[b]Interpretación[/b]\n[font_size=13][color=#d2e2f5]%s[/color][/font_size]" % _interp
+
+## Un error en notación científica, o «< 10⁻¹³» si ya es redondeo.
+static func _err(v: float) -> String:
+	return "< 10⁻¹³" if absf(v) < 1e-13 else LabUI.sci(absf(v), 1)
+
 static func _num(v: float) -> String:
 	return str(v).replace(".", ",")
 
@@ -683,26 +714,74 @@ func _dibujar_iter() -> void:
 func _tabla_lagrange(S: Dictionary) -> void:
 	var xr: float = _L[punto][0]
 	var dkm := Celeste.distancia_km(punto, xr, _mu, S["d_km"])
-	var t := "[b]%s del sistema %s[/b] (μ = %s): x* = %.12f → [color=#ffd966]%s km[/color] de %s" % [
-		LP[punto], S["nombre"], LabUI.sci(_mu, 4), xr, _miles(dkm), S["p1"] if punto == 2 else S["p2"]]
-	if sistema == 0 and punto == 1:
-		t += "\n[color=#8fa3b8]El James Webb gira alrededor de L2, a unos 1,5 millones de km de la Tierra.[/color]"
-	t += "\n[font_size=12][color=#8fa3b8]  Método      │ iter │ evals f │ p teórico │ p obs. │ |xₙ − x*|[/color]"
+	var cuerpo: String = S["p1"] if punto == 2 else S["p2"]
+	var msel := 2 if metodo_raiz == 3 else metodo_raiz
+	var xs_sel: Array = _iters[msel]["xs"]
+	var t := ""
+	if _llega(msel, xr):
+		t = "[b]Respuesta (%s):[/b] %s del sistema %s está en x* = %.12f, a [color=#ffd966]%s km[/color] de %s · %d iteraciones" % [
+			Celeste.METODOS_RAIZ[msel], LP[punto], S["nombre"], xr, _miles(dkm), cuerpo, xs_sel.size()]
+	else:
+		t = "[b]Respuesta (%s):[/b] [color=#ff7766]desde ese punto de partida no llega a %s[/color] (termina en x = %s)" % [
+			Celeste.METODOS_RAIZ[msel], LP[punto], "%.6f" % float(xs_sel[-1]) if not xs_sel.is_empty() else "—"]
+	t += "\n[font_size=12][color=#8fa3b8]  Método │ iter │ evals f │ p teórico │ p obs. │ |xₙ − x*|[/color]"
 	_csv = [["metodo", "k", "x_k", "error"]]
 	for m in 3:
 		var r: Dictionary = _iters[m]
 		var xs: Array = r["xs"]
 		var sq := "[color=#%s]■[/color]" % (COL_RAIZ[m] as Color).to_html(false)
-		if xs.is_empty() or not r["converge"]:
-			t += "\n%s %s │ [color=#ff7766]no converge desde ese punto: Newton saltó una singularidad[/color]" % [sq, Celeste.METODOS_RAIZ[m]]
+		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_RAIZ[m] if m == msel else Celeste.METODOS_RAIZ[m]
+		if not _llega(m, xr):
+			t += "\n%s %s │ [color=#ff7766]no llega a %s desde ese punto[/color]" % [sq, nombre, LP[punto]]
 			continue
 		var p := Celeste.orden(xs, xr, m == 0)
-		t += "\n%s %s │ %d │ %d │ %s │ %s │ %s" % [sq, Celeste.METODOS_RAIZ[m], xs.size(), int(r["evals"]), Celeste.ORDEN_RAIZ[m],
+		t += "\n%s %s │ %d │ %d │ %s │ %s │ %s" % [sq, nombre, xs.size(), int(r["evals"]), Celeste.ORDEN_RAIZ[m],
 			"%.2f" % p if is_finite(p) else "—", LabUI.sci(absf(float(xs[-1]) - xr), 1)]
 		for k in xs.size():
 			_csv.append([Celeste.METODOS_RAIZ[m], k + 1, xs[k], absf(float(xs[k]) - xr)])
 	t += "[/font_size]"
 	_info = t
+	_interp = _interpretar_lagrange(S, xr, dkm)
+
+func _llega(m: int, xr: float) -> bool:
+	var xs: Array = _iters[m]["xs"]
+	return _iters[m]["converge"] and not xs.is_empty() and absf(float(xs[-1]) - xr) < 1e-9
+
+func _interpretar_lagrange(S: Dictionary, xr: float, dkm: float) -> String:
+	var n := []
+	var p := []
+	var ev := []
+	for m in 3:
+		var xs: Array = _iters[m]["xs"]
+		n.append(xs.size())
+		p.append(Celeste.orden(xs, xr, m == 0))
+		ev.append(int(_iters[m]["evals"]))
+	var t := ""
+	match metodo_raiz:
+		0:
+			var ab := Celeste.intervalo(punto, _mu)
+			t = "La bisección partió del intervalo [%.6f; %.6f], donde f cambia de signo, y lo partió a la mitad %d veces: cada paso gana un bit (orden observado %.2f, lineal), así que necesita unas log₂((b − a)/tolerancia) iteraciones. Es la más lenta, pero no puede fallar." % [ab[0], ab[1], n[0], p[0]]
+		1:
+			t = "La secante cambia la derivada por la recta que pasa por los dos últimos puntos: orden observado %.2f, cerca de la razón áurea 1,618. Llegó en %d iteraciones con solo %d evaluaciones de f: la más económica de las tres." % [p[1], n[1], ev[1]]
+		2:
+			if _llega(2, xr):
+				t = "Newton sigue la tangente hasta el eje: orden observado %.2f, cuadrático (los dígitos correctos se duplican en cada paso). Llegó en %d iteraciones, pero cada una evalúa f y f′ (%d evaluaciones). Si empieza lejos puede saltar sobre un cuerpo y acabar en otra raíz: haz clic sobre el eje para probarlo." % [p[2], n[2], ev[2]]
+			else:
+				t = "Desde ese punto de partida la tangente cruzó una singularidad (un cuerpo, donde f → ±∞) y Newton se fue a otra raíz o divergió: su convergencia solo es local. La bisección, que parte de un intervalo con cambio de signo, no tiene ese problema."
+		_:
+			t = "Los tres métodos llegan al mismo x* con 15 cifras: la bisección en %d iteraciones (orden %.2f), la secante en %d (orden %.2f) y Newton en %d (orden %.2f). Newton avanza más por iteración; la secante gana en evaluaciones de f (%d frente a %d)." % [n[0], p[0], n[1], p[1], n[2], p[2], ev[1], ev[2]]
+	return t + "\n" + _fisica_lagrange(S, dkm)
+
+func _fisica_lagrange(S: Dictionary, dkm: float) -> String:
+	var d := _miles(dkm)
+	if sistema == 0:
+		match punto:
+			1: return "En L2, a %s km de la Tierra en dirección opuesta al Sol, la atracción del Sol y la de la Tierra suman justo la fuerza centrípeta para dar la vuelta al Sol en un año, al ritmo de la Tierra: el telescopio se queda «estacionado» con el Sol, la Tierra y la Luna siempre a su espalda, tapados por su escudo térmico. Es una silla del potencial (equilibrio inestable): suelta la nave y verás que se aleja; por eso el James Webb corrige su órbita cada pocas semanas." % d
+			0: return "En L1, a %s km de la Tierra hacia el Sol, un satélite ve el Sol sin interrupciones: allí está el observatorio solar SOHO. También es un equilibrio inestable." % d
+		return "L3 está al otro lado del Sol, a %s km de él, siempre oculto desde la Tierra; también es un equilibrio inestable." % d
+	if sistema == 1:
+		return "En el sistema Tierra–Luna, %s está a %s km de %s: son puntos de paso para misiones a la Luna. Los tres puntos sobre el eje son inestables." % [LP[punto], d, S["p1"] if punto == 2 else S["p2"]]
+	return "En el sistema Sol–Júpiter, %s está a %s km de %s. L1–L3 son inestables, pero L4 y L5 son estables (μ < 0,0385): allí se acumulan miles de asteroides troyanos (suelta la nave en L4)." % [LP[punto], d, S["p1"] if punto == 2 else S["p2"]]
 
 ## Suelta la nave en el punto elegido, desplazada nave_km hacia fuera, en reposo en el marco que gira.
 func _soltar_nave() -> void:
@@ -745,27 +824,32 @@ func _info_lagrange() -> String:
 		var dl := sqrt(pow(_nave[0] - float(_L[nave_lp][0]), 2) + pow(_nave[1] - float(_L[nave_lp][1]), 2)) * float(S["d_km"])
 		s += "\nNave en %s: t = %.1f días · a %s km del punto · deriva de la constante de Jacobi %s (RK4)" % [
 			LP[nave_lp], _nave_t / TAU * float(S["periodo"]), _miles(dl), LabUI.sci(absf(Celeste.jacobi(_nave, _mu) - _nave_c0), 1)]
-	return s
+	return s + _bloque_interp()
 
 #endregion
 
 #region 2 · Ceres ----------------------------------------------------------------------------
 
-func _orbita_conica(c: PackedFloat64Array) -> PackedVector3Array:
-	var pts := PackedVector3Array()
-	for i in 241:
-		var th := TAU * i / 240.0
-		var den := c[0] + c[1] * cos(th) + c[2] * sin(th)
-		if den <= 0.05:
-			continue
-		var r := 1.0 / den
-		pts.append(_W(r * cos(th), r * sin(th)))
-	return pts
+func _derivadas_visibles() -> Array:
+	return [0, 1, 2, 3] if metodo_der == 4 else [metodo_der]
 
 func _montar_ceres() -> void:
 	scale_xy = ESC_CERES
-	_obs = Celeste.observar(Celeste.CERES, n_obs, arco, ruido / 100.0, semilla_obs)
-	_aj = [Celeste.ajustar(_obs, 0), Celeste.ajustar(_obs, 1)]
+	_obs = Celeste.observar(Celeste.CERES, arco, ruido / 100.0, semilla_obs)
+	var t_pred := arco + hueco
+	var k := int(h_der)
+	var msel := 2 if metodo_der == 4 else metodo_der
+	_preds = []
+	for m in 4:
+		_preds.append(Celeste.predecir(_obs, k, m, edo_ceres, paso_ceres, t_pred))
+	_barrido = Celeste.barrido_h(_obs, msel, edo_ceres, paso_ceres, t_pred, mini(40, _obs.size() / 2))
+	# Lo que aporta solo la EDO: la propagación del estado exacto.
+	var c := _obs.size() / 2
+	var tc: float = _obs[c][0]
+	var px := Celeste.posicion_xy(Celeste.CERES, tc)
+	var vr := Celeste.velocidad_real(Celeste.CERES, tc)
+	var sf: PackedFloat64Array = Celeste.propagar(PackedFloat64Array([px[0], px[1], vr[0], vr[1]]), t_pred - tc, paso_ceres, edo_ceres)["s"]
+	_err_edo = Celeste.error_prediccion(PackedFloat64Array([sqrt(sf[0] * sf[0] + sf[1] * sf[1]), atan2(sf[1], sf[0])]), Celeste.polar(Celeste.CERES, t_pred))[0]
 	escena.add_child(_sol(0.14))
 	_rejilla(3.0, 1.0)
 	escena.add_child(tube(_circulo(1.0), 0.004, glow_mat(Color(0.3, 0.55, 1.0), 0.8)))
@@ -774,105 +858,140 @@ func _montar_ceres() -> void:
 	var real := PackedVector3Array()
 	var per := Celeste.periodo(Celeste.CERES["a"])
 	for i in 241:
-		var p := Celeste.polar(Celeste.CERES, per * i / 240.0)
-		real.append(_W(p[0] * cos(p[1]), p[0] * sin(p[1])))
+		var q := Celeste.posicion_xy(Celeste.CERES, per * i / 240.0)
+		real.append(_W(q[0], q[1]))
 	_discontinua(real, Color(1, 1, 1, 0.35))
 	var arc := PackedVector3Array()
 	for i in 41:
-		var p := Celeste.polar(Celeste.CERES, arco * i / 40.0)
-		arc.append(_W(p[0] * cos(p[1]), p[0] * sin(p[1]), 0.005))
+		var q := Celeste.posicion_xy(Celeste.CERES, arco * i / 40.0)
+		arc.append(_W(q[0], q[1], 0.005))
 	escena.add_child(tube(arc, 0.012, glow_mat(Color(0.4, 1.0, 0.9), 1.6)))
-	# Observaciones y residuos (exagerados para que se vean).
-	var aj: Dictionary = _aj[1 if metodo_ls == 1 else 0]
-	var c: PackedFloat64Array = aj["c"]
-	var res_max := 0.0
-	if c.size() == 3:
-		for o in _obs:
-			res_max = maxf(res_max, absf(1.0 / (c[0] + c[1] * cos(o[2]) + c[2] * sin(o[2])) - float(o[1])))
+	# Las observaciones; las que usa la fórmula elegida, más grandes y de su color.
+	var usadas := {}
+	for dd in [[0, 1], [-1, 0], [-1, 1], [-2, -1, 1, 2]][msel]:
+		usadas[c + int(dd) * k] = true
+	var mo := glow_mat(Color(1.0, 1.0, 0.85), 1.6)
+	var mu := glow_mat(COL_DER[msel], 2.6)
+	for i in _obs.size():
+		var o: Array = _obs[i]
+		_bola(dinamico, 0.03 if usadas.has(i) else 0.013, mu if usadas.has(i) else mo, _W(o[1], o[2], 0.01))
+	var pc := _W(_obs[c][1], _obs[c][2], 0.01)
+	dinamico.add_child(label3d("día %d: aquí se deriva" % int(tc), pc + Vector3(0, 0.2, 0), Color(1.0, 1.0, 0.85), 0.003))
+	# Velocidades: la real (blanca) y la de cada fórmula, con su error aumentado para que se vea.
+	var vreal := Vector3(vr[0], 0.0, -vr[1])
+	var esc_v := 0.6 / vreal.length()
+	var emax := 0.0
+	for m in _derivadas_visibles():
+		if not (_preds[m] as Dictionary).is_empty():
+			emax = maxf(emax, float(_preds[m]["err_v"]))
 	var factor := 1.0
-	if res_max > 0.0:
-		factor = clampf(0.25 / (res_max * scale_xy), 1.0, 1e7)
-		factor = pow(10.0, floor(log(factor) / log(10.0)))
-	var mo := glow_mat(Color(1.0, 1.0, 0.85), 2.0)
-	var mr := glow_mat(Color(1.0, 0.3, 0.3), 1.6)
-	for o in _obs:
-		var r: float = o[1]
-		var th: float = o[2]
-		var po := _W(r * cos(th), r * sin(th), 0.01)
-		_bola(dinamico, 0.02, mo, po)
-		if c.size() == 3:
-			var rf := 1.0 / (c[0] + c[1] * cos(th) + c[2] * sin(th))
-			var re := r + (rf - r) * factor
-			dinamico.add_child(rod(po, _W(re * cos(th), re * sin(th), 0.01), 0.004, mr))
-	if res_max > 0.0:
-		var o0: Array = _obs[_obs.size() / 2]
-		dinamico.add_child(label3d("residuos × %s" % _miles(factor), _W(float(o0[1]) * cos(o0[2]), float(o0[1]) * sin(o0[2]), 0.18), Color(1.0, 0.55, 0.5), 0.0032))
-	var t_pred := arco + hueco
-	var pr := Celeste.polar(Celeste.CERES, t_pred)
-	var preal := _W(pr[0] * cos(pr[1]), pr[0] * sin(pr[1]), 0.02)
-	_bola(dinamico, 0.03, glow_mat(Color.WHITE, 2.0), preal)
-	dinamico.add_child(label3d("Ceres real (día %d)" % int(t_pred), preal + Vector3(0, 0.24, 0), Color.WHITE, 0.0032))
-	for m in ([0, 1] if metodo_ls == 2 else [metodo_ls]):
-		var a: Dictionary = _aj[m]
-		if not a["valido"]:
+	if emax > 0.0:
+		factor = pow(10.0, floor(log(clampf(0.15 / emax, 1.0, 1e6)) / log(10.0)))
+	dinamico.add_child(arrow(pc, pc + vreal * esc_v, 0.008, glow_mat(Color.WHITE, 2.0)))
+	for m in _derivadas_visibles():
+		var r: Dictionary = _preds[m]
+		if r.is_empty():
 			continue
-		escena.add_child(tube(_orbita_conica(a["c"]), 0.006 if m == 0 else 0.0045, glow_mat(COL_LS[m], 1.8)))
-		var pp := Celeste.predecir(a, _obs, t_pred)
+		var v: PackedFloat64Array = r["v"]
+		dinamico.add_child(arrow(pc, pc + (vreal + Vector3(v[0] - vr[0], 0.0, -(v[1] - vr[1])) * factor) * esc_v, 0.006, glow_mat(COL_DER[m], 2.2)))
+	dinamico.add_child(label3d("velocidad real (blanca) y la de cada fórmula, con su error × %s" % _miles(factor), pc + vreal * esc_v + Vector3(0, 0.14, 0), Color(0.9, 0.92, 1.0), 0.0027))
+	# La órbita que integra la EDO desde ese estado hasta el día de la reaparición.
+	var pr := Celeste.posicion_xy(Celeste.CERES, t_pred)
+	var preal := _W(pr[0], pr[1], 0.02)
+	_bola(dinamico, 0.032, glow_mat(Color.WHITE, 2.4), preal)
+	dinamico.add_child(label3d("Ceres real (día %d)" % int(t_pred), preal + Vector3(0, 0.24, 0), Color.WHITE, 0.0032))
+	for m in _derivadas_visibles():
+		var r: Dictionary = _preds[m]
+		if r.is_empty():
+			continue
+		var arr: PackedFloat64Array = r["pts"]
+		var pts := PackedVector3Array()
+		for i in range(0, arr.size(), 2):
+			pts.append(_W(arr[i], arr[i + 1], 0.012))
+		escena.add_child(tube(pts, 0.005 if m == msel else 0.0035, glow_mat(COL_DER[m], 1.6)))
+		var pp: PackedFloat64Array = r["pred"]
 		var wp := _W(pp[0] * cos(pp[1]), pp[0] * sin(pp[1]), 0.02)
-		_bola(dinamico, 0.028, glow_mat(COL_LS[m], 2.5), wp)
-		dinamico.add_child(rod(wp, preal, 0.004, glow_mat(Color(1.0, 0.35, 0.3), 2.0)))
-		if m == (1 if metodo_ls == 1 else 0):
-			var err := Celeste.error_prediccion(pp, pr)
-			dinamico.add_child(label3d("predicción: error %.2f°" % err[0], wp + Vector3(0, -0.2, 0.12), COL_LS[m], 0.0032))
+		_bola(dinamico, 0.028, glow_mat(COL_DER[m], 2.5), wp)
+		dinamico.add_child(rod(wp, preal, 0.003, glow_mat(Color(1.0, 0.35, 0.3), 1.6)))
+		if m == msel:
+			dinamico.add_child(label3d("predicción: error %.3f°" % r["error"][0], wp + Vector3(0, -0.2, 0.12), COL_DER[m], 0.0032))
+			# Los pasos de la EDO sobre la trayectoria.
+			var mp := glow_mat(COL_DER[m].lightened(0.35), 2.0)
+			for i in range(0, pts.size(), maxi(1, int(r["pasos"]) / 60)):
+				_bola(dinamico, 0.009, mp, pts[i])
 	_tierra_mi = _cuerpo("Tierra", 0.05, Vector3.ZERO)
 	escena.add_child(_tierra_mi)
 	_ceres_mi = _cuerpo("Ceres", 0.04, Vector3.ZERO)
 	escena.add_child(_ceres_mi)
 	_lin = _lineas()
 	_rotulo.position = Vector3(0, 1.4, 0)
-	_tabla_ceres(pr, t_pred)
+	_tabla_ceres(t_pred)
 	_paso_ceres()
 
-func _tabla_ceres(pr: PackedFloat64Array, t_pred: float) -> void:
-	var a0: Dictionary = _aj[0]
-	var dth := rad_to_deg(float(_obs[-1][2]) - float(_obs[0][2]))
-	var N: Array = a0["N"]
-	var t := "[b]%d observaciones en %d días[/b] (arco de %.1f° visto desde el Sol) · error de cada posición %s %% · semilla %d" % [n_obs, int(arco), dth, str(ruido), semilla_obs]
-	t += "\n[font_size=12]MᵀM = [%s; %s; %s]" % [_fila(N[0]), _fila(N[1]), _fila(N[2])]
-	t += "\nκ(MᵀM) = %s = κ(M)² → las ecuaciones normales pierden ≈ %d dígitos de 16; QR, ≈ %d" % [
-		LabUI.sci(a0["kappa"], 2), int(round(log(maxf(1.0, a0["kappa"])) / log(10.0))), int(round(log(maxf(1.0, a0["kappa_M"])) / log(10.0)))]
-	t += "\n[color=#8fa3b8]  Método    │ A │ B │ C │ a (UA) │ e │ ϖ (°) │ error al reaparecer[/color]"
-	for m in 2:
-		var a: Dictionary = _aj[m]
-		var sq := "[color=#%s]■[/color]" % (COL_LS[m] as Color).to_html(false)
-		var c: PackedFloat64Array = a["c"]
-		if c.size() != 3:
-			t += "\n%s %s │ [color=#ff7766]la matriz no es definida positiva (en coma flotante)[/color]" % [sq, Celeste.METODOS_LS[m]]
+func _tabla_ceres(t_pred: float) -> void:
+	var msel := 2 if metodo_der == 4 else metodo_der
+	var c := _obs.size() / 2
+	var r: Dictionary = _preds[msel]
+	var t := ""
+	if r.is_empty():
+		t = "[b]Respuesta (%s):[/b] [color=#ff7766]con h = %d días faltan observaciones: el arco tiene %d días[/color]" % [Celeste.METODOS_DER[msel], int(h_der), int(arco)]
+	else:
+		var v: PackedFloat64Array = r["v"]
+		var pp: PackedFloat64Array = r["pred"]
+		t = "[b]Respuesta (%s con h = %d días; %s con paso %s días):[/b] el día %d Ceres va a %.3f km/s; con esa velocidad su órbita tiene a = %.4f UA y e = %.4f, y la EDO predice que el %s estará en longitud %.2f°, a [color=#ffd966]%.3f°[/color] de donde la encontraron." % [
+			Celeste.METODOS_DER[msel], int(h_der), Celeste.INTEGRADORES[edo_ceres], _num(paso_ceres), int(_obs[c][0]),
+			sqrt(v[0] * v[0] + v[1] * v[1]) * Celeste.KM_UA / 86400.0, r["a"], r["e"], Celeste.fecha(Celeste.jd(1801, 1, 1.0) + t_pred, false),
+			fposmod(rad_to_deg(pp[1]), 360.0), r["error"][0]]
+	t += "\n[font_size=12][color=#8fa3b8]  Fórmula │ orden │ error de v │ a (UA) │ e │ error al reaparecer[/color]"
+	_csv = [["formula", "h_dias", "vx_UA_dia", "vy_UA_dia", "error_v_relativo", "a_UA", "e", "error_grados", "error_km"]]
+	for m in 4:
+		var q: Dictionary = _preds[m]
+		var sq := "[color=#%s]■[/color]" % (COL_DER[m] as Color).to_html(false)
+		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_DER[m] if m == msel else Celeste.METODOS_DER[m]
+		var orden := "O(h%s)" % _sup(Celeste.ORDEN_DER[m]) if Celeste.ORDEN_DER[m] > 1 else "O(h)"
+		if q.is_empty():
+			t += "\n%s %s │ %s │ [color=#ff7766]faltan observaciones para h = %d[/color]" % [sq, nombre, orden, int(h_der)]
 			continue
-		var fila := "\n%s %s │ %.9f │ %.9f │ %.9f" % [sq, ["Cholesky", "QR"][m], c[0], c[1], c[2]]
-		if a["valido"]:
-			var err := Celeste.error_prediccion(Celeste.predecir(a, _obs, t_pred), pr)
-			fila += " │ %.4f │ %.4f │ %.2f │ %.3f° (%s km)" % [a["a"], a["e"], a["peri"], err[0], _miles(err[1] * Celeste.KM_UA)]
-		else:
-			fila += " │ [color=#ff7766]e = %.2f ≥ 1: no es una elipse (arco corto o mucho ruido)[/color]" % a.get("e", INF)
-		t += fila
-	t += "\n[color=#8fa3b8]  Ceres real │ │ │ │ %.4f │ %.4f │ %.2f │[/color]" % [Celeste.CERES["a"], Celeste.CERES["e"], Celeste.CERES["peri"]]
-	var c0: PackedFloat64Array = _aj[0]["c"]
-	var c1: PackedFloat64Array = _aj[1]["c"]
-	if c0.size() == 3 and c1.size() == 3:
-		var dif := sqrt(pow(c0[0] - c1[0], 2) + pow(c0[1] - c1[1], 2) + pow(c0[2] - c1[2], 2)) / sqrt(c1[0] * c1[0] + c1[1] * c1[1] + c1[2] * c1[2])
-		t += "\nDiferencia Cholesky–QR: |Δc|/|c| = %s · rms de los residuos de 1/r: %s UA⁻¹" % [LabUI.sci(dif, 1), LabUI.sci(_aj[1].get("rms", NAN), 2)]
-	t += "[/font_size]"
+		t += "\n%s %s │ %s │ %s %% │ %.4f │ %.4f │ %.3f° (%s km)" % [sq, nombre, orden, LabUI.sci(float(q["err_v"]) * 100.0, 1), q["a"], q["e"], q["error"][0], _miles(float(q["error"][1]) * Celeste.KM_UA)]
+		_csv.append([Celeste.METODOS_DER[m], int(h_der), q["v"][0], q["v"][1], q["err_v"], q["a"], q["e"], q["error"][0], float(q["error"][1]) * Celeste.KM_UA])
+	t += "\n[color=#8fa3b8]  Ceres real │ │ │ %.4f │ %.4f │[/color][/font_size]" % [Celeste.CERES["a"], Celeste.CERES["e"]]
 	_info = t
-	_csv = [["t_dias", "r_obs_UA", "theta_obs_rad", "r_ajustada_UA", "residuo_UA"]]
+	_interp = _interpretar_ceres(t_pred)
+	_csv.append([])
+	_csv.append(["h_dias (%s)" % Celeste.METODOS_DER[msel], "error_grados"])
+	for f in _barrido:
+		_csv.append(f)
+	_csv.append([])
+	_csv.append(["t_dias", "x_obs_UA", "y_obs_UA"])
 	for o in _obs:
-		var rf := NAN
-		if c1.size() == 3:
-			rf = 1.0 / (c1[0] + c1[1] * cos(o[2]) + c1[2] * sin(o[2]))
-		_csv.append([o[0], o[1], o[2], rf, rf - float(o[1])])
+		_csv.append(o)
 
-static func _fila(f: Array) -> String:
-	return "%.4f %.4f %.4f" % [f[0], f[1], f[2]]
+func _interpretar_ceres(t_pred: float) -> String:
+	var msel := 2 if metodo_der == 4 else metodo_der
+	var r: Dictionary = _preds[msel]
+	var p: int = Celeste.ORDEN_DER[msel]
+	if r.is_empty():
+		return "La fórmula necesita observaciones a ±%d días del centro del arco, pero el arco solo tiene %d días: baja h o alarga el arco." % [int(h_der) * (2 if msel == 3 else 1), int(arco)]
+	var best := [0, INF]
+	for f in _barrido:
+		if float(f[1]) < float(best[1]):
+			best = f
+	var c := _obs.size() / 2
+	var t := "La velocidad no se observa: se calcula derivando numéricamente las posiciones. Con la %s (error de truncamiento O(h%s)) y h = %d días, la velocidad del día %d sale con un error del %s %%; con esa posición y velocidad, %s (paso %s días) integra la órbita %d días y la predicción cae a %.3f° de la posición real (%s millones de km)." % [
+		Celeste.METODOS_DER[msel].to_lower(), _sup(p) if p > 1 else "", int(h_der), int(_obs[c][0]), LabUI.sci(float(r["err_v"]) * 100.0, 1),
+		Celeste.INTEGRADORES[edo_ceres], _num(paso_ceres), int(t_pred - float(_obs[c][0])), r["error"][0], "%.2f" % (float(r["error"][1]) * Celeste.KM_UA / 1e6)]
+	if int(best[0]) > 0:
+		t += " Con estos datos el h que da menos error para esta fórmula es ≈ %d días (%.3f°): con h menor, la resta de dos posiciones casi iguales amplifica su error (∝ σ/h); con h mayor crece el truncamiento (∝ h%s)." % [best[0], best[1], _sup(p) if p > 1 else ""]
+	match msel:
+		0, 1:
+			t += " Las diferencias hacia adelante y hacia atrás son de orden 1: aun con datos exactos su error, ≈ a·h/2 (a es la aceleración hacia el Sol), desvía la predicción unos 0,2° por cada día de h."
+		2:
+			t += " La centrada cancela el término de la aceleración (los errores de adelante y de atrás se compensan): es de orden 2."
+		_:
+			t += " La de 5 puntos es de orden 4 con datos exactos, pero sus coeficientes (1, −8, 8, −1)/12 amplifican más el ruido de las posiciones que la centrada simple."
+	t += " La EDO aporta poco: con la velocidad exacta, %s con paso %s días erraría %s°." % [Celeste.INTEGRADORES[edo_ceres], _num(paso_ceres), LabUI.sci(_err_edo, 1)]
+	t += "\nGauss resolvió en 1801 un problema más difícil (solo tenía las direcciones vistas desde la Tierra, no las distancias) con la misma idea: la posición y la velocidad en un instante fijan la órbita, y la órbita dice dónde estará el astro meses después."
+	return t
 
 ## Ceres y la Tierra en su sitio en el día de la animación, y la visual de Piazzi desde la Tierra.
 func _paso_ceres() -> void:
@@ -902,13 +1021,11 @@ func _montar_marte() -> void:
 	_tb = Celeste.tabla(w[0], w[1], paso_tabla)
 	var ts: PackedFloat64Array = _tb[0]
 	var ds: PackedFloat64Array = _tb[1]
-	_Mspl = Celeste.spline(ts, ds)
 	_mins = []
 	for m in 3:
-		_mins.append(Celeste.minimo(ts, ds, m, _Mspl))
-	var jn := Celeste.jd(ac[0], ac[1], float(ac[2]))
+		_mins.append(Celeste.minimo(ts, ds, m))
+	var jn := Celeste.jd(ac[0], ac[1], float(ac[2]) + 0.5)
 	_ref = Celeste.minimo_referencia(jn - 10.0, jn + 10.0)
-	_ei = Celeste.error_interpolacion(ts, ds, _Mspl, 300)
 	var it := 0.0
 	for j in ts:
 		it += Celeste.posicion(Celeste.TIERRA_JPL, j)[3] + Celeste.posicion(Celeste.MARTE_JPL, j)[3]
@@ -976,25 +1093,22 @@ func _tablero_marte() -> void:
 		if ts[i] >= t0 and ts[i] <= t1:
 			nodos.append([ts[i], ds[i] * k])
 			_bola(escena, 0.03, glow_mat(Color.WHITE, 2.0), _tp(_tab, ts[i], ds[i] * k))
-	if metodo_min in [0, 3]:
-		_curva_tab(_tab, nodos, COL_MIN[0], 0.006)
-	if metodo_min in [1, 3]:
-		var i := ts.bsearch(_mins[0][0])
-		if i >= 1 and i < ts.size() - 1:
-			var par := []
-			for q in 41:
-				var x := lerpf(ts[i - 1], ts[i + 1], q / 40.0)
-				var l0 := (x - ts[i]) * (x - ts[i + 1]) / ((ts[i - 1] - ts[i]) * (ts[i - 1] - ts[i + 1]))
-				var l1 := (x - ts[i - 1]) * (x - ts[i + 1]) / ((ts[i] - ts[i - 1]) * (ts[i] - ts[i + 1]))
-				var l2 := (x - ts[i - 1]) * (x - ts[i]) / ((ts[i + 1] - ts[i - 1]) * (ts[i + 1] - ts[i]))
-				par.append([x, (l0 * ds[i - 1] + l1 * ds[i] + l2 * ds[i + 1]) * k])
-			_curva_tab(_tab, par, COL_MIN[1], 0.007)
-	if metodo_min in [2, 3]:
-		var spl := []
-		for q in 241:
-			var x := lerpf(maxf(t0, ts[0]), minf(t1, ts[-1]), q / 240.0)
-			spl.append([x, Celeste.spline_en(ts, ds, _Mspl, x) * k])
-		_curva_tab(_tab, spl, COL_MIN[2], 0.006)
+	for m in 3:
+		if metodo_min != 3 and metodo_min != m:
+			continue
+		# El polinomio del método por sus nodos (marcados con su color bajo el eje).
+		var nm := Celeste.nodos_min(ds, m)
+		var pol := Celeste.interpolante(ts, ds, m)
+		var a := maxf(t0, ts[nm[0]])
+		var b := minf(t1, ts[nm[0] + nm[1] - 1])
+		var cur := []
+		for q in 81:
+			var x := lerpf(a, b, q / 80.0)
+			cur.append([x, float(pol.call(x)) * k])
+		_curva_tab(_tab, cur, COL_MIN[m], 0.006)
+		for i in range(nm[0], nm[0] + nm[1]):
+			if ts[i] >= t0 and ts[i] <= t1:
+				_bola(escena, 0.014, glow_mat(COL_MIN[m], 2.2), _tp(_tab, ts[i], _tab["y"][0]) + Vector3(0, 0.05 + 0.05 * m, 0.01))
 	var y0: float = _tab["y"][0]
 	for m in 3:
 		if metodo_min != 3 and metodo_min != m:
@@ -1003,7 +1117,7 @@ func _tablero_marte() -> void:
 		var p := _tp(_tab, mn[0], mn[1] * k)
 		_bola(escena, 0.04, glow_mat(COL_MIN[m], 2.6), p + Vector3(0, 0, 0.02))
 		escena.add_child(rod(p, _tp(_tab, mn[0], y0), 0.003, glow_mat(COL_MIN[m], 1.2)))
-		escena.add_child(label3d("%+.1f h" % ((mn[0] - _ref[0]) * 24.0), _tp(_tab, mn[0], y0) + Vector3(0.32 * (m - 1), -0.1, 0.02), COL_MIN[m], 0.0028))
+		escena.add_child(label3d("%+.1f h" % ((mn[0] - _ref[0]) * 24.0), _tp(_tab, mn[0], y0) + Vector3(0.48 * (m - 1), -0.1, 0.02), COL_MIN[m], 0.0028))
 	var pr := _tp(_tab, _ref[0], _ref[1] * k)
 	_bola(escena, 0.026, glow_mat(Color.WHITE, 2.2), pr + Vector3(0, 0, 0.03))
 	escena.add_child(label3d("mínimo: %s" % Celeste.fecha(_ref[0]), pr + Vector3(0, 0.16, 0.03), Color.WHITE, 0.0032))
@@ -1016,24 +1130,48 @@ func _tablero_marte() -> void:
 
 func _tabla_marte(ac: Array) -> void:
 	var k := Celeste.KM_UA
-	var t := "[b]Acercamiento de %d[/b] · tabla cada %d días (%d nodos) · Kepler por Newton: %.1f iteraciones en promedio por posición" % [ac[0], int(paso_tabla), (_tb[0] as PackedFloat64Array).size(), _kep]
-	t += "\n[font_size=12][color=#8fa3b8]  Método                         │ fecha del mínimo (UT) │ distancia (km) │ error en tiempo │ en distancia[/color]"
+	var msel := 2 if metodo_min == 3 else metodo_min
+	var ms: PackedFloat64Array = _mins[msel]
+	var t := "[b]Respuesta (%s):[/b] Marte estará más cerca de la Tierra el [color=#ffd966]%s UT[/color], a %.3f millones de km (la efeméride sin tabla da %s, %.3f millones)" % [
+		Celeste.METODOS_MIN[msel], Celeste.fecha(ms[0]), ms[1] * k / 1e6, Celeste.fecha(_ref[0]), _ref[1] * k / 1e6]
+	t += "\n[font_size=12]Tabla cada %d días (%d nodos) · Kepler por Newton: %.1f iteraciones por posición" % [int(paso_tabla), (_tb[0] as PackedFloat64Array).size(), _kep]
+	t += "\n[color=#8fa3b8]  Método │ fecha del mínimo (UT) │ distancia (km) │ error en tiempo │ en distancia[/color]"
 	_csv = [["metodo", "jd", "fecha", "distancia_km", "error_horas", "error_km"]]
 	for m in 3:
 		var mn: PackedFloat64Array = _mins[m]
 		var sq := "[color=#%s]■[/color]" % (COL_MIN[m] as Color).to_html(false)
-		t += "\n%s %s │ %s │ %s │ %+.2f h │ %s km" % [sq, Celeste.METODOS_MIN[m], Celeste.fecha(mn[0]), _miles(mn[1] * k), (mn[0] - _ref[0]) * 24.0, _miles((mn[1] - _ref[1]) * k)]
+		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_MIN[m] if m == msel else Celeste.METODOS_MIN[m]
+		t += "\n%s %s │ %s │ %s │ %+.2f h │ %s km" % [sq, nombre, Celeste.fecha(mn[0]), _miles(mn[1] * k), (mn[0] - _ref[0]) * 24.0, _miles((mn[1] - _ref[1]) * k)]
 		_csv.append([Celeste.METODOS_MIN[m], mn[0], Celeste.fecha(mn[0]), mn[1] * k, (mn[0] - _ref[0]) * 24.0, (mn[1] - _ref[1]) * k])
-	t += "\n[color=#ffffff]★[/color] Referencia (sección áurea sobre la efeméride, sin tabla) │ %s │ %s │" % [Celeste.fecha(_ref[0]), _miles(_ref[1] * k)]
-	t += "\n[color=#8fa3b8]  NASA: %d %s %d, %s millones de km[/color]" % [ac[2], Celeste.MESES[int(ac[1]) - 1], ac[0], str(ac[3])]
-	t += "\nError máximo de interpolación entre nodos: lineal %s km · spline %s km (orden h² frente a h⁴)[/font_size]" % [_miles(_ei[0] * k), _miles(_ei[1] * k)]
+	t += "\n[color=#ffffff]★[/color] Referencia (sección áurea sobre la efeméride) │ %s │ %s │" % [Celeste.fecha(_ref[0]), _miles(_ref[1] * k)]
+	t += "\n[color=#8fa3b8]  NASA: %d %s %d, %s millones de km[/color][/font_size]" % [ac[2], Celeste.MESES[int(ac[1]) - 1], ac[0], str(ac[3])]
 	_info = t
+	_interp = _interpretar_marte()
 	var ts: PackedFloat64Array = _tb[0]
 	var ds: PackedFloat64Array = _tb[1]
 	_csv.append([])
 	_csv.append(["jd_nodo", "fecha", "distancia_km"])
 	for i in ts.size():
 		_csv.append([ts[i], Celeste.fecha(ts[i]), ds[i] * k])
+
+func _interpretar_marte() -> String:
+	var msel := 2 if metodo_min == 3 else metodo_min
+	var g := 2 * msel + 2
+	var e := []
+	for m in 3:
+		e.append((float(_mins[m][0]) - _ref[0]) * 24.0)
+	var t := "La efeméride solo se conoce cada %d días; entre nodos se interpola. El polinomio de grado %d por los %d nodos centrados en el menor valor de la tabla aproxima d(t) con un error ∝ h%s·d⁽%s⁾(t), y su mínimo cae a %+.1f h del real. Con más nodos, más grado y menos error: grado 2 → %+.1f h, grado 4 → %+.1f h, grado 6 → %+.1f h. Si la tabla es muy espaciada (prueba 40 días o más) ningún grado alcanza: los nodos ya no siguen bien la curva." % [
+		int(paso_tabla), g, g + 1, _sup(g + 1), _sup(g + 1), e[msel], e[0], e[1], e[2]]
+	match msel:
+		0:
+			t += " Lagrange escribe el polinomio como suma de bases ℓⱼ(t), cada una vale 1 en su nodo y 0 en los demás: es directo, pero al añadir un nodo hay que rehacerlo todo."
+		1:
+			t += " Newton lo construye con diferencias divididas: añadir un nodo solo agrega un término, y la tabla de diferencias muestra cuánto aporta cada grado."
+		_:
+			t += " Newton–Gregory es la forma de Newton para nodos equiespaciados, con diferencias finitas Δᵏy₀: la de las tablas de los anuarios astronómicos."
+	t += " Con los mismos nodos los tres darían el mismo polinomio (es único); aquí cambian en el número de nodos."
+	t += "\nCada unos 26 meses la Tierra alcanza a Marte por dentro. Como las órbitas son elípticas, la distancia mínima cambia mucho de un acercamiento a otro: el de 2027 es el más lejano del siglo XXI (101 millones de km), y la menor distancia no cae exactamente el día de la oposición."
+	return t
 
 func _paso_marte() -> void:
 	var a := Celeste.posicion(Celeste.TIERRA_JPL, _j)
@@ -1131,28 +1269,50 @@ func _montar_caida() -> void:
 
 func _tabla_caida() -> void:
 	var ex := Celeste.t_caida(1.0)
-	var t := "[b]t = ∫₀ᴿ dr/√(2GM(1/r − 1/R))[/b] · exacto: %.6f días (T/(4√2), T = %.3f días) · n = %d" % [ex, Celeste.periodo(1.0), n_int]
-	t += "\n[font_size=12][color=#8fa3b8]  Método                   │ resultado (días) │ error │ evaluaciones de f[/color]"
+	var ds: Dictionary = _todos[metodo_int]
+	var vs: float = ds["valor"]
+	var t := "[b]Respuesta (%s, n = %d):[/b] la Tierra tardaría [color=#ffd966]%.4f días[/color] en caer al Sol (exacto: %.4f días = T/(4√2)); error %s con %d evaluaciones de f" % [
+		Celeste.METODOS_INT[metodo_int], n_int, vs, ex, _err(vs - ex), int(ds["evals"])]
+	t += "\n[font_size=12][color=#8fa3b8]  Método │ resultado (días) │ error │ evaluaciones de f[/color]"
 	_csv = [["metodo", "n", "resultado_dias", "error_dias", "evaluaciones"]]
 	for m in _todos.size():
 		var d: Dictionary = _todos[m]
 		var v: float = d["valor"]
-		var mark := "[b]" if m == metodo_int else ""
-		var fin := "[/b]" if m == metodo_int else ""
-		t += "\n%s%s │ %s │ %s │ %d%s" % [mark, Celeste.METODOS_INT[m], "%.8f" % v if is_finite(v) else "[color=#ff7766]∞ (f(R) = ∞)[/color]",
-			LabUI.sci(absf(v - ex), 1) if is_finite(v) else "—", int(d["evals"]), fin]
+		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_INT[m] if m == metodo_int else Celeste.METODOS_INT[m]
+		t += "\n%s │ %.8f │ %s │ %d" % [nombre, v, _err(v - ex), int(d["evals"])]
 		_csv.append([Celeste.METODOS_INT[m], n_int, v, absf(v - ex), d["evals"]])
 	t += "\n[color=#8fa3b8]Convergencia de %s: [/color]" % Celeste.METODOS_INT[metodo_int]
 	for f in _conv:
 		var p: float = f[3]
-		t += " n=%d: %s%s ·" % [f[0], LabUI.sci(f[2], 1) if is_finite(float(f[2])) else "∞", " (p=%.2f)" % p if is_finite(p) and float(f[2]) > 1e-12 else ""]
-	t += "\nEDO con RK4 (h = %s días): impacto con la superficie del Sol en el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
-		str(h_edo), _edo["t"], _edo["exacto"], int(_edo["pasos"]), _miles(_edo["v_kms"])]
+		t += " n=%d: %s%s ·" % [f[0], _err(f[2]), " (p=%.2f)" % p if is_finite(p) and float(f[2]) > 1e-12 else ""]
+	t += "\nEDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
+		_num(h_edo), _edo["t"], _edo["exacto"], int(_edo["pasos"]), _miles(_edo["v_kms"])]
 	_info = t
+	_interp = _interpretar_caida()
 	_csv.append([])
 	_csv.append(["metodo", "n", "error", "orden_observado"])
 	for f in _conv:
 		_csv.append([Celeste.METODOS_INT[metodo_int], f[0], f[2], f[3]])
+
+func _interpretar_caida() -> String:
+	var m := metodo_int
+	var ex := Celeste.t_caida(1.0)
+	var t := ""
+	if m < Celeste.CAMBIO_VAR and m != 3:
+		var p: float = _conv[-1][3]
+		var e64: float = _conv[-1][2]
+		var red := (1.0 - pow(2.0, -p)) * 100.0
+		var n4 := 64.0 * pow(e64 / 0.005, 1.0 / p)
+		t = "El integrando dt/dr crece sin límite junto a r = R: la Tierra parte del reposo y al principio apenas avanza. %s no necesita evaluar f(R), pero la región cercana a R, que es la que más aporta, la ve mal: el error baja con orden p ≈ %.2f en vez de 1 o 2, y duplicar n solo lo reduce un %d %%. Para acertar 4 cifras (error < 0,005 días) harían falta unos %s puntos." % [
+			Celeste.METODOS_INT[m], p, int(round(red)), _miles(n4)]
+	elif m == 3:
+		t = "Tanh-sinh cambia la variable por x = tanh(π/2·senh t): los nodos se amontonan junto a los extremos y sus pesos caen de forma doble exponencial, más rápido de lo que crece la singularidad; con %d evaluaciones llega al error de redondeo." % int(_todos[3]["evals"])
+	else:
+		t = "Con r = R·sen²u la singularidad desaparece: dt/du = 2R^(3/2)·sen²u/√(2GM) es suave y periódica, y %s la integra sin error apreciable (%s días) incluso con pocos puntos. Elegir bien la variable importa más que el método: sobre dt/dr estas mismas reglas ni siquiera se pueden aplicar, porque necesitan f(R) = ∞." % [
+			["la regla del trapecio", "la regla de Simpson 1/3", "la regla de Simpson 3/8", "Romberg"][m - Celeste.CAMBIO_VAR], _err(float(_todos[m]["valor"]) - ex)]
+	t += " La EDO resuelta con RK4 (h = %s días) da el choque con la superficie del Sol el día %.4f (exacto %.4f)." % [_num(h_edo), _edo["t"], _edo["exacto"]]
+	t += "\n64,57 días es el año dividido entre 4√2: la caída recta es una órbita infinitamente estrecha de semieje R/2, que por la tercera ley de Kepler dura (1/2)^(3/2) años, y caer es la mitad de esa vuelta. La Tierra tarda 53 días en recorrer la primera mitad del camino y solo 12 la segunda, y llega al Sol a unos 600 km/s."
+	return t
 
 ## La Tierra cae con RK4 de paso h_edo; al chocar se queda un momento y vuelve a empezar.
 func _paso_caida(dt: float) -> void:
@@ -1263,26 +1423,66 @@ func _medir() -> void:
 func _tabla_mercurio() -> void:
 	var teo := Celeste.precesion_teorica()
 	var lam := pow(10.0, lam_exp)
-	var t := "[b]Relatividad general: %.3f″ por siglo[/b] (Einstein, 1915) · en la escena λ = %s → %.3f° por vuelta · h = %s días" % [
-		teo, LabUI.sci(lam, 1), rad_to_deg(teo / Celeste.ARCSEG * Celeste.periodo(Celeste.MERCURIO["a"]) / Celeste.SIGLO * lam), str(h_orb)]
-	_csv = [["integrador", "lambda", "precesion_arcsec_siglo"]]
-	if _ext.is_empty():
-		t += "\n[color=#8fa3b8]Pulsa «📐 Medir y extrapolar» (con este paso tarda unos segundos).[/color]"
+	var rsel := _ext_de(integrador)
+	var t := ""
+	if rsel.is_empty():
+		t = "[b]Respuesta:[/b] pulsa «📐 Medir y extrapolar a λ = 1» (con este paso tarda unos segundos)."
+	elif not is_finite(float(rsel["resultado"])):
+		t = "[b]Respuesta (%s, h = %s días):[/b] [color=#ff7766]con este paso la órbita se desarma y no se puede extrapolar[/color]" % [Celeste.INTEGRADORES[integrador], _num(h_orb)]
 	else:
-		t += "\n[font_size=12][color=#8fa3b8]  Integrador            │ precesión numérica (λ = 0) │ parábola: c₁ │ recta (sesgada) │ error de c₁[/color]"
+		t = "[b]Respuesta (%s, h = %s días):[/b] la relatividad hace avanzar el perihelio de Mercurio [color=#ffd966]%.2f″ por siglo[/color] (c₁ del ajuste); Einstein (1915): %.2f″ · error %+.2f″" % [
+			Celeste.INTEGRADORES[integrador], _num(h_orb), rsel["resultado"], teo, float(rsel["resultado"]) - teo]
+	t += "\n[font_size=12]En la escena λ = %s: %.3f° por vuelta" % [LabUI.sci(lam, 1), rad_to_deg(teo / Celeste.ARCSEG * Celeste.periodo(Celeste.MERCURIO["a"]) / Celeste.SIGLO * lam)]
+	_csv = [["integrador", "lambda", "precesion_arcsec_siglo"]]
+	if not _ext.is_empty():
+		t += "\n[color=#8fa3b8]  Integrador │ deriva de energía │ precesión numérica c₀ │ c₁ (parábola) │ recta (sesgada)[/color]"
 		for ex in _ext:
 			var integ: int = ex[0]
 			var r: Dictionary = ex[1]
 			var sq := "[color=#%s]■[/color]" % (COL_INTEG[integ] as Color).to_html(false)
-			var c1: float = r["resultado"]
-			if not is_finite(c1):
-				t += "\n%s %s │ [color=#ff7766]la órbita se desarma: el paso es demasiado grande[/color]" % [sq, Celeste.INTEGRADORES[integ]]
+			var nombre: String = "[b]%s[/b]" % Celeste.INTEGRADORES[integ] if integ == integrador else Celeste.INTEGRADORES[integ]
+			if not is_finite(float(r["resultado"])):
+				t += "\n%s %s │ [color=#ff7766]la órbita se desarma: el paso es demasiado grande[/color]" % [sq, nombre]
 				continue
-			t += "\n%s %s │ %s″ │ [b]%.3f″[/b] │ %.3f″ │ %+.3f″" % [sq, Celeste.INTEGRADORES[integ], _miles(r["ordenada"]), c1, r["recta"], c1 - teo]
-			for p in r["puntos"]:
-				_csv.append([Celeste.INTEGRADORES[integ], p[0], p[1]])
-		t += "[/font_size]"
+			t += "\n%s %s │ %s │ %s″ │ %.3f″ │ %.3f″" % [sq, nombre, LabUI.sci(r["deriva"], 1), _miles(r["ordenada"]), r["resultado"], r["recta"]]
+			for q in r["puntos"]:
+				_csv.append([Celeste.INTEGRADORES[integ], q[0], q[1]])
+	t += "[/font_size]"
 	_info = t
+	_interp = _interpretar_mercurio()
+
+func _ext_de(integ: int) -> Dictionary:
+	for ex in _ext:
+		if int(ex[0]) == integ:
+			return ex[1]
+	return {}
+
+func _interpretar_mercurio() -> String:
+	if _ext.is_empty():
+		return "Mide primero: el botón integra las órbitas con cada λ y ajusta la parábola P(λ)."
+	var teo := Celeste.precesion_teorica()
+	var t := ""
+	for ex in _ext:
+		var integ: int = ex[0]
+		var r: Dictionary = ex[1]
+		if not is_finite(float(r["resultado"])):
+			t += "Con h = %s días, %s se sale de la órbita antes de completar las vueltas: el paso es demasiado grande para él. " % [_num(h_orb), Celeste.INTEGRADORES[integ]]
+			continue
+		match integ:
+			0:
+				t += "Euler explícito (orden 1) no conserva la energía: en %d vueltas cambia un %d %% y la órbita se abre en espiral. Su precesión numérica (c₀ = %s″/siglo) es miles de veces mayor que el efecto buscado y además cambia con λ, así que el ajuste no la separa: c₁ = %.1f″. " % [
+					int(vueltas), int(round(float(r["deriva"]) * 100.0)), _miles(r["ordenada"]), r["resultado"]]
+			1:
+				t += "Heun (orden 2) corrige el paso de Euler con la media de las pendientes al principio y al final: su energía deriva %s y su precesión numérica es c₀ = %s″/siglo; como casi no depende de λ, el ajuste la descuenta y c₁ = %.2f″ (con h menor se acerca más a %.2f″). " % [
+					LabUI.sci(r["deriva"], 1), _miles(r["ordenada"]), r["resultado"], teo]
+			_:
+				t += "RK4 (orden 4) apenas deriva (%s) y su precesión numérica es solo c₀ = %s″/siglo: c₁ = %.3f″, a %.3f″ de la relatividad. " % [
+					LabUI.sci(r["deriva"], 1), _miles(r["ordenada"]), r["resultado"], absf(float(r["resultado"]) - teo)]
+	var rsel := _ext_de(integrador)
+	if not rsel.is_empty() and is_finite(float(rsel["recta"])):
+		t += "La parábola P(λ) = c₀ + c₁λ + c₂λ² separa tres cosas: c₀ es el error del integrador, c₁ la física y c₂ la no linealidad de exagerar tanto. Una recta metería esa curvatura en la pendiente y daría %.2f″." % rsel["recta"]
+	t += "\n43″ por siglo es lo que la gravedad de Newton no explicaba (los demás planetas causan 532″ de los 574″ observados): por este efecto el perihelio de Mercurio da una vuelta completa cada unos 3 millones de años. Fue la primera confirmación de la relatividad general."
+	return t
 
 ## Avanza cada Mercurio; en cada perihelio (r₀ > r₁ ≤ r₂) deja una marca y anota su longitud.
 func _paso_mercurio(dt: float) -> void:
@@ -1351,7 +1551,7 @@ func _info_mercurio() -> String:
 		s += "\n[color=#%s]●[/color] %s: %d perihelios · avance medido %s (teoría con λ: %.3f°) · deriva de energía %s%s" % [
 			(COL_INTEG[c["integ"]] as Color).to_html(false), Celeste.INTEGRADORES[c["integ"]], peris.size(), med, por_vuelta,
 			LabUI.sci(c["deriva"], 1), " · [color=#ff7766]se salió de la órbita[/color]" if c["fuera"] else ""]
-	return s
+	return s + _bloque_interp()
 
 #endregion
 
@@ -1393,18 +1593,20 @@ func _controles() -> void:
 			LabUI.button(p, "🚀 Soltar la nave (RK4)", _soltar_nave)
 			LabUI.note(p, "Las raíces de f(x) = ∂Ω/∂x son los puntos de equilibrio sobre el eje Sol–planeta. Cada método se ve en su carril: el intervalo de la bisección, las dos secantes o la tangente de Newton. Clic sobre el eje: Newton empieza ahí (si cruza un cuerpo, salta a otra raíz o diverge). En L1–L3 la nave se escapa (equilibrio inestable); en L4 y L5 oscila (estable si μ < 0,0385).")
 		1:
-			LabUI.slider(p, "Observaciones", 3, 60, 1, n_obs, func(v): _cambiar("n_obs", int(v)), "%d")
-			LabUI.slider(p, "Arco observado (días)", 2, 1680, 1, arco, func(v): _cambiar("arco", v), "%.0f")
-			LabUI.slider(p, "Error de cada posición (%)", 0.0, 1.0, 0.005, ruido, func(v): _cambiar("ruido", v), "%.3f")
+			LabUI.option(p, "Derivada numérica", Celeste.METODOS_DER + ["Todas"], metodo_der, func(i): _cambiar("metodo_der", i))
+			LabUI.slider(p, "Paso h de la derivada (días)", 1, 40, 1, h_der, func(v): _cambiar("h_der", v), "%.0f")
+			LabUI.option(p, "EDO de la órbita", Celeste.INTEGRADORES, edo_ceres, func(i): _cambiar("edo_ceres", i))
+			LabUI.option(p, "Paso de la EDO", PASOS_CERES.map(func(h): return "%s días" % _num(h)), _indice(PASOS_CERES, paso_ceres), func(i): _cambiar("paso_ceres", PASOS_CERES[i]))
+			LabUI.slider(p, "Arco observado (días)", 4, 200, 1, arco, func(v): _cambiar("arco", v), "%.0f")
+			LabUI.slider(p, "Error de cada posición (%)", 0.0, 0.2, 0.001, ruido, func(v): _cambiar("ruido", v), "%.3f")
 			LabUI.slider(p, "Días hasta que reaparece", 0, 1000, 1, hueco, func(v): _cambiar("hueco", v), "%.0f")
-			LabUI.option(p, "Mínimos cuadrados con", ["Ecuaciones normales + Cholesky", "QR (Gram–Schmidt modificado)", "Los dos"], metodo_ls, func(i): _cambiar("metodo_ls", i))
 			LabUI.button(p, "🎲 Otras observaciones (nueva semilla)", func(): _cambiar("semilla_obs", semilla_obs + 1))
-			LabUI.note(p, "Piazzi siguió a Ceres 41 días (unos 9° de su órbita) y la perdió tras el Sol. Gauss ajustó una órbita por mínimos cuadrados y predijo dónde reaparecería: la encontraron a medio grado. Acorta el arco o sube el error: κ(MᵀM) crece como κ(M)² y la predicción se desvía. Los residuos (rojo) se dibujan aumentados.")
+			LabUI.note(p, "Piazzi siguió a Ceres 41 días y la perdió tras el Sol. La velocidad del día central sale de derivar numéricamente las posiciones observadas (las bolas grandes son las que usa la fórmula); con posición y velocidad, la EDO integra la órbita hasta que reaparece. Flecha blanca: la velocidad real; las de color, la de cada fórmula con su error aumentado. Los puntos sobre la trayectoria son los pasos de la EDO.")
 		2:
 			LabUI.option(p, "Acercamiento", ["12 ene 2025 (96 millones de km)", "20 feb 2027 (101 millones de km)"], acercamiento, func(i): _cambiar("acercamiento", i))
 			LabUI.slider(p, "Paso de la tabla (días)", 1, 60, 1, paso_tabla, func(v): _cambiar("paso_tabla", v), "%.0f")
 			LabUI.option(p, "Ver", Celeste.METODOS_MIN + ["Todos"], metodo_min, func(i): _cambiar("metodo_min", i))
-			LabUI.note(p, "Como un anuario astronómico: las posiciones salen de la ecuación de Kepler (Newton) cada tantos días; entre nodos se interpola y el mínimo se busca en el interpolante. Las líneas tenues de la escena unen la Tierra y Marte en cada fecha de la tabla.")
+			LabUI.note(p, "Como un anuario astronómico: las posiciones salen de la ecuación de Kepler (Newton) cada tantos días. El polinomio de cada método pasa por los nodos centrados en el menor valor (marcados con su color bajo el eje) y su mínimo se busca por sección áurea. Las líneas tenues de la escena unen la Tierra y Marte en cada fecha de la tabla.")
 		3:
 			LabUI.option(p, "Método", Celeste.METODOS_INT, metodo_int, func(i): _cambiar("metodo_int", i))
 			LabUI.slider(p, "n (subintervalos o puntos)", 2, 128, 2, n_int, func(v): _cambiar("n_int", int(v)), "%d")
@@ -1412,7 +1614,7 @@ func _controles() -> void:
 			LabUI.button(p, "⟲ Soltar la Tierra otra vez", func():
 				_caida = PackedFloat64Array([1.0, 0.0, 0.0])
 				_impacto = -1.0)
-			LabUI.note(p, "Cada barra es un nodo de la cuadratura sobre el camino de la caída; su alto, el integrando. Trapecio y Simpson necesitan f(R) = ∞; punto medio y Gauss la esquivan pero convergen despacio (p ≈ ½ y 1). Tanh-sinh amontona nodos junto a la singularidad; el cambio r = R·sen²u la elimina y el integrando queda suave.")
+			LabUI.note(p, "Cada barra es un nodo de la cuadratura sobre el camino de la caída; su alto, el integrando. Los cuatro primeros métodos integran dt/dr, que se dispara junto a r = R, sin evaluar f(R): rectángulos y punto medio convergen con p ≈ ½ y Gauss con p ≈ 1; tanh-sinh amontona nodos junto a la singularidad. Los de «r = R·sen²u» integran la función ya suave (curva verde).")
 		_:
 			LabUI.option(p, "Integrador", Celeste.INTEGRADORES, integrador, func(i): _cambiar("integrador", i))
 			LabUI.check(p, "Los tres a la vez", tres, func(v): _cambiar("tres", v))
@@ -1420,7 +1622,7 @@ func _controles() -> void:
 			LabUI.slider(p, "Exageración en la escena: log₁₀ λ", 0.0, 6.0, 0.25, lam_exp, func(v): _cambiar("lam_exp", v), "%.2f")
 			LabUI.slider(p, "Vueltas para medir", 2, 20, 1, vueltas, func(v): vueltas = v, "%.0f")
 			LabUI.button(p, "📐 Medir y extrapolar a λ = 1", _medir)
-			LabUI.note(p, "La relatividad añade a la gravedad un término 3L²/(c²r²): el perihelio avanza 43″ por siglo, demasiado poco para verlo. Se exagera λ veces, se mide la precesión con varios λ (vértice de la parábola por los tres pasos junto a cada mínimo de r) y se ajusta P(λ) = c₀ + c₁λ + c₂λ²: c₁ es la predicción para λ = 1 y c₀ el error del propio integrador. Euler se sale en espiral; Verlet conserva la energía.")
+			LabUI.note(p, "La relatividad añade a la gravedad un término 3L²/(c²r²): el perihelio avanza 43″ por siglo, demasiado poco para verlo. Se exagera λ veces, se mide la precesión con varios λ (vértice de la parábola por los tres pasos junto a cada mínimo de r) y se ajusta P(λ) = c₀ + c₁λ + c₂λ²: c₁ es la predicción para λ = 1 y c₀ el error del propio integrador. Euler se sale en espiral; Heun y RK4 la mantienen.")
 
 static func _indice(lista: Array, v: float) -> int:
 	var best := 0
@@ -1498,7 +1700,7 @@ func info() -> String:
 	match pregunta:
 		0: return _info_lagrange()
 		4: return _info_mercurio()
-	return _info
+	return _info + _bloque_interp()
 
 func pick(origin: Vector3, dir: Vector3):
 	var hit = ray_plane_y(origin, dir, 0.0)
@@ -1563,12 +1765,13 @@ func finito() -> bool:
 			return false
 	return true
 
-const CAMPOS := ["pregunta", "sistema", "punto", "metodo_raiz", "nave_lp", "nave_km", "vista_todo", "n_obs", "arco", "ruido", "hueco",
-	"semilla_obs", "metodo_ls", "acercamiento", "paso_tabla", "metodo_min", "metodo_int", "n_int", "h_edo", "integrador", "h_orb",
+const CAMPOS := ["pregunta", "sistema", "punto", "metodo_raiz", "nave_lp", "nave_km", "vista_todo", "arco", "ruido", "hueco",
+	"semilla_obs", "metodo_der", "h_der", "edo_ceres", "paso_ceres", "acercamiento", "paso_tabla", "metodo_min", "metodo_int", "n_int", "h_edo", "integrador", "h_orb",
 	"lam_exp", "tres", "vueltas"]
 const RANGOS := {"pregunta": [0, 4], "sistema": [0, 2], "punto": [0, 2], "metodo_raiz": [0, 3], "nave_lp": [0, 4], "nave_km": [1.0, 1e6],
-	"n_obs": [3, 60], "arco": [1.0, 5000.0], "ruido": [0.0, 5.0], "hueco": [0.0, 5000.0], "semilla_obs": [0, 1 << 30], "metodo_ls": [0, 2],
-	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 3], "metodo_int": [0, 6], "n_int": [2, 128],
+	"arco": [4.0, 5000.0], "ruido": [0.0, 5.0], "hueco": [0.0, 5000.0], "semilla_obs": [0, 1 << 30], "metodo_der": [0, 4],
+	"h_der": [1.0, 100.0], "edo_ceres": [0, 2], "paso_ceres": [0.01, 30.0],
+	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 3], "metodo_int": [0, 7], "n_int": [2, 128],
 	"h_edo": [0.0001, 2.0], "integrador": [0, 2], "h_orb": [0.001, 5.0], "lam_exp": [0.0, 7.0], "vueltas": [2.0, 50.0]}
 
 func estado() -> Dictionary:
@@ -1611,8 +1814,8 @@ func fidelidad() -> Array:
 			"unidades": "canónicas: distancia entre los dos cuerpos = 1, periodo = 2π; km con la distancia real",
 			"referencias": "Murray y Dermott, Solar System Dynamics, cap. 3; NASA: el JWST orbita en torno a L2, a unos 1,5 millones de km"},
 		{"subsistema": "2 · La órbita de Ceres", "nivel": "aproximado",
-			"modelo": "Simplificación del problema de Gauss: él solo tenía ángulos medidos desde la Tierra; aquí se ajustan posiciones heliocéntricas (r, θ) con ruido gaussiano en el plano de la eclíptica (Ceres está inclinada 10,6°). La órbita de Ceres es la kepleriana con a = 2,7675 UA, e = 0,0785",
-			"ecuaciones": "1/r = A + B cos θ + C sen θ; e = √(B²+C²)/A, a = 1/(A(1−e²)); (MᵀM)c = Mᵀy o M = QR",
+			"modelo": "Simplificación del problema de Gauss: él solo tenía ángulos medidos desde la Tierra; aquí se observan posiciones heliocéntricas (x, y) una vez al día, con error gaussiano, en el plano de la eclíptica (Ceres está inclinada 10,6°). La velocidad se deriva numéricamente y la órbita se integra con la EDO de dos cuerpos, sin la atracción de Júpiter. La órbita de Ceres es la kepleriana con a = 2,7675 UA, e = 0,0785",
+			"ecuaciones": "v ≈ (x(t+h) − x(t−h))/(2h) y las demás fórmulas; r̈ = −GM r/r³; 1/a = 2/r − v²/GM",
 			"unidades": "UA, días, grados", "referencias": "Gauss, Theoria motus (1809); Teets y Whitehead, The discovery of Ceres, Math. Magazine 72 (1999)"},
 		{"subsistema": "3 · Efemérides de Marte", "nivel": "aproximado",
 			"modelo": "Elementos keplerianos medios de JPL (E. M. Standish, tabla 1, válidos de 1800 a 2050) con la ecuación de Kepler por Newton: errores de minutos de arco, así que el mínimo sale a horas de la fecha publicada. Sin perturbaciones entre planetas",
