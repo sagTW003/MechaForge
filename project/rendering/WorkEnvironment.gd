@@ -53,12 +53,12 @@ func _build() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	# Tonemapping fílmico (ACES).
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_white = 6.0
 	# Oclusión ambiental, iluminación indirecta y reflejos en pantalla.
 	env.ssao_enabled = true
 	env.ssao_radius = 0.35
-	env.ssao_intensity = 1.6
+	env.ssao_intensity = 1.2
 	env.ssao_detail = 0.8
 	env.ssil_enabled = true
 	env.ssr_enabled = true
@@ -82,8 +82,8 @@ func _build() -> void:
 	env.volumetric_fog_albedo = Color(0.7, 0.75, 0.8)
 	# Ajuste de color fino.
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.05
-	env.adjustment_saturation = 1.05
+	env.adjustment_contrast = 1.0
+	env.adjustment_saturation = 1.12
 	world_env.environment = env
 	add_child(world_env)
 
@@ -172,17 +172,17 @@ func set_mode(m: int) -> void:
 		Mode.ESTUDIO:
 			_studio_sky.set_shader_parameter("mode", 0)
 			env.sky.sky_material = _studio_sky
-			env.tonemap_exposure = 1.0
-			env.ambient_light_energy = 1.0
+			env.tonemap_exposure = 1.15
+			env.ambient_light_energy = 0.6
 			env.volumetric_fog_density = 0.002
 			_set_light(sun, 60.0, 40.0, 1.8, Color(1.0, 0.97, 0.92))
-			_set_light(fill_light, -120.0, 18.0, 0.25, Color(0.85, 0.9, 1.0))
+			_set_light(fill_light, -120.0, 18.0, 0.5, Color(0.85, 0.9, 1.0))
 			_floor_style(0, 80.0)
 		Mode.TALLER:
 			_studio_sky.set_shader_parameter("mode", 1)
 			env.sky.sky_material = _studio_sky
-			env.tonemap_exposure = 0.85
-			env.ambient_light_energy = 1.0
+			env.tonemap_exposure = 1.0
+			env.ambient_light_energy = 0.7
 			env.volumetric_fog_density = 0.006
 			# Luz de los ventanales (+X) y relleno cálido de los tubos del techo.
 			_set_light(sun, 90.0, 38.0, 1.3, Color(1.0, 0.96, 0.9))
@@ -269,12 +269,12 @@ func _apply_time_of_day() -> void:
 	_set_light(sun, az, maxf(el, 3.0), 2.2 * day, sun_col)
 	sun.visible = day > 0.01
 	# Luna/cielo nocturno como relleno azulado.
-	_set_light(fill_light, az + 180.0, 35.0, lerpf(0.12, 0.2, day), Color(0.6, 0.7, 1.0).lerp(Color(0.8, 0.88, 1.0), day))
-	env.tonemap_exposure = lerpf(1.5, 1.0, day)
-	env.ambient_light_energy = lerpf(0.4, 1.0, day)
+	_set_light(fill_light, az + 180.0, 35.0, lerpf(0.12, 0.45, day), Color(0.6, 0.7, 1.0).lerp(Color(0.8, 0.88, 1.0), day))
+	env.tonemap_exposure = lerpf(1.5, 1.2, day)
+	env.ambient_light_energy = lerpf(0.4, 0.75, day)
 	_physical_sky.energy_multiplier = lerpf(0.15, 1.0, day)
 	if _garage_sky:
-		_garage_sky.energy_multiplier = lerpf(0.06, 1.0, day)
+		_garage_sky.energy_multiplier = lerpf(0.06, 1.8, day)
 	# Luces de la cochera: a pleno de noche, de apoyo de día.
 	if _garage:
 		_garage.set_lamps(lerpf(1.3, 0.7, day))

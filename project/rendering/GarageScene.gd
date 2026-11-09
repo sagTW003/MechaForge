@@ -133,7 +133,7 @@ func _build() -> void:
 	probe.interior = false
 	probe.enable_shadows = true
 	probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	probe.intensity = 1.0
+	probe.intensity = 3.0      # la nave es oscura: sin subirla, los metales salen casi negros
 	add_child(probe)
 
 ## Banco de trabajo de madera en la pared del fondo, con panel perforado y herramientas.

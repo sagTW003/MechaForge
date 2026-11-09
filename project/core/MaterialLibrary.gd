@@ -108,9 +108,9 @@ const DATA := {
 
 ## Juego de texturas real para cada material (si falta, se usa el procedural).
 const TEXTURED := {
-	"aluminio": {"set": "Metal009", "tint": Color(1.0, 1.0, 1.02), "opts": {"scale": 8.0, "metallic": 1.0}},
-	"acero_inox": {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "opts": {"scale": 12.0, "metallic": 1.0, "rough": 0.8}},
-	"acero": {"set": "Metal055A", "tint": Color(0.95, 0.95, 0.95), "opts": {"scale": 4.0}},
+	"aluminio": {"set": "Metal009", "tint": Color(1.0, 1.0, 1.02), "opts": {"scale": 8.0, "metallic": 1.0, "normal": 0.4}},
+	"acero_inox": {"set": "Metal009", "tint": Color(0.92, 0.93, 0.95), "opts": {"scale": 12.0, "metallic": 1.0, "rough": 0.8, "normal": 0.4}},
+	"acero": {"set": "Metal055A", "tint": Color(0.95, 0.95, 0.95), "opts": {"scale": 4.0, "normal": 0.6}},
 	"abs": {"set": "Plastic013A", "tint": Color(0.16, 0.17, 0.19), "opts": {"scale": 30.0, "rough": 1.2}},
 	"ptfe": {"set": "Plastic013A", "tint": Color(0.95, 0.95, 0.92), "opts": {"scale": 30.0}},
 	"caucho": {"set": "Rubber004", "tint": Color(0.9, 0.9, 0.92), "opts": {"scale": 30.0}},

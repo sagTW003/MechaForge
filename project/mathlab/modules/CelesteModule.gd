@@ -95,6 +95,7 @@ var _q_box: VBoxContainer
 var _opt_pregunta: OptionButton
 var _info := ""
 var _interp := ""               # la interpretación, debajo de la respuesta
+var _puntos := ""               # tabla de los puntos que tomó el método elegido
 var _ancho_info := -1.0         # ancho del panel «Información» antes de abrir el módulo
 var _csv: Array = []
 var _t := 0.0
@@ -151,13 +152,63 @@ var _peris_root: Node3D
 func title() -> String: return "Mecánica celeste"
 func uses_time() -> bool: return true
 
+## La ecuación del problema (una línea); la regla de cada método va en la tabla «Fórmulas».
 func formula() -> String:
 	match pregunta:
-		0: return "f(x) = ∂Ω/∂x = x − (1−μ)(x+μ)/|x+μ|³ − μ(x−1+μ)/|x−1+μ|³ = 0   ·   Newton: xₖ₊₁ = xₖ − f(xₖ)/f′(xₖ)"
-		1: return "v(t) ≈ (x(t+h) − x(t−h))/(2h)   ·   r̈ = −GM·r/r³ (Euler, Heun, RK4)   ·   1/a = 2/r − v²/GM"
-		2: return "E − e·sen E = M (Newton)   ·   p(t) = Σ yⱼ·ℓⱼ(t) = c₀ + c₁(t − t₀) + …   ·   mín. de p por sección áurea"
-		3: return "t = ∫₀ᴿ dr / √(2GM(1/r − 1/R))   ·   r = R·sen²u   ·   exacto: T/(4√2)"
-	return "r̈ = −GM·r/r³·(1 + 3λL²/(c²r²))   ·   P(λ) ≈ c₀ + c₁λ + c₂λ²   ·   la relatividad: c₁"
+		0: return "f(x) = x − (1−μ)(x+μ)/|x+μ|³ − μ(x−1+μ)/|x−1+μ|³ = 0"
+		1: return "r̈ = −GM·r/r³,  con r(t₀) observada y v(t₀) derivada"
+		2: return "mín d(t),  d(t) = |r_Marte(t) − r_Tierra(t)|"
+		3: return "t = ∫₀ᴿ dr / √(2GM(1/r − 1/R))"
+	return "r̈ = −GM·r/r³·(1 + 3λL²/(c²r²))"
+
+## Tabla «Fórmulas»: la regla de cada método de la pregunta, con el elegido en negrita.
+func _formulas() -> String:
+	var f := []
+	var sel := -1
+	match pregunta:
+		0:
+			f = [["Bisección", "c = (a + b)/2 y se conserva la mitad donde f cambia de signo"],
+				["Secante", "xₖ₊₁ = xₖ − f(xₖ)·(xₖ − xₖ₋₁) / (f(xₖ) − f(xₖ₋₁))"],
+				["Newton", "xₖ₊₁ = xₖ − f(xₖ) / f′(xₖ),   f′(x) = 1 + 2(1−μ)/|x+μ|³ + 2μ/|x−1+μ|³"]]
+			sel = metodo_raiz if metodo_raiz < 3 else -1
+		1:
+			f = [["Hacia adelante", "v ≈ (x(t+h) − x(t)) / h"],
+				["Hacia atrás", "v ≈ (x(t) − x(t−h)) / h"],
+				["Centrada (3 puntos)", "v ≈ (x(t+h) − x(t−h)) / (2h)"],
+				["Centrada (5 puntos)", "v ≈ (x(t−2h) − 8x(t−h) + 8x(t+h) − x(t+2h)) / (12h)"],
+				[["EDO: Euler", "yₙ₊₁ = yₙ + h·f(yₙ)"], ["EDO: Heun", "yₙ₊₁ = yₙ + h/2·(k₁ + k₂),   k₁ = f(yₙ),  k₂ = f(yₙ + h·k₁)"],
+					["EDO: RK4", "yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"]][edo_ceres],
+				["Órbita", "1/a = 2/r − v²/GM,   e = √(1 − L²/(GM·a)),   L = x·v_y − y·v_x"]]
+			sel = metodo_der if metodo_der < 4 else -1
+		2:
+			f = [["Lagrange", "p(t) = Σⱼ yⱼ·ℓⱼ(t),   ℓⱼ(t) = Πₘ≠ⱼ (t − tₘ)/(tⱼ − tₘ)"],
+				["Newton (dif. divididas)", "p(t) = f[t₀] + f[t₀,t₁](t − t₀) + f[t₀,t₁,t₂](t − t₀)(t − t₁) + …"],
+				["Newton–Gregory", "p = y₀ + s·Δy₀ + s(s−1)/2!·Δ²y₀ + …,   s = (t − t₀)/h"],
+				["Posiciones", "E − e·sen E = M por Newton: Eₖ₊₁ = Eₖ − (Eₖ − e·sen Eₖ − M)/(1 − e·cos Eₖ)"]]
+			sel = metodo_min if metodo_min < 3 else -1
+		3:
+			f = [[["Rectángulos", "t ≈ h·Σ f(rᵢ),   rᵢ = i·h,  i = 0 … n−1"], ["Punto medio", "t ≈ h·Σ f(rᵢ + h/2)"],
+				["Gauss–Legendre", "t ≈ Σ wᵢ·f(rᵢ), nodos = raíces del polinomio de Legendre Pₙ"],
+				["Tanh-sinh", "r = tanh(π/2·senh s): trapecio en s, nodos apretados en los extremos"],
+				["Trapecio", "t ≈ h·[g₀/2 + g₁ + … + gₙ₋₁ + gₙ/2]"], ["Simpson 1/3", "t ≈ h/3·[g₀ + 4g₁ + 2g₂ + 4g₃ + … + gₙ]"],
+				["Simpson 3/8", "t ≈ 3h/8·[g₀ + 3g₁ + 3g₂ + 2g₃ + … + gₙ]"],
+				["Romberg", "R(k, j) = (4ʲ·R(k, j−1) − R(k−1, j−1)) / (4ʲ − 1), sobre trapecios"]][metodo_int]]
+			if metodo_int >= Celeste.CAMBIO_VAR:
+				f.append(["Cambio de variable", "r = R·sen²u  →  g(u) = dt/du = 2R^(3/2)·sen²u / √(2GM),   u ∈ [0, π/2]"])
+			f.append(["EDO (RK4)", "r̈ = −GM/r²,   yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"])
+			sel = 0
+		_:
+			f = [["Euler", "yₙ₊₁ = yₙ + h·f(yₙ)"],
+				["Heun", "yₙ₊₁ = yₙ + h/2·(k₁ + k₂),   k₁ = f(yₙ),  k₂ = f(yₙ + h·k₁)"],
+				["RK4", "yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"],
+				["Ajuste", "P(λ) ≈ c₀ + c₁λ + c₂λ² por mínimos cuadrados;  la relatividad (λ = 1): c₁"]]
+			sel = integrador
+	var t := "[font_size=14][table=2]"
+	for k in f.size():
+		var bg := "#16283f" if k == sel else "#0f1b2a"
+		var col := "#ffd966" if k == sel else "#9fd9ff"
+		t += "[cell bg=%s padding=6,3,6,3][color=%s][b]%s[/b][/color][/cell][cell bg=%s padding=6,3,6,3][color=%s]%s[/color][/cell]" % [bg, col, f[k][0], bg, "#ffffff" if k == sel else "#c9dcf2", f[k][1]]
+	return t + "[/table][/font_size]\n"
 
 func perturb_hint() -> String:
 	if pregunta == 0:
@@ -176,7 +227,10 @@ func setup() -> void:
 	# La respuesta y su interpretación son largas: el panel «Información», más ancho y más bajo.
 	if lab and lab.get("info_label") != null:
 		_ancho_info = lab.info_label.custom_minimum_size.x
-		lab.info_label.custom_minimum_size.x = 560.0
+		# Alto fijo con barra de desplazamiento: fórmulas, tablas y texto no caben de una vez.
+		lab.info_label.fit_content = false
+		lab.info_label.scroll_active = true
+		lab.info_label.custom_minimum_size = Vector2(560.0, clampf(get_viewport().get_visible_rect().size.y - 330.0, 300.0, 640.0))
 	add_child(_estrellas())
 	escena = Node3D.new()
 	add_child(escena)
@@ -187,7 +241,9 @@ func reset() -> void:
 
 func liberar() -> void:
 	if lab and lab.get("info_label") != null and _ancho_info > 0.0:
-		lab.info_label.custom_minimum_size.x = _ancho_info
+		lab.info_label.custom_minimum_size = Vector2(_ancho_info, 90.0)
+		lab.info_label.scroll_active = false
+		lab.info_label.fit_content = true
 		lab.info_panel.reset_size()
 
 ## Rehace la escena y los cálculos de la pregunta actual.
@@ -489,9 +545,19 @@ static func _tabla(cab: Array, filas: Array, resaltar: int = -1) -> String:
 static func _sq(c: Color) -> String:
 	return "[color=#%s]■[/color]" % c.to_html(false)
 
-## La interpretación, debajo de la respuesta y de la tabla.
+## Tabla «Puntos que tomó el método» (si son muchos, los primeros y los últimos).
+func _tabla_puntos(titulo: String, cab: Array, filas: Array) -> void:
+	var n := filas.size()
+	if n > 9:
+		var hueco := []
+		hueco.resize(cab.size())
+		hueco.fill("⋮")
+		filas = filas.slice(0, 5) + [hueco] + filas.slice(n - 3)
+	_puntos = "\n[font_size=12][color=#ffd966]● %s (%d)[/color][/font_size]\n%s" % [titulo, n, _tabla(cab, filas)] if n > 0 else ""
+
+## Los puntos y la interpretación, debajo de la respuesta y de la tabla.
 func _bloque_interp() -> String:
-	return "\n[b]Interpretación[/b]\n[font_size=13][color=#d2e2f5]%s[/color][/font_size]" % _interp
+	return _puntos + "\n[b]Interpretación[/b]\n[font_size=13][color=#d2e2f5]%s[/color][/font_size]" % _interp
 
 ## Un error en notación científica, o «< 10⁻¹³» si ya es redondeo.
 static func _err(v: float) -> String:
@@ -761,6 +827,11 @@ func _tabla_lagrange(S: Dictionary) -> void:
 			_csv.append([Celeste.METODOS_RAIZ[m], k + 1, xs[k], absf(float(xs[k]) - xr)])
 	t += "\n" + _tabla(["Método", "Iteraciones", "Evaluaciones de f", "Orden teórico", "Orden observado", "Error |xₙ − x*|"], filas, msel)
 	_info = t
+	var pts := []
+	for k in xs_sel.size():
+		var xk: float = xs_sel[k]
+		pts.append([str(k + 1), "%.12f" % xk, LabUI.sci(Celeste.f_lagrange(xk, _mu), 2), _err(xk - xr)])
+	_tabla_puntos("Puntos donde %s evaluó f" % Celeste.METODOS_RAIZ[msel], ["k", "xₖ", "f(xₖ)", "|xₖ − x*|"], pts)
 	_interp = _interpretar_lagrange(S, xr, dkm)
 
 func _llega(m: int, xr: float) -> bool:
@@ -976,6 +1047,14 @@ func _tabla_ceres(t_pred: float) -> void:
 	filas.append(["[color=#8fa3b8]Ceres real[/color]", "—", "—", "%.4f" % Celeste.CERES["a"], "%.4f" % Celeste.CERES["e"], "—", "—"])
 	t += "\n" + _tabla(["Derivada", "Orden", "Error de v", "a (UA)", "e", "Error al reaparecer", "Error (km)"], filas, msel)
 	_info = t
+	var pts := []
+	if not r.is_empty():
+		var idx: Array = [[0, 1], [-1, 0], [-1, 1], [-2, -1, 1, 2]][msel]
+		var pesos: Array = [["−1/h", "+1/h"], ["−1/h", "+1/h"], ["−1/(2h)", "+1/(2h)"], ["+1/(12h)", "−8/(12h)", "+8/(12h)", "−1/(12h)"]][msel]
+		for i in idx.size():
+			var o: Array = _obs[c + int(idx[i]) * int(h_der)]
+			pts.append(["%d" % int(o[0]), "%.6f" % o[1], "%.6f" % o[2], pesos[i]])
+	_tabla_puntos("Observaciones que usa la derivada %s" % CORTO_DER[msel].to_lower(), ["Día", "x (UA)", "y (UA)", "Peso en la fórmula"], pts)
 	_interp = _interpretar_ceres(t_pred)
 	_csv.append([])
 	_csv.append(["h_dias (%s)" % Celeste.METODOS_DER[msel], "error_grados"])
@@ -1165,6 +1244,11 @@ func _tabla_marte(ac: Array) -> void:
 	filas.append(["[color=#8fa3b8]NASA[/color]", "%d %s %d" % [ac[2], Celeste.MESES[int(ac[1]) - 1], ac[0]], "%s millones" % str(ac[3]), "—", "—"])
 	t += "\n" + _tabla(["Método", "Mínimo (UT)", "Distancia (km)", "Error en tiempo", "Error en distancia"], filas, msel)
 	_info = t
+	var pts := []
+	var nm := Celeste.nodos_min(_tb[1], msel)
+	for i in range(nm[0], nm[0] + nm[1]):
+		pts.append([str(i - nm[0]), Celeste.fecha(_tb[0][i], false), _miles(_tb[1][i] * k)])
+	_tabla_puntos("Nodos de la tabla por los que pasa el polinomio de %s" % CORTO_MIN[msel], ["j", "Fecha tⱼ (0 h UT)", "Distancia dⱼ (km)"], pts)
 	_interp = _interpretar_marte()
 	var ts: PackedFloat64Array = _tb[0]
 	var ds: PackedFloat64Array = _tb[1]
@@ -1312,6 +1396,16 @@ func _tabla_caida() -> void:
 	t += "\n[font_size=12]EDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
 		_num(h_edo), _edo["t"], _edo["exacto"], int(_edo["pasos"]), _miles(_edo["v_kms"])]
 	_info = t
+	var pts := []
+	var nodos: Array = _cuad["nodos"].duplicate()
+	nodos.sort_custom(func(a, b): return a[0] < b[0])
+	var v := str(_cuad["variable"])
+	for i in nodos.size():
+		var x: float = nodos[i][0]
+		var r := sin(x) * sin(x) if v == "u" else (1.0 - x if v == "w" else x)
+		var fx := Celeste.g_caida(x, 1.0) if v == "u" else Celeste.f_caida(r, 1.0)
+		pts.append([str(i), "%.6f" % x if v == "u" else "—", "%.6f" % r, "%.4f" % fx, LabUI.sci(nodos[i][1], 3)])
+	_tabla_puntos("Puntos donde %s evaluó el integrando" % CORTO_INT[metodo_int], ["i", "uᵢ (rad)", "rᵢ (UA)", "Integrando (días por unidad)", "Peso wᵢ"], pts)
 	_interp = _interpretar_caida()
 	_csv.append([])
 	_csv.append(["metodo", "n", "error", "orden_observado"])
@@ -1477,6 +1571,11 @@ func _tabla_mercurio() -> void:
 		filas.append(["[color=#8fa3b8]Relatividad general[/color]", "—", "—", "%.3f″" % teo, "—"])
 		t += "\n" + _tabla(["Integrador", "Deriva de energía", "Precesión numérica c₀", "c₁ (parábola)", "Recta (sesgada)"], filas, resaltar)
 	_info = t
+	var pts := []
+	if not rsel.is_empty():
+		for q in rsel["puntos"]:
+			pts.append([LabUI.sci(q[0], 0) if float(q[0]) > 0.0 else "0", "%s″" % _miles(q[1]) if is_finite(float(q[1])) else "—"])
+	_tabla_puntos("Puntos del ajuste P(λ) con %s" % CORTO_INTEG[integrador], ["Exageración λ", "Precesión medida P(λ) por siglo"], pts)
 	_interp = _interpretar_mercurio()
 
 func _ext_de(integ: int) -> Dictionary:
@@ -1730,9 +1829,9 @@ func demo(extra: PackedStringArray) -> void:
 
 func info() -> String:
 	match pregunta:
-		0: return _info_lagrange()
-		4: return _info_mercurio()
-	return _info + _bloque_interp()
+		0: return _formulas() + _info_lagrange()
+		4: return _formulas() + _info_mercurio()
+	return _formulas() + _info + _bloque_interp()
 
 func pick(origin: Vector3, dir: Vector3):
 	var hit = ray_plane_y(origin, dir, 0.0)

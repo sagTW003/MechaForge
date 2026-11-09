@@ -28,8 +28,8 @@ vec3 studio(vec3 d) {
 	float el = asin(clamp(d.y, -1.0, 1.0));
 	float az = atan(d.x, d.z);
 	// Ciclorama: gris neutro con degradado suave; suelo más oscuro.
-	vec3 col = mix(vec3(0.13, 0.133, 0.14), vec3(0.09, 0.092, 0.1), smoothstep(0.0, 1.2, el));
-	col = mix(vec3(0.025, 0.025, 0.028), col, smoothstep(-0.08, 0.02, el));
+	vec3 col = mix(vec3(0.42, 0.43, 0.45), vec3(0.3, 0.31, 0.33), smoothstep(0.0, 1.2, el));
+	col = mix(vec3(0.12, 0.12, 0.13), col, smoothstep(-0.08, 0.02, el));
 	// Softboxes (HDR).
 	col += key_tint * 4.5 * soft_rect(az, el, 60.0 * DEG, 40.0 * DEG, 17.0 * DEG, 11.0 * DEG, 2.0 * DEG);
 	col += vec3(0.9, 0.95, 1.0) * 1.6 * soft_rect(az, el, -120.0 * DEG, 18.0 * DEG, 4.0 * DEG, 14.0 * DEG, 1.5 * DEG);
@@ -54,7 +54,7 @@ vec3 workshop(vec3 d) {
 	vec3 col;
 	if (tmax.y <= t + 1e-4 && d.y > 0.0) {
 		// Techo con filas de tubos fluorescentes.
-		col = vec3(0.07, 0.07, 0.075);
+		col = vec3(0.2, 0.2, 0.21);
 		float row = abs(fract(p.z / 2.5 + 0.5) - 0.5) * 2.5;
 		float seg = abs(fract(p.x / 2.0 + 0.5) - 0.5) * 2.0;
 		float tube = (1.0 - smoothstep(0.05, 0.09, row)) * (1.0 - smoothstep(0.72, 0.76, seg));
@@ -72,7 +72,7 @@ vec3 workshop(vec3 d) {
 		bool wall_x = tmax.x <= tmax.z;
 		float u = wall_x ? p.z : p.x;
 		float side = wall_x ? sign(d.x) : sign(d.z);
-		col = vec3(0.30, 0.29, 0.27);                           // pintura
+		col = vec3(0.5, 0.49, 0.46);                           // pintura
 		if (y < 0.9) {
 			// Armarios bajos con puertas.
 			col = vec3(0.10, 0.12, 0.16);

@@ -324,7 +324,12 @@ func _update_info(full: bool) -> void:
 		return
 	var t := "[font_size=15][color=#5fd8ff]%s[/color][/font_size]\n" % module.formula()
 	t += module.info()
-	info_label.text = t
+	if info_label.text != t:
+		# Los módulos con panel desplazable no deben volver arriba en cada refresco.
+		var barra := info_label.get_v_scroll_bar()
+		var pos := barra.value
+		info_label.text = t
+		barra.set_deferred("value", pos)
 	if full:
 		info_panel.set_collapsed(false)
 	call_deferred("_anchor_info")
