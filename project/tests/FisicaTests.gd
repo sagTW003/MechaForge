@@ -5,8 +5,9 @@ extends Node
 ##   «-- mffisica bench» mide Coulomb con 10 000 cargas en la GPU.
 
 var lab: MathLab
-## Los módulos de física moderna (en los pilares de física clásica, cuántica y de cuerdas).
-const MODERNA := ["particulas", "schrodinger3d", "hidrogeno", "bateria", "desintegraciones", "materia", "cuerdas", "compactas", "branas"]
+## Los módulos con el núcleo de física moderna (modelo declarado, guardado y métricas): los de
+## partículas, cuántica y cuerdas, y la mecánica celeste.
+const MODERNA := ["celeste", "particulas", "schrodinger3d", "hidrogeno", "bateria", "desintegraciones", "materia", "cuerdas", "compactas", "branas"]
 var ok: int = 0
 var fail: int = 0
 

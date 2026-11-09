@@ -29,6 +29,8 @@ const MODULES := [
 		"desc": "Conducción térmica en una placa con materiales, fuentes y disipación."},
 	{"id": "particulas", "pilar": 0, "nombre": "Partículas y fuerza de Coulomb", "ruta": "res://mathlab/modules/ParticulasModule.gd",
 		"desc": "Miles de cargas clásicas con las fuerzas en la GPU: plasma neutro y átomo clásico; campo B (Lorentz) y líneas de campo."},
+	{"id": "celeste", "pilar": 0, "nombre": "Mecánica celeste", "ruta": "res://mathlab/modules/CelesteModule.gd",
+		"desc": "Proyecto de métodos numéricos: cinco preguntas sobre planetas y órbitas (puntos de Lagrange, Ceres, Marte, la caída al Sol y Mercurio) resueltas paso a paso en 3D."},
 	{"id": "schrodinger", "pilar": 1, "nombre": "Schrödinger (efecto túnel)", "ruta": "res://mathlab/modules/SchrodingerModule.gd",
 		"desc": "Paquete de ondas cuántico: |ψ|² como altura y la fase como color; barreras y pozos."},
 	{"id": "schrodinger3d", "pilar": 1, "nombre": "Schrödinger 3D y medición", "ruta": "res://mathlab/modules/Schrodinger3DModule.gd",
