@@ -722,7 +722,7 @@ func _paso_nave(dt: float) -> void:
 	if _nave.size() != 4:
 		return
 	var h := 0.002 if _zoom else 0.01
-	var n := mini(int(ceil(dt * (0.35 if _zoom else 2.5) / h)), 3000)
+	var n := mini(int(ceil(dt * (0.15 if _zoom else 2.5) / h)), 3000)
 	for i in n:
 		_nave = Celeste.rk4_nave(_nave, _mu, h)
 		_nave_t += h

@@ -6,7 +6,8 @@ description: Usar el Laboratorio matemático 3D de MechaForge desde OpenClaw —
 # MechaForge — Laboratorio matemático 3D
 
 El laboratorio muestra en 3D, en tiempo real, seis pilares (el `pilar` de `lab_list_modules`):
-- **Física clásica**: onda, calor y cargas con Coulomb y Lorentz;
+- **Física clásica**: onda, calor, cargas con Coulomb y Lorentz, y mecánica celeste (un
+  proyecto de métodos numéricos sobre órbitas);
 - **Física cuántica**: Schrödinger 2D y 3D (con medición), hidrógeno, batería cuántica,
   desintegraciones y construcción de materia;
 - **Teoría de cuerdas**: modos normales, dimensiones compactas y D-branas;
@@ -50,7 +51,7 @@ mf lab_open @{modulo="schrodinger"}
 
 | Método | Parámetros | Para qué |
 |---|---|---|
-| `lab_list_modules` | — | Los 27 módulos: `id`, pilar, nombre y descripción |
+| `lab_list_modules` | — | Los 28 módulos: `id`, pilar, nombre y descripción |
 | `lab_plot` | ver abajo | Dibuja en el módulo `graficas` (lo abre si hace falta) y devuelve `marcas` (raíces, extremos, cortes) e `info`. Es lo más rápido para «grafica esto» |
 | `lab_open` | `{"modulo":"id"}` | Abre el laboratorio en ese módulo, o cambia de módulo si ya está abierto. Si estaba cerrado responde `"status":"abriendo"`: espera 1 s y llama a `lab_get_state` |
 | `lab_get_state` | — | Módulo, fórmula, `info` (lecturas en vivo), `puntos_criticos` (con `x, y, z`), `parametros` (cada control con `id`, `nombre`, `tipo`, `valor`, rango u `opciones`) y `fidelidad` (en física moderna: `subsistema`, `nivel`, `modelo`, `ecuaciones`, `unidades`, `referencias`) |
@@ -183,6 +184,7 @@ Las fórmulas se compilan a GLSL y se evalúan en la GPU.
 | `teoremas` | Gauss (flujo frente a ∭∇·F) y Stokes (circulación frente a ∬∇×F·n) | Teorema, Campo F, Radio, Centro x/y/z, Inclinación θ, Azimut φ | (x, y, 0) |
 | `hidrogeno` | Orbitales exactos ψₙₗₘ como nube de \|ψ\|² con la fase en color; Eₙ, ⟨r⟩, nodos y degeneración | n (nivel de energía), l (momento angular), m (proyección en z), Puntos de la nube, Girar la fase | (x, y) en a₀ del plano z = 0: \|ψ\|² y arg ψ |
 | `particulas` | Miles de cargas clásicas con Coulomb (y Lorentz con B) en la GPU: plasma o átomo clásico; energía y momento conservados | Preset, Cargas N (plasma), Suavizado ε, Paso Δt, Caja con paredes, Campo B según z, Líneas de campo | (x, y) en a₀: la carga más cercana |
+| `celeste` | Proyecto de métodos numéricos (docs/PROYECTO_ORBITAS.md), cinco preguntas con el método dibujado en 3D: 1 puntos de Lagrange (bisección, secante y Newton sobre f(x) = ∂Ω/∂x; L2 Sol–Tierra a 1 507 679 km, el JWST; nave con RK4), 2 órbita de Ceres por mínimos cuadrados (Cholesky y QR, κ(MᵀM) = κ(M)², predicción de la reaparición), 3 acercamiento de Marte (Kepler por Newton con elementos de JPL; tabla, parábola y spline), 4 caída de la Tierra al Sol (integral impropia, 64,57 días; trapecio, Simpson, punto medio, Gauss, tanh-sinh, r = R·sen²u; EDO RK4), 5 precesión de Mercurio (Euler, RK4, Verlet; ajuste cuadrático → 42,98″/siglo); `info` da la tabla y «💾 Exportar» un CSV | Pregunta; 1: Sistema, Punto buscado, Método, Ver todo el sistema, Soltarla en, Desvío inicial, Soltar la nave · 2: Observaciones, Arco observado, Error de cada posición, Días hasta que reaparece, Mínimos cuadrados con, Otras observaciones · 3: Acercamiento, Paso de la tabla, Ver · 4: Método, n, Paso de la EDO · 5: Integrador, Los tres a la vez, Paso h, Exageración log₁₀ λ, Vueltas, Medir y extrapolar | (x, y) del plano de la órbita en UA (pregunta 1: unidades canónicas, con Ω y f(x)) · pregunta 1: punto de partida de Newton |
 | `desintegraciones` | Cámara de burbujas: partículas del PDG 2026 con vidas medias y fracciones reales, trazas en B y conservación de carga, B, L y energía en cada vértice | Partícula, Momento p (GeV/c), Campo B (T), Seguir la cadena, Disparar otra, Ficha | (x, y) en m |
 | `bateria` | Cadena de hasta 12 espines: carga, almacenamiento y descarga; energía, potencia, ergotropía global y local, esferas de Bloch (\|r\| < 1: entrelazados) | Espines N, Separación ω₀, Cargador g, Interacción J, Anisotropía Δ, Ciclo automático, Duración de la carga, Duración del almacenamiento | — |
 | `materia` | Construir hadrones (potencial de Cornell), núcleos que se desintegran, átomos e iones y moléculas; si algo no se puede formar, dice qué ley lo impide | Botones de la paleta (quarks, nucleones, e⁻, átomos), Átomo (Z), Añadir el átomo, Desintegrar, Separación de los quarks, αₛ, σ, m_c del cuarkonio | — |
