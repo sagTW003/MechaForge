@@ -19,7 +19,7 @@ resultados medidos y su validación frente a un valor real o exacto.
   escena; ▶ anima, ⏭ avanza un paso, Ctrl+Z deshace.
 - **Información** (abajo a la izquierda), en tres partes:
   1. la **respuesta** a la pregunta según el método elegido;
-  2. la tabla con lo que da cada método;
+  2. la tabla con lo que da cada método (en negrita, el elegido);
   3. la **interpretación**, que se escribe sola con los números de la simulación: por qué el
      método da ese resultado (su orden, su error) y qué significa físicamente la respuesta.
 - **📐 Modelo:** qué es exacto, qué es aproximado y qué es solo ilustrativo.
@@ -326,8 +326,9 @@ con L = |r × v| (constante, la fuerza es central) y λ = 1 en la realidad. Pred
 **En MechaForge.** Los tres integradores a la vez: Euler (rojo) se abre en espiral y escapa; Heun
 (amarillo) y RK4 (cian) siguen la elipse que gira (en la escena λ = 10⁵: 2,9° por vuelta). Cada
 perihelio deja una marca y una línea al Sol: la roseta. Arriba, el tablero con P(λ) medido y la
-parábola ajustada. «📐 Medir y extrapolar a λ = 1» repite la medida con el paso y las vueltas
-elegidos.
+parábola ajustada. La animación integra las mismas vueltas que se miden y se detiene al
+completarlas («⟲ Repetir las vueltas» la reinicia). «📐 Medir y extrapolar a λ = 1» repite la
+medida con el paso y las vueltas elegidos.
 
 **Resultados (5 vueltas por λ).**
 

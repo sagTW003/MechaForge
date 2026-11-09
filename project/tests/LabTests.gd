@@ -416,9 +416,18 @@ func _t_celeste() -> void:
 		for f in 30:
 			m.step(1.0 / 30.0)
 		var txt: String = m.info()
-		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
+		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or not txt.contains("[table=") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
 			vacias.append(q + 1)
 	check(vacias.is_empty(), "Celeste: las cinco preguntas se montan, se animan y dan su respuesta, su interpretación y su CSV%s" % ("" if vacias.is_empty() else " (fallan: %s)" % str(vacias)))
+	m.pregunta = 4
+	m.vueltas = 2.0
+	m._montar()
+	for f in 80:
+		m.step(0.25)
+	var tf: float = m._merc[0]["t"]
+	check(tf <= 2.0 * Celeste.periodo(Celeste.MERCURIO["a"]) + m.h_orb and m._rotulo.text.contains("fin"),
+		"Celeste 5 en la escena: la simulación se detiene en las vueltas que se miden (2 vueltas, día %.1f)" % tf)
+	m.vueltas = 5.0
 	m.pregunta = 0
 	m._montar()
 	var k0: int = m._k

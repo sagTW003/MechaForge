@@ -32,6 +32,12 @@ const SUB := ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "�
 const PASOS_EDO := [1.0, 0.5, 0.1, 0.05, 0.01, 0.001]
 const PASOS_ORB := [2.0, 1.0, 0.5, 0.25, 0.1, 0.05, 0.01]
 const PASOS_CERES := [5.0, 2.0, 1.0, 0.5]
+## Nombres cortos para las columnas de las tablas.
+const CORTO_DER := ["Hacia adelante", "Hacia atrás", "Centrada (3 puntos)", "Centrada (5 puntos)"]
+const CORTO_MIN := ["Lagrange (grado 2)", "Newton dif. divididas (grado 4)", "Newton–Gregory (grado 6)"]
+const CORTO_INT := ["Rectángulos (izquierda)", "Punto medio", "Gauss–Legendre", "Tanh-sinh",
+	"Trapecio + r = R·sen²u", "Simpson 1/3 + r = R·sen²u", "Simpson 3/8 + r = R·sen²u", "Romberg + r = R·sen²u"]
+const CORTO_INTEG := ["Euler", "Heun", "RK4"]
 ## Aspecto de cada astro: paradas del degradado que colorea el ruido de su superficie.
 const ASPECTO := {
 	"Tierra": [[0.0, Color(0.04, 0.12, 0.4)], [0.5, Color(0.1, 0.33, 0.75)], [0.56, Color(0.22, 0.5, 0.24)], [0.78, Color(0.5, 0.42, 0.28)], [1.0, Color(0.95, 0.95, 0.97)]],
@@ -467,6 +473,22 @@ static func _sup(n: int) -> String:
 		o += d[ch]
 	return o
 
+## Tabla con columnas alineadas (BBCode de RichTextLabel): cabecera, filas alternas y, en negrita,
+## la fila del método elegido.
+static func _tabla(cab: Array, filas: Array, resaltar: int = -1) -> String:
+	var t := "[font_size=12][table=%d]" % cab.size()
+	for c in cab:
+		t += "[cell bg=#24395a padding=5,2,5,2][color=#bcd4f2][b]%s[/b][/color][/cell]" % c
+	for i in filas.size():
+		var bg := "#18222f" if i % 2 == 0 else "#111a24"
+		for c in filas[i]:
+			t += "[cell bg=%s padding=5,2,5,2]%s[/cell]" % [bg, ("[b]%s[/b]" % c) if i == resaltar else str(c)]
+	return t + "[/table][/font_size]"
+
+## Cuadrito del color de un método.
+static func _sq(c: Color) -> String:
+	return "[color=#%s]■[/color]" % c.to_html(false)
+
 ## La interpretación, debajo de la respuesta y de la tabla.
 func _bloque_interp() -> String:
 	return "\n[b]Interpretación[/b]\n[font_size=13][color=#d2e2f5]%s[/color][/font_size]" % _interp
@@ -724,22 +746,20 @@ func _tabla_lagrange(S: Dictionary) -> void:
 	else:
 		t = "[b]Respuesta (%s):[/b] [color=#ff7766]desde ese punto de partida no llega a %s[/color] (termina en x = %s)" % [
 			Celeste.METODOS_RAIZ[msel], LP[punto], "%.6f" % float(xs_sel[-1]) if not xs_sel.is_empty() else "—"]
-	t += "\n[font_size=12][color=#8fa3b8]  Método │ iter │ evals f │ p teórico │ p obs. │ |xₙ − x*|[/color]"
+	var filas := []
 	_csv = [["metodo", "k", "x_k", "error"]]
 	for m in 3:
 		var r: Dictionary = _iters[m]
 		var xs: Array = r["xs"]
-		var sq := "[color=#%s]■[/color]" % (COL_RAIZ[m] as Color).to_html(false)
-		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_RAIZ[m] if m == msel else Celeste.METODOS_RAIZ[m]
+		var nombre := "%s %s" % [_sq(COL_RAIZ[m]), Celeste.METODOS_RAIZ[m]]
 		if not _llega(m, xr):
-			t += "\n%s %s │ [color=#ff7766]no llega a %s desde ese punto[/color]" % [sq, nombre, LP[punto]]
+			filas.append([nombre, "—", str(int(r["evals"])), Celeste.ORDEN_RAIZ[m], "—", "[color=#ff7766]no llega a %s[/color]" % LP[punto]])
 			continue
-		var p := Celeste.orden(xs, xr, m == 0)
-		t += "\n%s %s │ %d │ %d │ %s │ %s │ %s" % [sq, nombre, xs.size(), int(r["evals"]), Celeste.ORDEN_RAIZ[m],
-			"%.2f" % p if is_finite(p) else "—", LabUI.sci(absf(float(xs[-1]) - xr), 1)]
+		var po := Celeste.orden(xs, xr, m == 0)
+		filas.append([nombre, str(xs.size()), str(int(r["evals"])), Celeste.ORDEN_RAIZ[m], "%.2f" % po if is_finite(po) else "—", _err(float(xs[-1]) - xr)])
 		for k in xs.size():
 			_csv.append([Celeste.METODOS_RAIZ[m], k + 1, xs[k], absf(float(xs[k]) - xr)])
-	t += "[/font_size]"
+	t += "\n" + _tabla(["Método", "Iteraciones", "Evaluaciones de f", "Orden teórico", "Orden observado", "Error |xₙ − x*|"], filas, msel)
 	_info = t
 	_interp = _interpretar_lagrange(S, xr, dkm)
 
@@ -942,19 +962,19 @@ func _tabla_ceres(t_pred: float) -> void:
 			Celeste.METODOS_DER[msel], int(h_der), Celeste.INTEGRADORES[edo_ceres], _num(paso_ceres), int(_obs[c][0]),
 			sqrt(v[0] * v[0] + v[1] * v[1]) * Celeste.KM_UA / 86400.0, r["a"], r["e"], Celeste.fecha(Celeste.jd(1801, 1, 1.0) + t_pred, false),
 			fposmod(rad_to_deg(pp[1]), 360.0), r["error"][0]]
-	t += "\n[font_size=12][color=#8fa3b8]  Fórmula │ orden │ error de v │ a (UA) │ e │ error al reaparecer[/color]"
+	var filas := []
 	_csv = [["formula", "h_dias", "vx_UA_dia", "vy_UA_dia", "error_v_relativo", "a_UA", "e", "error_grados", "error_km"]]
 	for m in 4:
 		var q: Dictionary = _preds[m]
-		var sq := "[color=#%s]■[/color]" % (COL_DER[m] as Color).to_html(false)
-		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_DER[m] if m == msel else Celeste.METODOS_DER[m]
+		var nombre := "%s %s" % [_sq(COL_DER[m]), CORTO_DER[m]]
 		var orden := "O(h%s)" % _sup(Celeste.ORDEN_DER[m]) if Celeste.ORDEN_DER[m] > 1 else "O(h)"
 		if q.is_empty():
-			t += "\n%s %s │ %s │ [color=#ff7766]faltan observaciones para h = %d[/color]" % [sq, nombre, orden, int(h_der)]
+			filas.append([nombre, orden, "[color=#ff7766]faltan datos para h = %d[/color]" % int(h_der), "—", "—", "—", "—"])
 			continue
-		t += "\n%s %s │ %s │ %s %% │ %.4f │ %.4f │ %.3f° (%s km)" % [sq, nombre, orden, LabUI.sci(float(q["err_v"]) * 100.0, 1), q["a"], q["e"], q["error"][0], _miles(float(q["error"][1]) * Celeste.KM_UA)]
+		filas.append([nombre, orden, "%s %%" % LabUI.sci(float(q["err_v"]) * 100.0, 1), "%.4f" % q["a"], "%.4f" % q["e"], "%.3f°" % q["error"][0], _miles(float(q["error"][1]) * Celeste.KM_UA)])
 		_csv.append([Celeste.METODOS_DER[m], int(h_der), q["v"][0], q["v"][1], q["err_v"], q["a"], q["e"], q["error"][0], float(q["error"][1]) * Celeste.KM_UA])
-	t += "\n[color=#8fa3b8]  Ceres real │ │ │ %.4f │ %.4f │[/color][/font_size]" % [Celeste.CERES["a"], Celeste.CERES["e"]]
+	filas.append(["[color=#8fa3b8]Ceres real[/color]", "—", "—", "%.4f" % Celeste.CERES["a"], "%.4f" % Celeste.CERES["e"], "—", "—"])
+	t += "\n" + _tabla(["Derivada", "Orden", "Error de v", "a (UA)", "e", "Error al reaparecer", "Error (km)"], filas, msel)
 	_info = t
 	_interp = _interpretar_ceres(t_pred)
 	_csv.append([])
@@ -1134,17 +1154,16 @@ func _tabla_marte(ac: Array) -> void:
 	var ms: PackedFloat64Array = _mins[msel]
 	var t := "[b]Respuesta (%s):[/b] Marte estará más cerca de la Tierra el [color=#ffd966]%s UT[/color], a %.3f millones de km (la efeméride sin tabla da %s, %.3f millones)" % [
 		Celeste.METODOS_MIN[msel], Celeste.fecha(ms[0]), ms[1] * k / 1e6, Celeste.fecha(_ref[0]), _ref[1] * k / 1e6]
-	t += "\n[font_size=12]Tabla cada %d días (%d nodos) · Kepler por Newton: %.1f iteraciones por posición" % [int(paso_tabla), (_tb[0] as PackedFloat64Array).size(), _kep]
-	t += "\n[color=#8fa3b8]  Método │ fecha del mínimo (UT) │ distancia (km) │ error en tiempo │ en distancia[/color]"
+	t += "\n[font_size=12]Tabla cada %d días (%d nodos) · Kepler por Newton: %.1f iteraciones por posición[/font_size]" % [int(paso_tabla), (_tb[0] as PackedFloat64Array).size(), _kep]
+	var filas := []
 	_csv = [["metodo", "jd", "fecha", "distancia_km", "error_horas", "error_km"]]
 	for m in 3:
 		var mn: PackedFloat64Array = _mins[m]
-		var sq := "[color=#%s]■[/color]" % (COL_MIN[m] as Color).to_html(false)
-		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_MIN[m] if m == msel else Celeste.METODOS_MIN[m]
-		t += "\n%s %s │ %s │ %s │ %+.2f h │ %s km" % [sq, nombre, Celeste.fecha(mn[0]), _miles(mn[1] * k), (mn[0] - _ref[0]) * 24.0, _miles((mn[1] - _ref[1]) * k)]
+		filas.append(["%s %s" % [_sq(COL_MIN[m]), CORTO_MIN[m]], Celeste.fecha(mn[0]), _miles(mn[1] * k), "%+.2f h" % ((mn[0] - _ref[0]) * 24.0), "%s km" % _miles((mn[1] - _ref[1]) * k)])
 		_csv.append([Celeste.METODOS_MIN[m], mn[0], Celeste.fecha(mn[0]), mn[1] * k, (mn[0] - _ref[0]) * 24.0, (mn[1] - _ref[1]) * k])
-	t += "\n[color=#ffffff]★[/color] Referencia (sección áurea sobre la efeméride) │ %s │ %s │" % [Celeste.fecha(_ref[0]), _miles(_ref[1] * k)]
-	t += "\n[color=#8fa3b8]  NASA: %d %s %d, %s millones de km[/color][/font_size]" % [ac[2], Celeste.MESES[int(ac[1]) - 1], ac[0], str(ac[3])]
+	filas.append(["★ Referencia (sin tabla)", Celeste.fecha(_ref[0]), _miles(_ref[1] * k), "—", "—"])
+	filas.append(["[color=#8fa3b8]NASA[/color]", "%d %s %d" % [ac[2], Celeste.MESES[int(ac[1]) - 1], ac[0]], "%s millones" % str(ac[3]), "—", "—"])
+	t += "\n" + _tabla(["Método", "Mínimo (UT)", "Distancia (km)", "Error en tiempo", "Error en distancia"], filas, msel)
 	_info = t
 	_interp = _interpretar_marte()
 	var ts: PackedFloat64Array = _tb[0]
@@ -1273,19 +1292,24 @@ func _tabla_caida() -> void:
 	var vs: float = ds["valor"]
 	var t := "[b]Respuesta (%s, n = %d):[/b] la Tierra tardaría [color=#ffd966]%.4f días[/color] en caer al Sol (exacto: %.4f días = T/(4√2)); error %s con %d evaluaciones de f" % [
 		Celeste.METODOS_INT[metodo_int], n_int, vs, ex, _err(vs - ex), int(ds["evals"])]
-	t += "\n[font_size=12][color=#8fa3b8]  Método │ resultado (días) │ error │ evaluaciones de f[/color]"
+	var filas := []
 	_csv = [["metodo", "n", "resultado_dias", "error_dias", "evaluaciones"]]
 	for m in _todos.size():
 		var d: Dictionary = _todos[m]
 		var v: float = d["valor"]
-		var nombre: String = "[b]%s[/b]" % Celeste.METODOS_INT[m] if m == metodo_int else Celeste.METODOS_INT[m]
-		t += "\n%s │ %.8f │ %s │ %d" % [nombre, v, _err(v - ex), int(d["evals"])]
+		filas.append([CORTO_INT[m], "%.8f" % v, _err(v - ex), str(int(d["evals"]))])
 		_csv.append([Celeste.METODOS_INT[m], n_int, v, absf(v - ex), d["evals"]])
-	t += "\n[color=#8fa3b8]Convergencia de %s: [/color]" % Celeste.METODOS_INT[metodo_int]
+	t += "\n" + _tabla(["Método (n = %d)" % n_int, "Resultado (días)", "Error (días)", "Evaluaciones de f"], filas, metodo_int)
+	var cab := ["n"]
+	var errs := ["Error (días)"]
+	var ords := ["Orden observado p"]
 	for f in _conv:
-		var p: float = f[3]
-		t += " n=%d: %s%s ·" % [f[0], _err(f[2]), " (p=%.2f)" % p if is_finite(p) and float(f[2]) > 1e-12 else ""]
-	t += "\nEDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
+		var po: float = f[3]
+		cab.append(str(f[0]))
+		errs.append(_err(f[2]))
+		ords.append("%.2f" % po if is_finite(po) and float(f[2]) > 1e-12 else "—")
+	t += "\n[font_size=12]Convergencia de %s al duplicar n:[/font_size]\n" % CORTO_INT[metodo_int] + _tabla(cab, [errs, ords])
+	t += "\n[font_size=12]EDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
 		_num(h_edo), _edo["t"], _edo["exacto"], int(_edo["pasos"]), _miles(_edo["v_kms"])]
 	_info = t
 	_interp = _interpretar_caida()
@@ -1432,22 +1456,26 @@ func _tabla_mercurio() -> void:
 	else:
 		t = "[b]Respuesta (%s, h = %s días):[/b] la relatividad hace avanzar el perihelio de Mercurio [color=#ffd966]%.2f″ por siglo[/color] (c₁ del ajuste); Einstein (1915): %.2f″ · error %+.2f″" % [
 			Celeste.INTEGRADORES[integrador], _num(h_orb), rsel["resultado"], teo, float(rsel["resultado"]) - teo]
-	t += "\n[font_size=12]En la escena λ = %s: %.3f° por vuelta" % [LabUI.sci(lam, 1), rad_to_deg(teo / Celeste.ARCSEG * Celeste.periodo(Celeste.MERCURIO["a"]) / Celeste.SIGLO * lam)]
+	t += "\n[font_size=12]En la escena λ = %s: %.3f° por vuelta · %d vueltas por cada λ[/font_size]" % [
+		LabUI.sci(lam, 1), rad_to_deg(teo / Celeste.ARCSEG * Celeste.periodo(Celeste.MERCURIO["a"]) / Celeste.SIGLO * lam), int(vueltas)]
 	_csv = [["integrador", "lambda", "precesion_arcsec_siglo"]]
 	if not _ext.is_empty():
-		t += "\n[color=#8fa3b8]  Integrador │ deriva de energía │ precesión numérica c₀ │ c₁ (parábola) │ recta (sesgada)[/color]"
+		var filas := []
+		var resaltar := -1
 		for ex in _ext:
 			var integ: int = ex[0]
 			var r: Dictionary = ex[1]
-			var sq := "[color=#%s]■[/color]" % (COL_INTEG[integ] as Color).to_html(false)
-			var nombre: String = "[b]%s[/b]" % Celeste.INTEGRADORES[integ] if integ == integrador else Celeste.INTEGRADORES[integ]
+			if integ == integrador:
+				resaltar = filas.size()
+			var nombre := "%s %s" % [_sq(COL_INTEG[integ]), CORTO_INTEG[integ]]
 			if not is_finite(float(r["resultado"])):
-				t += "\n%s %s │ [color=#ff7766]la órbita se desarma: el paso es demasiado grande[/color]" % [sq, nombre]
+				filas.append([nombre, "—", "[color=#ff7766]se desarma[/color]", "—", "—"])
 				continue
-			t += "\n%s %s │ %s │ %s″ │ %.3f″ │ %.3f″" % [sq, nombre, LabUI.sci(r["deriva"], 1), _miles(r["ordenada"]), r["resultado"], r["recta"]]
+			filas.append([nombre, LabUI.sci(r["deriva"], 1), "%s″" % _miles(r["ordenada"]), "%.3f″" % r["resultado"], "%.3f″" % r["recta"]])
 			for q in r["puntos"]:
 				_csv.append([Celeste.INTEGRADORES[integ], q[0], q[1]])
-	t += "[/font_size]"
+		filas.append(["[color=#8fa3b8]Relatividad general[/color]", "—", "—", "%.3f″" % teo, "—"])
+		t += "\n" + _tabla(["Integrador", "Deriva de energía", "Precesión numérica c₀", "c₁ (parábola)", "Recta (sesgada)"], filas, resaltar)
 	_info = t
 	_interp = _interpretar_mercurio()
 
@@ -1487,11 +1515,13 @@ func _interpretar_mercurio() -> String:
 ## Avanza cada Mercurio; en cada perihelio (r₀ > r₁ ≤ r₂) deja una marca y anota su longitud.
 func _paso_mercurio(dt: float) -> void:
 	var dias := dt * 20.0
-	var n := mini(int(ceil(dias / h_orb)), 6000)
+	var t_fin := vueltas * Celeste.periodo(Celeste.MERCURIO["a"])
 	_lin.clear_surfaces()
 	for c in _merc:
 		var integ: int = c["integ"]
-		if not c["fuera"]:
+		# Se integran justo las vueltas que se miden: al llegar, la simulación se detiene.
+		var n := mini(int(ceil(minf(dias, t_fin - float(c["t"])) / h_orb - 1e-9)), 6000)
+		if not c["fuera"] and n > 0:
 			var s: PackedFloat64Array = c["s"]
 			for i in n:
 				s = Celeste.paso(s, h_orb, c["b"], integ)
@@ -1526,7 +1556,9 @@ func _paso_mercurio(dt: float) -> void:
 			(c["mi"] as Node3D).rotate_y(0.03)
 		_polilinea(_lin, c["traza"], COL_INTEG[integ], true)
 	if not _merc.is_empty():
-		_rotulo.text = "día %d · %.1f vueltas" % [int(_merc[0]["t"]), float(_merc[0]["t"]) / Celeste.periodo(Celeste.MERCURIO["a"])]
+		var tt := float(_merc[_merc.size() - 1]["t"])
+		var v := tt / Celeste.periodo(Celeste.MERCURIO["a"])
+		_rotulo.text = ("día %d · %d vueltas: fin (⟲ para repetir)" % [int(tt), int(round(v))]) if tt >= t_fin - h_orb else ("día %d · %.1f de %d vueltas" % [int(tt), v, int(vueltas)])
 
 func _marca_perihelio(r: float, th: float, integ: int) -> void:
 	if _peris_root.get_child_count() > 240:
@@ -1540,18 +1572,17 @@ func _marca_perihelio(r: float, th: float, integ: int) -> void:
 	_peris_root.add_child(n)
 
 func _info_mercurio() -> String:
-	var s := _info
 	var por_vuelta := rad_to_deg(6.0 * PI * Celeste.GM * pow(10.0, lam_exp) / (Celeste.C_LUZ * Celeste.C_LUZ * Celeste.MERCURIO["a"] * (1.0 - pow(Celeste.MERCURIO["e"], 2))))
+	var filas := []
 	for c in _merc:
 		var peris: Array = c["peris"]
 		var med := "—"
-		if peris.size() >= 2:
-			var m := Celeste.recta(peris)[0] * Celeste.periodo(Celeste.MERCURIO["a"])
-			med = "%.3f° por vuelta" % rad_to_deg(m)
-		s += "\n[color=#%s]●[/color] %s: %d perihelios · avance medido %s (teoría con λ: %.3f°) · deriva de energía %s%s" % [
-			(COL_INTEG[c["integ"]] as Color).to_html(false), Celeste.INTEGRADORES[c["integ"]], peris.size(), med, por_vuelta,
-			LabUI.sci(c["deriva"], 1), " · [color=#ff7766]se salió de la órbita[/color]" if c["fuera"] else ""]
-	return s + _bloque_interp()
+		if c["fuera"]:
+			med = "[color=#ff7766]se salió de la órbita[/color]"
+		elif peris.size() >= 2:
+			med = "%.3f°" % rad_to_deg(Celeste.recta(peris)[0] * Celeste.periodo(Celeste.MERCURIO["a"]))
+		filas.append(["%s %s" % [_sq(COL_INTEG[c["integ"]]), CORTO_INTEG[c["integ"]]], str(peris.size()), med, "%.3f°" % por_vuelta, LabUI.sci(c["deriva"], 1)])
+	return _info + "\n[font_size=12]En la escena, ahora:[/font_size]\n" + _tabla(["Integrador", "Perihelios", "Avance por vuelta", "Teoría (con λ)", "Deriva de energía"], filas) + _bloque_interp()
 
 #endregion
 
@@ -1620,7 +1651,8 @@ func _controles() -> void:
 			LabUI.check(p, "Los tres a la vez", tres, func(v): _cambiar("tres", v))
 			LabUI.option(p, "Paso h", PASOS_ORB.map(func(h): return "%s días" % _num(h)), _indice(PASOS_ORB, h_orb), func(i): _cambiar("h_orb", PASOS_ORB[i]))
 			LabUI.slider(p, "Exageración en la escena: log₁₀ λ", 0.0, 6.0, 0.25, lam_exp, func(v): _cambiar("lam_exp", v), "%.2f")
-			LabUI.slider(p, "Vueltas para medir", 2, 20, 1, vueltas, func(v): vueltas = v, "%.0f")
+			LabUI.slider(p, "Vueltas (simulación y medida)", 2, 20, 1, vueltas, func(v): _cambiar("vueltas", v), "%.0f")
+			LabUI.button(p, "⟲ Repetir las vueltas", _montar)
 			LabUI.button(p, "📐 Medir y extrapolar a λ = 1", _medir)
 			LabUI.note(p, "La relatividad añade a la gravedad un término 3L²/(c²r²): el perihelio avanza 43″ por siglo, demasiado poco para verlo. Se exagera λ veces, se mide la precesión con varios λ (vértice de la parábola por los tres pasos junto a cada mínimo de r) y se ajusta P(λ) = c₀ + c₁λ + c₂λ²: c₁ es la predicción para λ = 1 y c₀ el error del propio integrador. Euler se sale en espiral; Heun y RK4 la mantienen.")
 
