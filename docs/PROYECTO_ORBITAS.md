@@ -9,8 +9,8 @@ resultados medidos y su validación frente a un valor real o exacto.
 |---|---|---|---|
 | 1 | ¿Dónde se «estaciona» el telescopio James Webb? | Raíces de ecuaciones | Bisección, secante, Newton · RK4 |
 | 2 | ¿Cómo encontró Gauss el asteroide Ceres? | Derivación numérica y EDO | Diferencias hacia adelante, hacia atrás, centradas y de 5 puntos · Euler, Heun, RK4 |
-| 3 | ¿Cuándo estará Marte más cerca de la Tierra? | Interpolación | Kepler por Newton · Lagrange, diferencias divididas de Newton, Newton–Gregory |
-| 4 | Si la Tierra se detuviera, ¿cuánto tardaría en caer al Sol? | Integración numérica | Rectángulos, punto medio, Gauss–Legendre, tanh-sinh · trapecio, Simpson 1/3 y 3/8 y Romberg con cambio de variable · RK4 |
+| 3 | ¿Cuándo estará Marte más cerca de la Tierra? | Interpolación | Kepler por Newton · Lagrange y diferencias divididas de Newton |
+| 4 | Si la Tierra se detuviera, ¿cuánto tardaría en caer al Sol? | Integración numérica | Punto medio, sobre la integral original y con cambio de variable · RK4 |
 | 5 | ¿Por qué gira la órbita de Mercurio? | Ecuaciones diferenciales | Euler, Heun, RK4 · mínimos cuadrados y extrapolación |
 
 ## Cómo usarlo
@@ -199,14 +199,12 @@ d(t) = |r_Marte(t) − r_Tierra(t)|.
 - Un polinomio interpolante por los nodos centrados en el menor valor de la tabla:
   - **Lagrange, grado 2 (3 nodos):** p(t) = Σⱼ yⱼ·ℓⱼ(t), con ℓⱼ(t) = Πₘ≠ⱼ (t − tₘ)/(tⱼ − tₘ);
   - **Newton en diferencias divididas, grado 4 (5 nodos):** p(t) = f[t₀] + f[t₀,t₁](t − t₀) + …,
-    evaluado por Horner;
-  - **Newton–Gregory hacia adelante, grado 6 (7 nodos):** con s = (t − t₀)/Δ,
-    p = y₀ + sΔy₀ + s(s − 1)/2!·Δ²y₀ + … (diferencias finitas, para nodos equiespaciados).
+    evaluado por Horner.
 - El mínimo del polinomio, por **sección áurea** entre los nodos vecinos del menor valor.
 - **Referencia sin tabla:** sección áurea sobre d(t) evaluada directamente (tolerancia 10⁻⁶ días).
 
-Con los mismos nodos, los tres métodos darían el mismo polinomio (es único); aquí se comparan con
-3, 5 y 7 nodos para ver el efecto del grado. Los nodos van centrados: con un número par de nodos
+Con los mismos nodos, los dos métodos darían el mismo polinomio (es único); aquí se comparan con
+3 y 5 nodos para ver el efecto del grado. Los nodos van centrados: con un número par de nodos
 el polinomio queda torcido hacia un lado y su mínimo se desplaza.
 
 **En MechaForge.** La Tierra y Marte se mueven fecha a fecha, unidos por una línea con la
@@ -217,14 +215,14 @@ en horas; el cursor amarillo es la fecha de la animación.
 
 **Resultados** (error del instante del mínimo; entre paréntesis, de la distancia).
 
-| Acercamiento | Δ | Lagrange (grado 2) | Newton (grado 4) | Newton–Gregory (grado 6) |
-|---|---|---|---|---|
-| 2025 | 10 días | −1,46 h | −0,11 h | −0,02 h |
-| 2025 | 20 días | −1,07 h (19 025 km) | +0,31 h (10 365 km) | +0,25 h (5 994 km) |
-| 2025 | 40 días | −40,1 h | −19,6 h | −14,2 h |
-| 2027 | 10 días | −0,10 h | −0,02 h | −0,01 h |
-| 2027 | 20 días | −0,45 h (3 911 km) | −0,27 h (1 327 km) | −0,18 h (751 km) |
-| 2027 | 40 días | +12,6 h | +6,6 h | +5,2 h |
+| Acercamiento | Δ | Lagrange (grado 2) | Newton (grado 4) |
+|---|---|---|---|
+| 2025 | 10 días | −1,46 h | −0,11 h |
+| 2025 | 20 días | −1,07 h (19 025 km) | +0,31 h (10 365 km) |
+| 2025 | 40 días | −40,1 h | −19,6 h |
+| 2027 | 10 días | −0,10 h | −0,02 h |
+| 2027 | 20 días | −0,45 h (3 911 km) | −0,27 h (1 327 km) |
+| 2027 | 40 días | +12,6 h | +6,6 h |
 
 Referencia (sección áurea sobre la efeméride): 12 ene 2025 14:07 UT a 96 085 787 km y 20 feb 2027
 00:25 UT a 101 403 300 km.
@@ -233,8 +231,7 @@ Referencia (sección áurea sobre la efeméride): 12 ene 2025 14:07 UT a 96 085 
 a 101,41 millones de km. La referencia cae el mismo día, a menos de 0,01 millones de km.
 
 **Para el análisis.** ¿Por qué el error baja al subir el grado (∝ Δ^(n+1)·d^(n+1))? ¿Por qué con
-Δ = 40 días ningún grado alcanza? Ventajas de Newton y Newton–Gregory frente a Lagrange cuando se
-añade un nodo.
+Δ = 40 días ningún grado alcanza? Ventaja de Newton frente a Lagrange cuando se añade un nodo.
 
 ---
 
@@ -250,16 +247,11 @@ velocidad en cada r y el tiempo es una integral… con el integrando infinito en
 El integrando diverge como 1/√(R − r) en r = R: **integral impropia**, aunque convergente. Valor
 exacto: t = (π/2)·R^(3/2)/√(2GM) = T/(4√2) = **64,5689 días**, con T el año.
 
-**Métodos.** Ninguno evalúa f(R) = ∞ (el trapecio y Simpson directos no se pueden usar).
-- Sobre dt/dr, que se dispara junto a R:
-  - **rectángulos por la izquierda** y **punto medio:** error ∝ n^(−1/2) por la singularidad;
-  - **Gauss–Legendre** (n puntos): error ∝ n^(−1);
-  - **tanh-sinh** (doble exponencial): amontona los nodos junto a los extremos con pesos que caen
-    más rápido que crece f, y converge muy rápido. Se integra en w = R − r para no perder por
-    redondeo los nodos muy cercanos a R.
-- Con el **cambio de variable r = R sen²u**, el integrando pasa a ser 2R^(3/2) sen²u/√(2GM) en
-  u ∈ [0, π/2], suave y periódico. Sobre él: **trapecio**, **Simpson 1/3**, **Simpson 3/8** y
-  **Romberg** (trapecios con extrapolación de Richardson).
+**Método: la regla del punto medio**, t ≈ h·Σ f(rᵢ − h/2), que nunca evalúa los extremos (el
+trapecio y Simpson no se pueden usar: necesitan f(R) = ∞). Se aplica de dos formas:
+- **sobre dt/dr**, que se dispara junto a R: el error baja solo como n^(−1/2) por la singularidad;
+- **con el cambio de variable r = R sen²u**: el integrando pasa a ser 2R^(3/2) sen²u/√(2GM) en
+  u ∈ [0, π/2], suave y periódico, y la misma regla es exacta.
 - **EDO:** r̈ = −GM/r² con RK4 hasta la superficie del Sol; el instante del choque se interpola
   linealmente dentro del último paso.
 
@@ -269,21 +261,16 @@ alto, el valor de f). Con el cambio de variable aparece la curva verde, ya suave
 
 **Resultados.**
 
-| Método (n = 16) | Resultado (días) | Error | Evaluaciones |
-|---|---|---|---|
-| Rectángulos por la izquierda | 49,494 | 15 | 16 |
-| Punto medio | 58,372 | 6,2 | 16 |
-| Gauss–Legendre | 62,400 | 2,2 | 16 |
-| Tanh-sinh | 64,5689074 | 1,4·10⁻¹⁴ | 29 |
-| Trapecio con r = R sen²u | 64,5689074 | < 10⁻¹³ | 17 |
-| Simpson 1/3 con r = R sen²u | 64,5689074 | < 10⁻¹³ | 17 |
-| Simpson 3/8 con r = R sen²u | 64,5689074 | 1,4·10⁻¹⁴ | 19 |
-| Romberg con r = R sen²u | 64,5689074 | 1,4·10⁻¹⁴ | 17 |
+| n | Punto medio sobre dt/dr (error en días) | Punto medio con r = R sen²u |
+|---|---|---|
+| 4 | 12 | < 10⁻¹³ |
+| 8 | 8,7 | < 10⁻¹³ |
+| 16 | 6,2 (resultado 58,372 días) | < 10⁻¹³ (64,5689074 días) |
+| 32 | 4,4 | < 10⁻¹³ |
+| 64 | 3,1 | < 10⁻¹³ |
 
-Convergencia (error para n = 4, 8, 16, 32, 64): rectángulos 31; 21; 15; 11; 7,5 (p = 0,50); punto
-medio 12; 8,7; 6,2; 4,4; 3,1 (p = 0,50); Gauss–Legendre 7,9; 4,2; 2,2; 1,1; 0,55 (p = 0,99). Para
-4 cifras correctas el punto medio necesitaría unos 25 millones de puntos y Gauss unos 7 000; con el
-cambio de variable bastan 3.
+Orden observado sobre dt/dr: p = 0,50. Para 4 cifras correctas necesitaría unos 25 millones de
+puntos; con el cambio de variable bastan 3.
 
 EDO con RK4 hasta la superficie del Sol (exacto 64,5602 días): h = 0,1 d → 64,5409;
 h = 0,01 d → 64,56015; h = 0,001 d → 64,56020. Llega a ~616 km/s.
@@ -293,7 +280,7 @@ t(r) = √(R³/2GM)(√(x(1 − x)) + arccos √x), x = r/R. La Tierra tarda 53 
 del camino y 12 en la segunda.
 
 **Para el análisis.** ¿Por qué el orden de punto medio es ½ y no 2? ¿Qué hace el cambio de
-variable con la singularidad? ¿Por qué el trapecio es exacto sobre sen²u en [0, π/2]?
+variable con la singularidad? ¿Por qué el punto medio es exacto sobre sen²u en [0, π/2]?
 
 ---
 

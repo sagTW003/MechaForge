@@ -7,7 +7,7 @@ extends LabModule
 ##   2. Ceres: las observaciones, la velocidad que da cada fórmula de derivación numérica (flechas)
 ##      y la órbita que integra la EDO desde ahí, con sus pasos, hasta el día de la reaparición.
 ##   3. Marte: la tabla de efemérides (ecuación de Kepler por Newton) como nodos sobre las órbitas
-##      y en un tablero, con los polinomios de Lagrange, Newton y Newton–Gregory y sus mínimos.
+##      y en un tablero, con los polinomios de Lagrange y Newton y sus mínimos.
 ##   4. La caída al Sol: los nodos de cada cuadratura como barras del integrando sobre el camino de
 ##      la caída, y la Tierra cayendo con RK4.
 ##   5. Mercurio: Euler, Heun y RK4 a la vez, la roseta de perihelios y la extrapolación a λ = 1.
@@ -23,7 +23,7 @@ const PREGUNTAS := [
 ]
 const COL_RAIZ := [Color(1.0, 0.62, 0.2), Color(1.0, 0.4, 0.85), Color(0.3, 0.9, 1.0)]
 const COL_INTEG := [Color(1.0, 0.4, 0.3), Color(1.0, 0.85, 0.3), Color(0.3, 0.85, 1.0)]
-const COL_MIN := [Color(0.8, 0.8, 0.88), Color(1.0, 0.62, 0.2), Color(0.3, 0.9, 1.0)]
+const COL_MIN := [Color(1.0, 0.62, 0.2), Color(0.3, 0.9, 1.0)]
 const COL_DER := [Color(1.0, 0.62, 0.2), Color(1.0, 0.4, 0.85), Color(0.3, 0.9, 1.0), Color(0.5, 1.0, 0.55)]
 const ORO := Color(1.0, 0.85, 0.35)
 const GRIS := Color(0.6, 0.68, 0.8)
@@ -34,9 +34,8 @@ const PASOS_ORB := [2.0, 1.0, 0.5, 0.25, 0.1, 0.05, 0.01]
 const PASOS_CERES := [5.0, 2.0, 1.0, 0.5]
 ## Nombres cortos para las columnas de las tablas.
 const CORTO_DER := ["Hacia adelante", "Hacia atrás", "Centrada (3 puntos)", "Centrada (5 puntos)"]
-const CORTO_MIN := ["Lagrange (grado 2)", "Newton dif. divididas (grado 4)", "Newton–Gregory (grado 6)"]
-const CORTO_INT := ["Rectángulos (izquierda)", "Punto medio", "Gauss–Legendre", "Tanh-sinh",
-	"Trapecio + r = R·sen²u", "Simpson 1/3 + r = R·sen²u", "Simpson 3/8 + r = R·sen²u", "Romberg + r = R·sen²u"]
+const CORTO_MIN := ["Lagrange (grado 2)", "Newton dif. divididas (grado 4)"]
+const CORTO_INT := ["Punto medio", "Punto medio + r = R·sen²u"]
 const CORTO_INTEG := ["Euler", "Heun", "RK4"]
 ## Aspecto de cada astro: paradas del degradado que colorea el ruido de su superficie.
 const ASPECTO := {
@@ -77,9 +76,9 @@ var paso_ceres := 1.0           # paso de la EDO (días)
 # 3 · Marte
 var acercamiento := 0
 var paso_tabla := 20.0
-var metodo_min := 3             # 0–2, o 3: todos
+var metodo_min := 2             # 0–1, o 2: los dos
 # 4 · Caída
-var metodo_int := 5
+var metodo_int := 1
 var n_int := 16
 var h_edo := 0.05
 # 5 · Mercurio
@@ -161,6 +160,56 @@ func formula() -> String:
 		3: return "t = ∫₀ᴿ dr / √(2GM(1/r − 1/R))"
 	return "r̈ = −GM·r/r³·(1 + 3λL²/(c²r²))"
 
+## Tabla «Puntos iniciales»: de dónde arranca cada método de la pregunta (con los controles actuales).
+func _iniciales() -> String:
+	var f := []
+	match pregunta:
+		0:
+			var ab := Celeste.intervalo(punto, _mu)
+			var xi: float = x0 if not is_nan(x0) else Celeste.x0_newton(punto, _mu)
+			var lejos := func(x: float) -> String: return "%s km de %s" % [_miles(Celeste.distancia_km(punto, x, _mu, Celeste.SISTEMAS[sistema]["d_km"])), Celeste.SISTEMAS[sistema]["p1"] if punto == 2 else Celeste.SISTEMAS[sistema]["p2"]]
+			f = [["Bisección", "[a, b] = [%.9f; %.9f]  (%s a %s)" % [ab[0], ab[1], lejos.call(ab[0]), lejos.call(ab[1])]],
+				["Secante", "x₀ = %.9f,  x₁ = %.9f" % [ab[0], ab[1]]],
+				["Newton", "x₀ = %.9f  (%s)%s" % [xi, lejos.call(xi), "" if is_nan(x0) else ", elegido con clic"]],
+				["Nave", "en reposo en %s, desplazada %s km" % [LP[nave_lp], _miles(nave_km)]]]
+		1:
+			var c := (int(arco) + 1) / 2
+			var k := int(h_der)
+			var dias := []
+			for d in [[0, 1], [-1, 0], [-1, 1], [-2, -1, 1, 2]][2 if metodo_der == 4 else metodo_der]:
+				dias.append(str(c + int(d) * k))
+			f = [["Observaciones", "%d, una por día: del día 0 (1 ene 1801) al día %d" % [int(arco) + 1, int(arco)]],
+				["Derivada en", "el día %d (centro del arco), con h = %d días: usa los días %s" % [c, k, ", ".join(dias)]],
+				["EDO (%s)" % CORTO_INTEG[edo_ceres], "estado inicial: posición observada el día %d + velocidad derivada; paso %s días hasta el día %d" % [c, _num(paso_ceres), int(arco + hueco)]]]
+		2:
+			var w := Celeste.ventana(acercamiento)
+			var ts: PackedFloat64Array = _tb[0]
+			var ds: PackedFloat64Array = _tb[1]
+			var i := 1
+			for q in range(1, ds.size() - 1):
+				if ds[q] < ds[i]:
+					i = q
+			f = [["Tabla", "cada %d días, del %s al %s" % [int(paso_tabla), Celeste.fecha(w[0], false), Celeste.fecha(w[1], false)]],
+				["Menor valor de la tabla", Celeste.fecha(ts[i], false)]]
+			for mm in 2:
+				var nm := Celeste.nodos_min(ds, mm)
+				f.append([CORTO_MIN[mm], "%d nodos: del %s al %s" % [nm[1], Celeste.fecha(ts[nm[0]], false), Celeste.fecha(ts[nm[0] + nm[1] - 1], false)]])
+			f.append(["Sección áurea", "intervalo inicial [%s, %s]" % [Celeste.fecha(ts[i - 1], false), Celeste.fecha(ts[i + 1], false)]])
+			f.append(["Ecuación de Kepler", "Newton desde E₀ = M + e·sen M"])
+		3:
+			var u := metodo_int >= Celeste.CAMBIO_VAR
+			f = [["Integral", "u de 0 a π/2 (r = R·sen²u)" if u else "r de 0 a R = 1 UA"],
+				["Primer punto medio", ("u₁ = π/(4n) = %.6f rad" % (PI / (4.0 * n_int))) if u else ("r₁ = R/(2n) = %.6f UA" % (0.5 / n_int))],
+				["Último punto medio", ("u = %.6f rad" % (PI / 2.0 - PI / (4.0 * n_int))) if u else ("r = %.6f UA (nunca llega a R)" % (1.0 - 0.5 / n_int))],
+				["EDO (RK4)", "r₀ = 1 UA, v₀ = 0 (en reposo), t₀ = 0; paso %s días" % _num(h_edo)]]
+		_:
+			var s0 := Celeste.mercurio_inicial()
+			f = [["Estado inicial", "en el perihelio: x = q = a(1 − e) = %.6f UA, y = 0" % s0[0]],
+				["Velocidad inicial", "vx = 0, vy = %.6f UA/día (%.1f km/s)" % [s0[3], s0[3] * Celeste.KM_UA / 86400.0]],
+				["Ajuste", "λ = 0; 1·10⁴; 2·10⁴; 3·10⁴; 4·10⁴, %d vueltas cada uno" % int(vueltas)],
+				["Escena", "λ = %s, paso h = %s días" % [LabUI.sci(pow(10.0, lam_exp), 1), _num(h_orb)]]]
+	return "[font_size=12][color=#ffd966]● Puntos iniciales[/color][/font_size]\n" + _tabla(["", "Valor inicial"], f) + "\n"
+
 ## Tabla «Fórmulas»: la regla de cada método de la pregunta, con el elegido en negrita.
 func _formulas() -> String:
 	var f := []
@@ -183,18 +232,13 @@ func _formulas() -> String:
 		2:
 			f = [["Lagrange", "p(t) = Σⱼ yⱼ·ℓⱼ(t),   ℓⱼ(t) = Πₘ≠ⱼ (t − tₘ)/(tⱼ − tₘ)"],
 				["Newton (dif. divididas)", "p(t) = f[t₀] + f[t₀,t₁](t − t₀) + f[t₀,t₁,t₂](t − t₀)(t − t₁) + …"],
-				["Newton–Gregory", "p = y₀ + s·Δy₀ + s(s−1)/2!·Δ²y₀ + …,   s = (t − t₀)/h"],
 				["Posiciones", "E − e·sen E = M por Newton: Eₖ₊₁ = Eₖ − (Eₖ − e·sen Eₖ − M)/(1 − e·cos Eₖ)"]]
-			sel = metodo_min if metodo_min < 3 else -1
+			sel = metodo_min if metodo_min < 2 else -1
 		3:
-			f = [[["Rectángulos", "t ≈ h·Σ f(rᵢ),   rᵢ = i·h,  i = 0 … n−1"], ["Punto medio", "t ≈ h·Σ f(rᵢ + h/2)"],
-				["Gauss–Legendre", "t ≈ Σ wᵢ·f(rᵢ), nodos = raíces del polinomio de Legendre Pₙ"],
-				["Tanh-sinh", "r = tanh(π/2·senh s): trapecio en s, nodos apretados en los extremos"],
-				["Trapecio", "t ≈ h·[g₀/2 + g₁ + … + gₙ₋₁ + gₙ/2]"], ["Simpson 1/3", "t ≈ h/3·[g₀ + 4g₁ + 2g₂ + 4g₃ + … + gₙ]"],
-				["Simpson 3/8", "t ≈ 3h/8·[g₀ + 3g₁ + 3g₂ + 2g₃ + … + gₙ]"],
-				["Romberg", "R(k, j) = (4ʲ·R(k, j−1) − R(k−1, j−1)) / (4ʲ − 1), sobre trapecios"]][metodo_int]]
+			f = [["Punto medio", "t ≈ h·Σ f(rᵢ + h/2),   h = R/n:  nunca evalúa r = R, donde f = ∞"]]
 			if metodo_int >= Celeste.CAMBIO_VAR:
-				f.append(["Cambio de variable", "r = R·sen²u  →  g(u) = dt/du = 2R^(3/2)·sen²u / √(2GM),   u ∈ [0, π/2]"])
+				f = [["Punto medio", "t ≈ h·Σ g(uᵢ + h/2),   h = (π/2)/n"],
+					["Cambio de variable", "r = R·sen²u  →  g(u) = dt/du = 2R^(3/2)·sen²u / √(2GM),   u ∈ [0, π/2]"]]
 			f.append(["EDO (RK4)", "r̈ = −GM/r²,   yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"])
 			sel = 0
 		_:
@@ -1121,7 +1165,7 @@ func _montar_marte() -> void:
 	var ts: PackedFloat64Array = _tb[0]
 	var ds: PackedFloat64Array = _tb[1]
 	_mins = []
-	for m in 3:
+	for m in 2:
 		_mins.append(Celeste.minimo(ts, ds, m))
 	var jn := Celeste.jd(ac[0], ac[1], float(ac[2]) + 0.5)
 	_ref = Celeste.minimo_referencia(jn - 10.0, jn + 10.0)
@@ -1192,8 +1236,8 @@ func _tablero_marte() -> void:
 		if ts[i] >= t0 and ts[i] <= t1:
 			nodos.append([ts[i], ds[i] * k])
 			_bola(escena, 0.03, glow_mat(Color.WHITE, 2.0), _tp(_tab, ts[i], ds[i] * k))
-	for m in 3:
-		if metodo_min != 3 and metodo_min != m:
+	for m in 2:
+		if metodo_min != 2 and metodo_min != m:
 			continue
 		# El polinomio del método por sus nodos (marcados con su color bajo el eje).
 		var nm := Celeste.nodos_min(ds, m)
@@ -1209,14 +1253,14 @@ func _tablero_marte() -> void:
 			if ts[i] >= t0 and ts[i] <= t1:
 				_bola(escena, 0.014, glow_mat(COL_MIN[m], 2.2), _tp(_tab, ts[i], _tab["y"][0]) + Vector3(0, 0.05 + 0.05 * m, 0.01))
 	var y0: float = _tab["y"][0]
-	for m in 3:
-		if metodo_min != 3 and metodo_min != m:
+	for m in 2:
+		if metodo_min != 2 and metodo_min != m:
 			continue
 		var mn: PackedFloat64Array = _mins[m]
 		var p := _tp(_tab, mn[0], mn[1] * k)
 		_bola(escena, 0.04, glow_mat(COL_MIN[m], 2.6), p + Vector3(0, 0, 0.02))
 		escena.add_child(rod(p, _tp(_tab, mn[0], y0), 0.003, glow_mat(COL_MIN[m], 1.2)))
-		escena.add_child(label3d("%+.1f h" % ((mn[0] - _ref[0]) * 24.0), _tp(_tab, mn[0], y0) + Vector3(0.48 * (m - 1), -0.1, 0.02), COL_MIN[m], 0.0028))
+		escena.add_child(label3d("%+.1f h" % ((mn[0] - _ref[0]) * 24.0), _tp(_tab, mn[0], y0) + Vector3(0.48 * (m - 0.5), -0.1, 0.02), COL_MIN[m], 0.0028))
 	var pr := _tp(_tab, _ref[0], _ref[1] * k)
 	_bola(escena, 0.026, glow_mat(Color.WHITE, 2.2), pr + Vector3(0, 0, 0.03))
 	escena.add_child(label3d("mínimo: %s" % Celeste.fecha(_ref[0]), pr + Vector3(0, 0.16, 0.03), Color.WHITE, 0.0032))
@@ -1229,14 +1273,14 @@ func _tablero_marte() -> void:
 
 func _tabla_marte(ac: Array) -> void:
 	var k := Celeste.KM_UA
-	var msel := 2 if metodo_min == 3 else metodo_min
+	var msel := 1 if metodo_min == 2 else metodo_min
 	var ms: PackedFloat64Array = _mins[msel]
 	var t := "[b]Respuesta (%s):[/b] Marte estará más cerca de la Tierra el [color=#ffd966]%s UT[/color], a %.3f millones de km (la efeméride sin tabla da %s, %.3f millones)" % [
 		Celeste.METODOS_MIN[msel], Celeste.fecha(ms[0]), ms[1] * k / 1e6, Celeste.fecha(_ref[0]), _ref[1] * k / 1e6]
 	t += "\n[font_size=12]Tabla cada %d días (%d nodos) · Kepler por Newton: %.1f iteraciones por posición[/font_size]" % [int(paso_tabla), (_tb[0] as PackedFloat64Array).size(), _kep]
 	var filas := []
 	_csv = [["metodo", "jd", "fecha", "distancia_km", "error_horas", "error_km"]]
-	for m in 3:
+	for m in 2:
 		var mn: PackedFloat64Array = _mins[m]
 		filas.append(["%s %s" % [_sq(COL_MIN[m]), CORTO_MIN[m]], Celeste.fecha(mn[0]), _miles(mn[1] * k), "%+.2f h" % ((mn[0] - _ref[0]) * 24.0), "%s km" % _miles((mn[1] - _ref[1]) * k)])
 		_csv.append([Celeste.METODOS_MIN[m], mn[0], Celeste.fecha(mn[0]), mn[1] * k, (mn[0] - _ref[0]) * 24.0, (mn[1] - _ref[1]) * k])
@@ -1258,21 +1302,18 @@ func _tabla_marte(ac: Array) -> void:
 		_csv.append([ts[i], Celeste.fecha(ts[i]), ds[i] * k])
 
 func _interpretar_marte() -> String:
-	var msel := 2 if metodo_min == 3 else metodo_min
+	var msel := 1 if metodo_min == 2 else metodo_min
 	var g := 2 * msel + 2
 	var e := []
-	for m in 3:
+	for m in 2:
 		e.append((float(_mins[m][0]) - _ref[0]) * 24.0)
-	var t := "La efeméride solo se conoce cada %d días; entre nodos se interpola. El polinomio de grado %d por los %d nodos centrados en el menor valor de la tabla aproxima d(t) con un error ∝ h%s·d⁽%s⁾(t), y su mínimo cae a %+.1f h del real. Con más nodos, más grado y menos error: grado 2 → %+.1f h, grado 4 → %+.1f h, grado 6 → %+.1f h. Si la tabla es muy espaciada (prueba 40 días o más) ningún grado alcanza: los nodos ya no siguen bien la curva." % [
-		int(paso_tabla), g, g + 1, _sup(g + 1), _sup(g + 1), e[msel], e[0], e[1], e[2]]
-	match msel:
-		0:
-			t += " Lagrange escribe el polinomio como suma de bases ℓⱼ(t), cada una vale 1 en su nodo y 0 en los demás: es directo, pero al añadir un nodo hay que rehacerlo todo."
-		1:
-			t += " Newton lo construye con diferencias divididas: añadir un nodo solo agrega un término, y la tabla de diferencias muestra cuánto aporta cada grado."
-		_:
-			t += " Newton–Gregory es la forma de Newton para nodos equiespaciados, con diferencias finitas Δᵏy₀: la de las tablas de los anuarios astronómicos."
-	t += " Con los mismos nodos los tres darían el mismo polinomio (es único); aquí cambian en el número de nodos."
+	var t := "La efeméride solo se conoce cada %d días; entre nodos se interpola. El polinomio de grado %d por los %d nodos centrados en el menor valor de la tabla aproxima d(t) con un error ∝ h%s·d⁽%s⁾(t), y su mínimo cae a %+.1f h del real. Con más nodos, más grado y menos error: grado 2 (Lagrange) → %+.1f h, grado 4 (Newton) → %+.1f h. Si la tabla es muy espaciada (prueba 40 días o más) ningún grado alcanza: los nodos ya no siguen bien la curva." % [
+		int(paso_tabla), g, g + 1, _sup(g + 1), _sup(g + 1), e[msel], e[0], e[1]]
+	if msel == 0:
+		t += " Lagrange escribe el polinomio como suma de bases ℓⱼ(t), cada una vale 1 en su nodo y 0 en los demás: es directo, pero al añadir un nodo hay que rehacerlo todo."
+	else:
+		t += " Newton lo construye con diferencias divididas: añadir un nodo solo agrega un término, y la tabla de diferencias muestra cuánto aporta cada grado."
+	t += " Con los mismos nodos los dos darían el mismo polinomio (es único); aquí cambian en el número de nodos."
 	t += "\nCada unos 26 meses la Tierra alcanza a Marte por dentro. Como las órbitas son elípticas, la distancia mínima cambia mucho de un acercamiento a otro: el de 2027 es el más lejano del siglo XXI (101 millones de km), y la menor distancia no cae exactamente el día de la oposición."
 	return t
 
@@ -1416,18 +1457,14 @@ func _interpretar_caida() -> String:
 	var m := metodo_int
 	var ex := Celeste.t_caida(1.0)
 	var t := ""
-	if m < Celeste.CAMBIO_VAR and m != 3:
+	if m == 0:
 		var p: float = _conv[-1][3]
 		var e64: float = _conv[-1][2]
 		var red := (1.0 - pow(2.0, -p)) * 100.0
 		var n4 := 64.0 * pow(e64 / 0.005, 1.0 / p)
-		t = "El integrando dt/dr crece sin límite junto a r = R: la Tierra parte del reposo y al principio apenas avanza. %s no necesita evaluar f(R), pero la región cercana a R, que es la que más aporta, la ve mal: el error baja con orden p ≈ %.2f en vez de 1 o 2, y duplicar n solo lo reduce un %d %%. Para acertar 4 cifras (error < 0,005 días) harían falta unos %s puntos." % [
-			Celeste.METODOS_INT[m], p, int(round(red)), _miles(n4)]
-	elif m == 3:
-		t = "Tanh-sinh cambia la variable por x = tanh(π/2·senh t): los nodos se amontonan junto a los extremos y sus pesos caen de forma doble exponencial, más rápido de lo que crece la singularidad; con %d evaluaciones llega al error de redondeo." % int(_todos[3]["evals"])
+		t = "El integrando dt/dr crece sin límite junto a r = R: la Tierra parte del reposo y al principio apenas avanza. El punto medio no necesita evaluar f(R), pero la región cercana a R, que es la que más aporta, la ve mal: el error baja con orden p ≈ %.2f en vez de 2, y duplicar n solo lo reduce un %d %%. Para acertar 4 cifras (error < 0,005 días) harían falta unos %s puntos." % [p, int(round(red)), _miles(n4)]
 	else:
-		t = "Con r = R·sen²u la singularidad desaparece: dt/du = 2R^(3/2)·sen²u/√(2GM) es suave y periódica, y %s la integra sin error apreciable (%s días) incluso con pocos puntos. Elegir bien la variable importa más que el método: sobre dt/dr estas mismas reglas ni siquiera se pueden aplicar, porque necesitan f(R) = ∞." % [
-			["la regla del trapecio", "la regla de Simpson 1/3", "la regla de Simpson 3/8", "Romberg"][m - Celeste.CAMBIO_VAR], _err(float(_todos[m]["valor"]) - ex)]
+		t = "Con r = R·sen²u la singularidad desaparece: dt/du = 2R^(3/2)·sen²u/√(2GM) es suave y periódica, y la misma regla del punto medio la integra sin error apreciable (%s días) incluso con pocos puntos. Elegir bien la variable importa más que el método: sobre dt/dr el punto medio necesitaría millones de puntos." % _err(float(_todos[m]["valor"]) - ex)
 	t += " La EDO resuelta con RK4 (h = %s días) da el choque con la superficie del Sol el día %.4f (exacto %.4f)." % [_num(h_edo), _edo["t"], _edo["exacto"]]
 	t += "\n64,57 días es el año dividido entre 4√2: la caída recta es una órbita infinitamente estrecha de semieje R/2, que por la tercera ley de Kepler dura (1/2)^(3/2) años, y caer es la mitad de esa vuelta. La Tierra tarda 53 días en recorrer la primera mitad del camino y solo 12 la segunda, y llega al Sol a unos 600 km/s."
 	return t
@@ -1735,7 +1772,7 @@ func _controles() -> void:
 		2:
 			LabUI.option(p, "Acercamiento", ["12 ene 2025 (96 millones de km)", "20 feb 2027 (101 millones de km)"], acercamiento, func(i): _cambiar("acercamiento", i))
 			LabUI.slider(p, "Paso de la tabla (días)", 1, 60, 1, paso_tabla, func(v): _cambiar("paso_tabla", v), "%.0f")
-			LabUI.option(p, "Ver", Celeste.METODOS_MIN + ["Todos"], metodo_min, func(i): _cambiar("metodo_min", i))
+			LabUI.option(p, "Ver", Celeste.METODOS_MIN + ["Los dos"], metodo_min, func(i): _cambiar("metodo_min", i))
 			LabUI.note(p, "Como un anuario astronómico: las posiciones salen de la ecuación de Kepler (Newton) cada tantos días. El polinomio de cada método pasa por los nodos centrados en el menor valor (marcados con su color bajo el eje) y su mínimo se busca por sección áurea. Las líneas tenues de la escena unen la Tierra y Marte en cada fecha de la tabla.")
 		3:
 			LabUI.option(p, "Método", Celeste.METODOS_INT, metodo_int, func(i): _cambiar("metodo_int", i))
@@ -1744,7 +1781,7 @@ func _controles() -> void:
 			LabUI.button(p, "⟲ Soltar la Tierra otra vez", func():
 				_caida = PackedFloat64Array([1.0, 0.0, 0.0])
 				_impacto = -1.0)
-			LabUI.note(p, "Cada barra es un nodo de la cuadratura sobre el camino de la caída; su alto, el integrando. Los cuatro primeros métodos integran dt/dr, que se dispara junto a r = R, sin evaluar f(R): rectángulos y punto medio convergen con p ≈ ½ y Gauss con p ≈ 1; tanh-sinh amontona nodos junto a la singularidad. Los de «r = R·sen²u» integran la función ya suave (curva verde).")
+			LabUI.note(p, "Cada barra es un punto medio de la cuadratura sobre el camino de la caída; su alto, el integrando. Sobre dt/dr, que se dispara junto a r = R, el punto medio converge con p ≈ ½. Con r = R·sen²u integra la función ya suave (curva verde) y es exacto.")
 		_:
 			LabUI.option(p, "Integrador", Celeste.INTEGRADORES, integrador, func(i): _cambiar("integrador", i))
 			LabUI.check(p, "Los tres a la vez", tres, func(v): _cambiar("tres", v))
@@ -1829,9 +1866,9 @@ func demo(extra: PackedStringArray) -> void:
 
 func info() -> String:
 	match pregunta:
-		0: return _formulas() + _info_lagrange()
-		4: return _formulas() + _info_mercurio()
-	return _formulas() + _info + _bloque_interp()
+		0: return _formulas() + _iniciales() + _info_lagrange()
+		4: return _formulas() + _iniciales() + _info_mercurio()
+	return _formulas() + _iniciales() + _info + _bloque_interp()
 
 func pick(origin: Vector3, dir: Vector3):
 	var hit = ray_plane_y(origin, dir, 0.0)
@@ -1902,7 +1939,7 @@ const CAMPOS := ["pregunta", "sistema", "punto", "metodo_raiz", "nave_lp", "nave
 const RANGOS := {"pregunta": [0, 4], "sistema": [0, 2], "punto": [0, 2], "metodo_raiz": [0, 3], "nave_lp": [0, 4], "nave_km": [1.0, 1e6],
 	"arco": [4.0, 5000.0], "ruido": [0.0, 5.0], "hueco": [0.0, 5000.0], "semilla_obs": [0, 1 << 30], "metodo_der": [0, 4],
 	"h_der": [1.0, 100.0], "edo_ceres": [0, 2], "paso_ceres": [0.01, 30.0],
-	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 3], "metodo_int": [0, 7], "n_int": [2, 128],
+	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 2], "metodo_int": [0, 1], "n_int": [2, 128],
 	"h_edo": [0.0001, 2.0], "integrador": [0, 2], "h_orb": [0.001, 5.0], "lam_exp": [0.0, 7.0], "vueltas": [2.0, 50.0]}
 
 func estado() -> Dictionary:

@@ -8,7 +8,7 @@ extends RefCounted
 ##   2. ¿Cómo encontró Gauss a Ceres? La velocidad por derivación numérica de las posiciones
 ##      observadas y la órbita propagada con una EDO (Euler, Heun o RK4).
 ##   3. ¿Cuándo estará Marte más cerca? Ecuación de Kepler por Newton e interpolación de una tabla
-##      (Lagrange, diferencias divididas de Newton, Newton–Gregory).
+##      (Lagrange y diferencias divididas de Newton).
 ##   4. Si la Tierra se detuviera, ¿cuánto tardaría en caer al Sol? Integral impropia y EDO.
 ##   5. ¿Por qué gira la órbita de Mercurio? Euler, Heun y RK4; mínimos cuadrados y extrapolación.
 ## Funciones puras y deterministas: las pruebas las comparan con los valores exactos o reales.
@@ -467,7 +467,7 @@ const ACERCAMIENTOS := [[2025, 1, 12, 96.08, [2024, 9], [2025, 5]], [2027, 2, 20
 static func ventana(i: int) -> PackedFloat64Array:
 	var ac: Array = ACERCAMIENTOS[i]
 	return PackedFloat64Array([jd(ac[4][0], ac[4][1], 1.0), jd(ac[5][0], ac[5][1], 1.0)])
-const METODOS_MIN := ["Lagrange, grado 2 (3 nodos)", "Newton en diferencias divididas, grado 4 (5 nodos)", "Newton–Gregory hacia adelante, grado 6 (7 nodos)"]
+const METODOS_MIN := ["Lagrange, grado 2 (3 nodos)", "Newton en diferencias divididas, grado 4 (5 nodos)"]
 
 ## Posición heliocéntrica [x, y, z] (UA, eclíptica J2000) en la fecha juliana j, más las
 ## iteraciones de Newton que necesitó la ecuación de Kepler.
@@ -514,7 +514,7 @@ static func tabla(j0: float, j1: float, paso: float) -> Array:
 		j += paso
 	return [ts, ds]
 
-## Los nodos de la tabla que usa el método: 3, 5 o 7 centrados en el menor valor (grados 2, 4 y 6;
+## Los nodos de la tabla que usa el método: 3 o 5 centrados en el menor valor (grados 2 y 4;
 ## con un número par de nodos el polinomio quedaría torcido hacia un lado). [primero, cuántos].
 static func nodos_min(ds: PackedFloat64Array, metodo: int) -> PackedInt32Array:
 	var i := 1
@@ -551,40 +551,15 @@ static func newton_en(xs: PackedFloat64Array, c: PackedFloat64Array, x: float) -
 		p = p * (x - xs[i]) + c[i]
 	return p
 
-## Diferencias finitas hacia adelante en el primer nodo: Δ⁰y₀, Δ¹y₀, Δ²y₀, …
-static func diferencias_finitas(ys: PackedFloat64Array) -> PackedFloat64Array:
-	var d := ys.duplicate()
-	var out := PackedFloat64Array([d[0]])
-	for k in range(1, ys.size()):
-		for i in ys.size() - k:
-			d[i] = d[i + 1] - d[i]
-		out.append(d[0])
-	return out
-
-## Newton–Gregory hacia adelante (nodos equiespaciados): con s = (t − t₀)/h,
-## p = y₀ + sΔy₀ + s(s − 1)/2!·Δ²y₀ + s(s − 1)(s − 2)/3!·Δ³y₀ + …
-static func gregory_en(t0: float, h: float, d: PackedFloat64Array, x: float) -> float:
-	var sv := (x - t0) / h
-	var p := 0.0
-	var term := 1.0
-	for k in d.size():
-		p += term * d[k]
-		term *= (sv - k) / (k + 1)
-	return p
-
 ## El polinomio interpolante de cada método por sus nodos, como función de t.
 static func interpolante(ts: PackedFloat64Array, ds: PackedFloat64Array, metodo: int) -> Callable:
 	var nm := nodos_min(ds, metodo)
 	var xs := ts.slice(nm[0], nm[0] + nm[1])
 	var ys := ds.slice(nm[0], nm[0] + nm[1])
-	match metodo:
-		0:
-			return func(x: float) -> float: return lagrange_en(xs, ys, x)
-		1:
-			var c := diferencias_divididas(xs, ys)
-			return func(x: float) -> float: return newton_en(xs, c, x)
-	var d := diferencias_finitas(ys)
-	return func(x: float) -> float: return gregory_en(xs[0], xs[1] - xs[0], d, x)
+	if metodo == 0:
+		return func(x: float) -> float: return lagrange_en(xs, ys, x)
+	var c := diferencias_divididas(xs, ys)
+	return func(x: float) -> float: return newton_en(xs, c, x)
 
 ## Mínimo [t, d] según el método: el del polinomio interpolante, por sección áurea entre los
 ## nodos vecinos del menor valor de la tabla.
@@ -601,10 +576,10 @@ static func minimo_referencia(a: float, b: float) -> PackedFloat64Array:
 
 # --- 4. La caída al Sol -----------------------------------------------------------------------
 
-const METODOS_INT := ["Rectángulos por la izquierda", "Punto medio", "Gauss–Legendre", "Tanh-sinh",
-	"Trapecio con r = R·sen²u", "Simpson 1/3 con r = R·sen²u", "Simpson 3/8 con r = R·sen²u", "Romberg con r = R·sen²u"]
+## La regla del punto medio, sobre dt/dr y sobre la función ya suave del cambio de variable.
+const METODOS_INT := ["Punto medio", "Punto medio con r = R·sen²u"]
 ## Los métodos desde este índice integran en u (cambio de variable r = R·sen²u).
-const CAMBIO_VAR := 4
+const CAMBIO_VAR := 1
 
 ## Integrando del tiempo de caída desde el reposo en r = R: dt/dr = 1/√(2GM(1/r − 1/R)) en
 ## días/UA (1/r − 1/R se escribe (R − r)/(rR), sin cancelación). Diverge como 1/√(R − r) en
@@ -626,35 +601,14 @@ static func t_caida(R: float, r: float = 0.0) -> float:
 	var x := clampf(r / R, 0.0, 1.0)
 	return sqrt(R * R * R / (2.0 * GM)) * (sqrt(x * (1.0 - x)) + acos(sqrt(x)))
 
-## La integral con el método m y n subintervalos (n puntos en Gauss–Legendre; en tanh-sinh y en
-## Romberg, n fija los niveles: Romberg llega a n subintervalos). Ninguno evalúa f(R) = ∞.
-## Lo que devuelve Quadrature más «variable»: "r", "u" o "w".
-## Tanh-sinh integra en w = R − r: sus nodos se acercan a 10⁻³⁰ del extremo singular y, escritos
-## como r = R − w, se redondearían a R.
+## La integral con la regla del punto medio y n subintervalos: m = 0 sobre dt/dr (nunca evalúa
+## f(R) = ∞), m = 1 en u con r = R·sen²u. Lo que devuelve Quadrature más «variable»: "r" o "u".
 static func cuadratura(m: int, n: int, R: float) -> Dictionary:
-	var f := func(r: float) -> float: return f_caida(r, R)
-	var g := func(u: float) -> float: return g_caida(u, R)
-	var fw := func(w: float) -> float: return INF if w <= 0.0 else sqrt((R - w) * R / (2.0 * GM * w))
 	var d: Dictionary
-	match m:
-		0:
-			d = Quadrature.rect_left(f, 0.0, R, n)
-		1:
-			d = Quadrature.midpoint(f, 0.0, R, n)
-		2:
-			d = Quadrature.gauss_legendre(f, 0.0, R, n)
-		3:
-			d = Quadrature.tanh_sinh(fw, 0.0, R, 1e-15, clampi(int(round(log(float(n)) / log(2.0))) - 2, 1, 8))
-			d["variable"] = "w"
-			return d
-		4:
-			d = Quadrature.trapezoid(g, 0.0, PI / 2.0, n)
-		5:
-			d = Quadrature.simpson(g, 0.0, PI / 2.0, n)
-		6:
-			d = Quadrature.simpson38(g, 0.0, PI / 2.0, n)
-		_:
-			d = Quadrature.romberg(g, 0.0, PI / 2.0, clampi(int(round(log(float(n)) / log(2.0))) + 1, 2, 10))
+	if m == 0:
+		d = Quadrature.midpoint(func(r: float) -> float: return f_caida(r, R), 0.0, R, n)
+	else:
+		d = Quadrature.midpoint(func(u: float) -> float: return g_caida(u, R), 0.0, PI / 2.0, n)
 	d["variable"] = "u" if m >= CAMBIO_VAR else "r"
 	return d
 

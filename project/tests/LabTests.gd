@@ -367,11 +367,9 @@ func _t_celeste() -> void:
 		"Celeste 2: con el estado exacto, la EDO converge con orden %.2f (Euler), %.2f (Heun) y %.2f (RK4)" % po)
 	# 3. Marte: el mínimo de la efeméride cae el día que publica la NASA; más nodos, menos error.
 	var xs := PackedFloat64Array([1.0, 2.0, 4.0, 7.0])
-	var xe := PackedFloat64Array([0.0, 1.0, 2.0, 3.0])
 	var ys := PackedFloat64Array([3.0, -1.0, 2.0, 5.0])
-	check(absf(Celeste.lagrange_en(xs, ys, 3.3) - Celeste.newton_en(xs, Celeste.diferencias_divididas(xs, ys), 3.3)) < 1e-12
-		and absf(Celeste.lagrange_en(xe, ys, 1.7) - Celeste.gregory_en(0.0, 1.0, Celeste.diferencias_finitas(ys), 1.7)) < 1e-12,
-		"Celeste 3: Lagrange, Newton (diferencias divididas) y Newton–Gregory dan el mismo polinomio con los mismos nodos")
+	check(absf(Celeste.lagrange_en(xs, ys, 3.3) - Celeste.newton_en(xs, Celeste.diferencias_divididas(xs, ys), 3.3)) < 1e-12,
+		"Celeste 3: Lagrange y Newton (diferencias divididas) dan el mismo polinomio con los mismos nodos")
 	var malos := []
 	for i in 2:
 		var ac: Array = Celeste.ACERCAMIENTOS[i]
@@ -380,22 +378,17 @@ func _t_celeste() -> void:
 		var w := Celeste.ventana(i)
 		var tb := Celeste.tabla(w[0], w[1], 20.0)
 		var e := []
-		for mm in 3:
+		for mm in 2:
 			e.append(absf(Celeste.minimo(tb[0], tb[1], mm)[0] - ref[0]) * 24.0)
-		if absf(ref[0] - jn) > 1.0 or absf(ref[1] * Celeste.KM_UA / 1e6 - float(ac[3])) > 0.1 or e[0] > 6.0 or e[1] > e[0] or e[2] > e[1]:
-			malos.append("%d (ref %s; errores %.2f, %.2f, %.2f h)" % [ac[0], Celeste.fecha(ref[0]), e[0], e[1], e[2]])
-	check(malos.is_empty(), "Celeste 3: los acercamientos de Marte de 2025 y 2027 caen el día de la NASA; con nodos cada 20 días el error baja al subir el grado (2, 4, 6)%s" % ("" if malos.is_empty() else ": " + ", ".join(malos)))
-	# 4. La caída: 64,57 días; ningún método evalúa f(R); los de r = R·sen²u, exactos.
+		if absf(ref[0] - jn) > 1.0 or absf(ref[1] * Celeste.KM_UA / 1e6 - float(ac[3])) > 0.1 or e[0] > 6.0 or e[1] > e[0]:
+			malos.append("%d (ref %s; errores %.2f, %.2f h)" % [ac[0], Celeste.fecha(ref[0]), e[0], e[1]])
+	check(malos.is_empty(), "Celeste 3: los acercamientos de Marte de 2025 y 2027 caen el día de la NASA; con nodos cada 20 días el error baja al subir el grado (2 y 4)%s" % ("" if malos.is_empty() else ": " + ", ".join(malos)))
+	# 4. La caída: 64,57 días; el punto medio no evalúa f(R) y converge con p = ½; con r = R·sen²u, exacto.
 	var ex := Celeste.t_caida(1.0)
-	var cr := Celeste.convergencia(0, 1.0)
-	var cm := Celeste.convergencia(1, 1.0)
-	var cg := Celeste.convergencia(2, 1.0)
-	var ts := absf(float(Celeste.cuadratura(3, 16, 1.0)["valor"]) - ex)
-	var cv := 0.0
-	for mm in range(Celeste.CAMBIO_VAR, Celeste.METODOS_INT.size()):
-		cv = maxf(cv, absf(float(Celeste.cuadratura(mm, 16, 1.0)["valor"]) - ex))
-	check(absf(ex - 64.5689) < 1e-3 and absf(float(cr[-1][3]) - 0.5) < 0.05 and absf(float(cm[-1][3]) - 0.5) < 0.05 and absf(float(cg[-1][3]) - 1.0) < 0.05 and ts < 1e-10 and cv < 1e-12,
-		"Celeste 4: caída en %.4f días; rectángulos p = %.2f, punto medio p = %.2f, Gauss p = %.2f, tanh-sinh %s; trapecio, Simpson 1/3 y 3/8 y Romberg con r = R·sen²u: %s" % [ex, cr[-1][3], cm[-1][3], cg[-1][3], LabUI.sci(ts, 1), LabUI.sci(cv, 1)])
+	var cm := Celeste.convergencia(0, 1.0)
+	var cv := absf(float(Celeste.cuadratura(1, 16, 1.0)["valor"]) - ex)
+	check(absf(ex - 64.5689) < 1e-3 and absf(float(cm[-1][3]) - 0.5) < 0.05 and cv < 1e-12,
+		"Celeste 4: caída en %.4f días; punto medio sobre dt/dr p = %.2f; punto medio con r = R·sen²u: error %s" % [ex, cm[-1][3], LabUI.sci(cv, 1)])
 	var edo := Celeste.caida_edo(1.0, 0.01)
 	check(absf(float(edo["t"]) - float(edo["exacto"])) < 1e-3, "Celeste 4: la EDO con RK4 (h = 0,01 días) choca con el Sol en el día %.4f (exacto %.4f)" % [edo["t"], edo["exacto"]])
 	# 5. Mercurio: 42,98″ por siglo extrapolando con RK4 y Heun; Euler no sirve.
@@ -416,7 +409,7 @@ func _t_celeste() -> void:
 		for f in 30:
 			m.step(1.0 / 30.0)
 		var txt: String = m.info()
-		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or not txt.contains("[table=") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
+		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or not txt.contains("Puntos iniciales") or not txt.contains("[table=") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
 			vacias.append(q + 1)
 	check(vacias.is_empty(), "Celeste: las cinco preguntas se montan, se animan y dan su respuesta, su interpretación y su CSV%s" % ("" if vacias.is_empty() else " (fallan: %s)" % str(vacias)))
 	m.pregunta = 4

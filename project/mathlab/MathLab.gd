@@ -726,9 +726,10 @@ func _build_ui() -> void:
 	ui.add_child(model_panel)
 	model_label = RichTextLabel.new()
 	model_label.bbcode_enabled = true
-	model_label.fit_content = true
-	model_label.custom_minimum_size = Vector2(420, 60)
-	model_label.scroll_active = false
+	# Alto acotado con barra de desplazamiento: hay módulos con muchos subsistemas.
+	model_label.fit_content = false
+	model_label.custom_minimum_size = Vector2(440, 60)
+	model_label.scroll_active = true
 	model_panel.add_content(model_label)
 	model_panel.visible = false
 
@@ -782,6 +783,12 @@ func _refresh_model_panel() -> void:
 			if str(s.get(k, "")) != "":
 				t += "  [color=#8fa3b8]%s:[/color] %s\n" % [k, s[k]]
 	model_label.text = t
+	_ajustar_modelo.call_deferred()
+
+## El panel «Modelo» toma el alto del texto hasta 460 px; más allá, barra de desplazamiento.
+func _ajustar_modelo() -> void:
+	model_label.custom_minimum_size.y = clampf(model_label.get_content_height() + 8.0, 60.0, 460.0)
+	model_panel.reset_size()
 
 func _update_metrics() -> void:
 	if metrics_panel == null or not metrics_panel.visible:
