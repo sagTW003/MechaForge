@@ -911,7 +911,7 @@ func _fisica_lagrange(S: Dictionary, dkm: float) -> String:
 	var d := _miles(dkm)
 	if sistema == 0:
 		match punto:
-			1: return "En L2, a %s km de la Tierra en dirección opuesta al Sol, la atracción del Sol y la de la Tierra suman justo la fuerza centrípeta para dar la vuelta al Sol en un año, al ritmo de la Tierra: el telescopio se queda «estacionado» con el Sol, la Tierra y la Luna siempre a su espalda, tapados por su escudo térmico. Es una silla del potencial (equilibrio inestable): suelta la nave y verás que se aleja; por eso el James Webb corrige su órbita cada pocas semanas." % d
+			1: return "En L2, a %s km de la Tierra en dirección opuesta al Sol, la atracción del Sol y la de la Tierra suman justo la fuerza centrípeta para dar la vuelta al Sol en un año, al ritmo de la Tierra: el telescopio se queda «estacionado» con el Sol, la Tierra y la Luna siempre a su espalda, tapados por su escudo térmico. Es una silla del potencial (equilibrio inestable): suelta la nave y verás que se aleja; por eso el James Webb hace pequeñas correcciones de órbita con sus propulsores para mantenerse cerca de L2." % d
 			0: return "En L1, a %s km de la Tierra hacia el Sol, un satélite ve el Sol sin interrupciones: allí está el observatorio solar SOHO. También es un equilibrio inestable." % d
 		return "L3 está al otro lado del Sol, a %s km de él, siempre oculto desde la Tierra; también es un equilibrio inestable." % d
 	if sistema == 1:

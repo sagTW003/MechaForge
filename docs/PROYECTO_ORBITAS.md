@@ -103,8 +103,8 @@ si Newton empieza al otro lado de la Tierra (clic): por qué salta a otra raíz?
 
 **Planteamiento.** Piazzi descubrió Ceres el 1 de enero de 1801 y la siguió 41 días antes de
 perderla tras el Sol. Con tan pocos datos nadie sabía dónde buscarla. Gauss calculó su órbita y
-predijo dónde reaparecería: el 31 de diciembre de 1801 la encontraron a medio grado de su
-predicción. La idea clave: **la posición y la velocidad en un instante determinan la órbita**. La
+predijo dónde reaparecería: el 31 de diciembre de 1801 la encontraron cerca de la posición
+predicha. La idea clave: **la posición y la velocidad en un instante determinan la órbita**. La
 posición se observa; la velocidad no: hay que **derivarla numéricamente**. Después, la órbita se
 obtiene **resolviendo la EDO** del movimiento.
 
@@ -330,8 +330,8 @@ medida con el paso y las vueltas elegidos.
 
 Con pasos mayores: Heun da 42,02″ (h = 0,5) y 39,52″ (h = 1); RK4, 42,977″ y 42,85″.
 
-**Validación.** Relatividad general: 42,98″ por siglo; observado (descontados los planetas):
-42,98 ± 0,04″.
+**Validación.** Relatividad general: 42,98″ por siglo. Lo observado (574,10 ± 0,65″ por siglo en
+total) concuerda con lo que predicen juntos la gravedad de los planetas (532,3″) y la relatividad.
 
 **Para el análisis.** ¿Por qué Euler no sirve aunque el ajuste descuente c₀? ¿Cuánto hay que
 bajar h para que Heun alcance a RK4, y cuánto cuesta? ¿Por qué el ajuste lineal da 43,58″ y el
