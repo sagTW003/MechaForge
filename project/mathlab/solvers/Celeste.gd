@@ -576,10 +576,15 @@ static func minimo_referencia(a: float, b: float) -> PackedFloat64Array:
 
 # --- 4. La caída al Sol -----------------------------------------------------------------------
 
-## La regla del punto medio, sobre dt/dr y sobre la función ya suave del cambio de variable.
-const METODOS_INT := ["Punto medio", "Punto medio con r = R·sen²u"]
-## Los métodos desde este índice integran en u (cambio de variable r = R·sen²u).
+## La regla del punto medio, sobre dt/dr y sobre la función ya suave del cambio de variable, y
+## la EDO r̈ = −GM/r² con Runge–Kutta 4 (no integra la cuadratura: simula la caída).
+const METODOS_INT := ["Punto medio", "Punto medio con r = R·sen²u", "EDO con Runge–Kutta 4"]
+## Este método integra en u (cambio de variable r = R·sen²u).
 const CAMBIO_VAR := 1
+## Este método resuelve la EDO en vez de la integral.
+const EDO_INT := 2
+## Pasos (días) de la tabla de convergencia de la EDO.
+const HS_EDO := [0.04, 0.02, 0.01, 0.005, 0.0025]
 
 ## Integrando del tiempo de caída desde el reposo en r = R: dt/dr = 1/√(2GM(1/r − 1/R)) en
 ## días/UA (1/r − 1/R se escribe (R − r)/(rR), sin cancelación). Diverge como 1/√(R − r) en
@@ -609,17 +614,21 @@ static func cuadratura(m: int, n: int, R: float) -> Dictionary:
 		d = Quadrature.midpoint(func(r: float) -> float: return f_caida(r, R), 0.0, R, n)
 	else:
 		d = Quadrature.midpoint(func(u: float) -> float: return g_caida(u, R), 0.0, PI / 2.0, n)
-	d["variable"] = "u" if m >= CAMBIO_VAR else "r"
+	d["variable"] = "u" if m == CAMBIO_VAR else "r"
 	return d
 
 ## Tabla de convergencia del método m: [[n, valor, error, orden observado], …] con
-## p = log₂(e(n/2)/e(n)).
-static func convergencia(m: int, R: float, ns: Array = [4, 8, 16, 32, 64]) -> Array:
-	var exacto := t_caida(R)
+## p = log₂(e(n/2)/e(n)). Para la EDO, n es el paso h (que se divide entre 2) y el valor exacto
+## es el tiempo hasta la superficie del Sol.
+static func convergencia(m: int, R: float, ns: Array = []) -> Array:
+	var edo := m == EDO_INT
+	if ns.is_empty():
+		ns = HS_EDO if edo else [4, 8, 16, 32, 64]
+	var exacto := t_caida(R, R_SOL) if edo else t_caida(R)
 	var filas := []
 	var e_prev := NAN
 	for n in ns:
-		var v: float = cuadratura(m, n, R)["valor"]
+		var v: float = caida_edo(R, n)["t"] if edo else cuadratura(m, n, R)["valor"]
 		var err := absf(v - exacto)
 		var p := NAN
 		if is_finite(err) and is_finite(e_prev) and err > 1e-14 and e_prev > 1e-14:
@@ -642,25 +651,44 @@ static func rk4_radial(r: float, v: float, h: float) -> PackedFloat64Array:
 	var v4 := v + h * k3v
 	return PackedFloat64Array([r + h / 6.0 * (v + 2.0 * v2 + 2.0 * v3 + v4), v + h / 6.0 * (k1v + 2.0 * k2v + 2.0 * k3v + k4v)])
 
+## El último paso, que cruza la superficie del Sol (s = RK4 desde [r, v] con paso h): busca por
+## Newton el paso h′ ∈ [0, h] con r(h′) = R_SOL (r′ = v), desde la interpolación lineal.
+## Interpolar en línea recta deja un error O(h²) que tapa el orden 4 de RK4. [h′, v(h′)].
+static func impacto(r: float, v: float, h: float, s: PackedFloat64Array) -> PackedFloat64Array:
+	var hp := h * clampf((r - R_SOL) / (r - s[0]), 0.0, 1.0) if is_finite(s[0]) else 0.5 * h
+	var q := rk4_radial(r, v, hp)
+	for k in 8:
+		if not is_finite(q[0]) or absf(q[1]) < 1e-300:
+			break
+		hp = clampf(hp - (q[0] - R_SOL) / q[1], 0.0, h)
+		q = rk4_radial(r, v, hp)
+	return PackedFloat64Array([hp, q[1] if is_finite(q[1]) else v])
+
 ## La caída con RK4 de paso fijo h (días) desde el reposo en R hasta la superficie del Sol; el
-## instante del impacto se interpola linealmente en el último paso.
-static func caida_edo(R: float, h: float) -> Dictionary:
+## último paso se acorta hasta tocarla (impacto). Con guardar, «tray» = [t, r, v] de cada paso.
+static func caida_edo(R: float, h: float, guardar: bool = false) -> Dictionary:
 	var r := R
 	var v := 0.0
 	var t := 0.0
 	var pasos := 0
+	var tray := PackedFloat64Array([0.0, R, 0.0]) if guardar else PackedFloat64Array()
 	while pasos < 2000000:
 		var s := rk4_radial(r, v, h)
 		pasos += 1
 		if s[0] <= R_SOL or not is_finite(s[0]):
-			var frac := clampf((r - R_SOL) / (r - s[0]), 0.0, 1.0) if is_finite(s[0]) else 0.5
-			t += h * frac
-			v += (s[1] - v) * frac if is_finite(s[1]) else 0.0
+			var c := impacto(r, v, h, s)
+			t += c[0]
+			v = c[1]
+			r = R_SOL
+		else:
+			r = s[0]
+			v = s[1]
+			t += h
+		if guardar:
+			tray.append_array([t, r, v])
+		if r <= R_SOL:
 			break
-		r = s[0]
-		v = s[1]
-		t += h
-	return {"t": t, "pasos": pasos, "v_kms": absf(v) * KM_UA / 86400.0, "exacto": t_caida(R, R_SOL)}
+	return {"t": t, "pasos": pasos, "v_kms": absf(v) * KM_UA / 86400.0, "exacto": t_caida(R, R_SOL), "tray": tray}
 
 # --- 5. La precesión de Mercurio --------------------------------------------------------------
 

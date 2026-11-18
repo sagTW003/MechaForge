@@ -252,12 +252,15 @@ trapecio y Simpson no se pueden usar: necesitan f(R) = ∞). Se aplica de dos fo
 - **sobre dt/dr**, que se dispara junto a R: el error baja solo como n^(−1/2) por la singularidad;
 - **con el cambio de variable r = R sen²u**: el integrando pasa a ser 2R^(3/2) sen²u/√(2GM) en
   u ∈ [0, π/2], suave y periódico, y la misma regla es exacta.
-- **EDO:** r̈ = −GM/r² con RK4 hasta la superficie del Sol; el instante del choque se interpola
-  linealmente dentro del último paso.
+- **EDO con Runge–Kutta 4** (tercer método del selector): r̈ = −GM/r² paso a paso hasta la
+  superficie del Sol; el último paso se acorta por Newton (h′ ← h′ − (r(h′) − R☉)/v(h′)) hasta
+  tocarla. Interpolarlo en línea recta dejaría un error O(h²) que taparía el orden 4.
 
 **En MechaForge.** La Tierra cae por el eje; un fantasma sigue en la órbita normal. Sobre el camino,
 la curva blanca es el integrando dt/dr y **cada barra es un nodo de la cuadratura elegida** (su
 alto, el valor de f). Con el cambio de variable aparece la curva verde, ya suave, con sus nodos.
+Con «EDO con Runge–Kutta 4», cada paso es un punto azul en (r, t): la curva t(r), que es justamente la
+integral que calcula el punto medio; el panel da la tabla de los pasos y la convergencia al dividir h.
 
 **Resultados.**
 
@@ -272,8 +275,10 @@ alto, el valor de f). Con el cambio de variable aparece la curva verde, ya suave
 Orden observado sobre dt/dr: p = 0,50. Para 4 cifras correctas necesitaría unos 25 millones de
 puntos; con el cambio de variable bastan 3.
 
-EDO con RK4 hasta la superficie del Sol (exacto 64,5602 días): h = 0,1 d → 64,5409;
-h = 0,01 d → 64,56015; h = 0,001 d → 64,56020. Llega a ~616 km/s.
+EDO con RK4 hasta la superficie del Sol (exacto 64,56020 días): h = 0,05 d → 64,56029
+(error 8,3·10⁻⁵); h = 0,01 d → 64,560215; h = 0,001 d → 64,5602045. Al dividir h entre 2 desde
+0,04 días, orden observado 2,27 → 2,92 → 3,47 → 3,80, camino al 4: con paso fijo el error se
+concentra en las últimas horas, cuando la aceleración del Sol es enorme. Llega a ~616 km/s.
 
 **Validación.** Fórmula cerrada T/(4√2) y la del tiempo hasta un radio r,
 t(r) = √(R³/2GM)(√(x(1 − x)) + arccos √x), x = r/R. La Tierra tarda 53 días en la primera mitad

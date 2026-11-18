@@ -390,7 +390,9 @@ func _t_celeste() -> void:
 	check(absf(ex - 64.5689) < 1e-3 and absf(float(cm[-1][3]) - 0.5) < 0.05 and cv < 1e-12,
 		"Celeste 4: caída en %.4f días; punto medio sobre dt/dr p = %.2f; punto medio con r = R·sen²u: error %s" % [ex, cm[-1][3], LabUI.sci(cv, 1)])
 	var edo := Celeste.caida_edo(1.0, 0.01)
-	check(absf(float(edo["t"]) - float(edo["exacto"])) < 1e-3, "Celeste 4: la EDO con RK4 (h = 0,01 días) choca con el Sol en el día %.4f (exacto %.4f)" % [edo["t"], edo["exacto"]])
+	var ce := Celeste.convergencia(Celeste.EDO_INT, 1.0)
+	check(absf(float(edo["t"]) - float(edo["exacto"])) < 1e-4 and float(ce[-1][3]) > 3.5 and float(ce[-1][2]) < 1e-6,
+		"Celeste 4: la EDO con RK4 (h = 0,01 días) choca con el Sol en el día %.5f (exacto %.5f); al dividir h entre 2, orden %.2f" % [edo["t"], edo["exacto"], ce[-1][3]])
 	# 5. Mercurio: 42,98″ por siglo extrapolando con RK4 y Heun; Euler no sirve.
 	var teo := Celeste.precesion_teorica()
 	var eu := Celeste.extrapolar(0, 0.1, 5.0)
@@ -412,6 +414,16 @@ func _t_celeste() -> void:
 		if not txt.contains("Respuesta") or not txt.contains("Interpretación") or not txt.contains("Puntos iniciales") or not txt.contains("[table=") or m._interp.length() < 80 or not m.finito() or m.critical_points().is_empty() or m._csv.size() < 2:
 			vacias.append(q + 1)
 	check(vacias.is_empty(), "Celeste: las cinco preguntas se montan, se animan y dan su respuesta, su interpretación y su CSV%s" % ("" if vacias.is_empty() else " (fallan: %s)" % str(vacias)))
+	m.pregunta = 3
+	m.metodo_int = Celeste.EDO_INT
+	m._montar()
+	m._controles()
+	for f in 30:
+		m.step(1.0 / 30.0)
+	var t4: String = m.info()
+	check(t4.contains("Respuesta (EDO con Runge–Kutta 4") and t4.contains("Pasos de RK4") and t4.contains("dividir h entre 2") and m._csv.size() > 5,
+		"Celeste 4 en la escena: la EDO con RK4 se elige como método y da su respuesta, sus pasos y su convergencia")
+	m.metodo_int = 1
 	m.pregunta = 4
 	m.vueltas = 2.0
 	m._montar()

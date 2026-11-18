@@ -35,7 +35,7 @@ const PASOS_CERES := [5.0, 2.0, 1.0, 0.5]
 ## Nombres cortos para las columnas de las tablas.
 const CORTO_DER := ["Hacia adelante", "Hacia atrás", "Centrada (3 puntos)", "Centrada (5 puntos)"]
 const CORTO_MIN := ["Lagrange (grado 2)", "Newton dif. divididas (grado 4)"]
-const CORTO_INT := ["Punto medio", "Punto medio + r = R·sen²u"]
+const CORTO_INT := ["Punto medio", "Punto medio + r = R·sen²u", "RK4 (EDO)"]
 const CORTO_INTEG := ["Euler", "Heun", "RK4"]
 ## Aspecto de cada astro: paradas del degradado que colorea el ruido de su superficie.
 const ASPECTO := {
@@ -197,11 +197,16 @@ func _iniciales() -> String:
 			f.append(["Sección áurea", "intervalo inicial [%s, %s]" % [Celeste.fecha(ts[i - 1], false), Celeste.fecha(ts[i + 1], false)]])
 			f.append(["Ecuación de Kepler", "Newton desde E₀ = M + e·sen M"])
 		3:
-			var u := metodo_int >= Celeste.CAMBIO_VAR
-			f = [["Integral", "u de 0 a π/2 (r = R·sen²u)" if u else "r de 0 a R = 1 UA"],
-				["Primer punto medio", ("u₁ = π/(4n) = %.6f rad" % (PI / (4.0 * n_int))) if u else ("r₁ = R/(2n) = %.6f UA" % (0.5 / n_int))],
-				["Último punto medio", ("u = %.6f rad" % (PI / 2.0 - PI / (4.0 * n_int))) if u else ("r = %.6f UA (nunca llega a R)" % (1.0 - 0.5 / n_int))],
-				["EDO (RK4)", "r₀ = 1 UA, v₀ = 0 (en reposo), t₀ = 0; paso %s días" % _num(h_edo)]]
+			var u := metodo_int == Celeste.CAMBIO_VAR
+			if metodo_int == Celeste.EDO_INT:
+				f = [["Estado inicial", "r₀ = R = 1 UA, v₀ = 0 (en reposo), t₀ = 0"],
+					["Paso", "h = %s días, fijo (convergencia: h = 0,04 dividido entre 2 cuatro veces)" % _num(h_edo)],
+					["Final", "r = radio del Sol = 695 700 km; el último paso se acorta por Newton hasta tocarlo"]]
+			else:
+				f = [["Integral", "u de 0 a π/2 (r = R·sen²u)" if u else "r de 0 a R = 1 UA"],
+					["Primer punto medio", ("u₁ = π/(4n) = %.6f rad" % (PI / (4.0 * n_int))) if u else ("r₁ = R/(2n) = %.6f UA" % (0.5 / n_int))],
+					["Último punto medio", ("u = %.6f rad" % (PI / 2.0 - PI / (4.0 * n_int))) if u else ("r = %.6f UA (nunca llega a R)" % (1.0 - 0.5 / n_int))],
+					["EDO (RK4)", "r₀ = 1 UA, v₀ = 0 (en reposo), t₀ = 0; paso %s días" % _num(h_edo)]]
 		_:
 			var s0 := Celeste.mercurio_inicial()
 			f = [["Estado inicial", "en el perihelio: x = q = a(1 − e) = %.6f UA, y = 0" % s0[0]],
@@ -236,11 +241,14 @@ func _formulas() -> String:
 			sel = metodo_min if metodo_min < 2 else -1
 		3:
 			f = [["Punto medio", "t ≈ h·Σ f(rᵢ + h/2),   h = R/n:  nunca evalúa r = R, donde f = ∞"]]
-			if metodo_int >= Celeste.CAMBIO_VAR:
+			if metodo_int == Celeste.CAMBIO_VAR:
 				f = [["Punto medio", "t ≈ h·Σ g(uᵢ + h/2),   h = (π/2)/n"],
 					["Cambio de variable", "r = R·sen²u  →  g(u) = dt/du = 2R^(3/2)·sen²u / √(2GM),   u ∈ [0, π/2]"]]
-			f.append(["EDO (RK4)", "r̈ = −GM/r²,   yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"])
-			sel = 0
+			f.append(["EDO (RK4)", "y = (r, v),  y′ = (v, −GM/r²),   yₙ₊₁ = yₙ + h/6·(k₁ + 2k₂ + 2k₃ + k₄)"])
+			if metodo_int == Celeste.EDO_INT:
+				f.append(["Etapas de RK4", "k₁ = f(yₙ),  k₂ = f(yₙ + h/2·k₁),  k₃ = f(yₙ + h/2·k₂),  k₄ = f(yₙ + h·k₃)"])
+				f.append(["Último paso", "h′ por Newton: hₖ₊₁ = hₖ − (r(hₖ) − R☉)/v(hₖ), para tocar la superficie"])
+			sel = f.size() - 3 if metodo_int == Celeste.EDO_INT else 0
 		_:
 			f = [["Euler", "yₙ₊₁ = yₙ + h·f(yₙ)"],
 				["Heun", "yₙ₊₁ = yₙ + h/2·(k₁ + k₂),   k₁ = f(yₙ),  k₂ = f(yₙ + h·k₁)"],
@@ -1346,12 +1354,13 @@ func _h_f(f: float) -> float:
 
 func _montar_caida() -> void:
 	scale_xy = ESC_CAIDA
-	_cuad = Celeste.cuadratura(metodo_int, n_int, 1.0)
-	_conv = Celeste.convergencia(metodo_int, 1.0)
+	var es_edo := metodo_int == Celeste.EDO_INT
 	_todos = []
-	for m in Celeste.METODOS_INT.size():
+	for m in Celeste.EDO_INT:
 		_todos.append(Celeste.cuadratura(m, n_int, 1.0))
-	_edo = Celeste.caida_edo(1.0, h_edo)
+	_cuad = {} if es_edo else _todos[metodo_int]
+	_conv = Celeste.convergencia(metodo_int, 1.0)
+	_edo = Celeste.caida_edo(1.0, h_edo, es_edo)
 	escena.add_child(_sol(0.16))
 	_rejilla(1.0, 0.25)
 	escena.add_child(tube(_circulo(1.0), 0.004, glow_mat(Color(0.3, 0.55, 1.0), 0.8)))
@@ -1364,7 +1373,7 @@ func _montar_caida() -> void:
 		pts.append(_W(r, 0.0, _h_f(Celeste.f_caida(r, 1.0))))
 	escena.add_child(tube(pts, 0.007, glow_mat(Color(0.9, 0.95, 1.0), 1.4)))
 	escena.add_child(label3d("dt/dr → ∞ en r = R (integral impropia)", _W(1.0, 0.0, H_CAIDA + 0.15), Color(1.0, 0.6, 0.55), 0.0034))
-	var var_u := str(_cuad["variable"]) == "u"
+	var var_u := str(_cuad.get("variable", "r")) == "u"
 	var gmax := Celeste.g_caida(PI / 2.0, 1.0)
 	if var_u:
 		var pu := PackedVector3Array()
@@ -1377,7 +1386,7 @@ func _montar_caida() -> void:
 	var col := Color(0.5, 1.0, 0.55) if var_u else Color(1.0, 0.62, 0.25)
 	var mb := glow_mat(col, 1.8)
 	var minf_mat := glow_mat(Color(1.0, 0.25, 0.25), 3.0)
-	var nodos: Array = _cuad["nodos"]
+	var nodos: Array = _cuad.get("nodos", [])
 	var infinito := false
 	for i in mini(nodos.size(), 400):
 		var x: float = nodos[i][0]
@@ -1398,6 +1407,17 @@ func _montar_caida() -> void:
 		_bola(dinamico, 0.014, minf_mat if inf else mb, _W(r, 0.0, h))
 	if infinito:
 		dinamico.add_child(label3d("f(R) = ∞: el método no puede evaluarla", _W(1.0, 0.0, H_CAIDA * 1.3), Color(1.0, 0.4, 0.4), 0.0034))
+	if es_edo:
+		# Cada paso de RK4 en (r, t): la curva t(r), que es la integral que calcula el punto medio.
+		var tr: PackedFloat64Array = _edo["tray"]
+		var np := tr.size() / 3
+		var tf: float = _edo["t"]
+		var mp := glow_mat(Color(0.55, 0.8, 1.0), 1.8)
+		var cada := maxi(1, np / 300)
+		for i in np:
+			if i % cada == 0 or i == np - 1:
+				_bola(dinamico, 0.014 if np < 400 else 0.011, mp, _W(tr[3 * i + 1], 0.0, H_CAIDA * tr[3 * i] / tf))
+		dinamico.add_child(label3d("RK4: cada punto es un paso (r, t)", _W(0.0, 0.0, H_CAIDA + 0.45), Color(0.6, 0.85, 1.0), 0.0032))
 	_tierra_mi = _cuerpo("Tierra", 0.07, _W(1.0, 0.0))
 	escena.add_child(_tierra_mi)
 	_fantasma = sphere(0.05, glass_mat(Color(0.4, 0.6, 1.0), 0.25))
@@ -1413,10 +1433,18 @@ func _montar_caida() -> void:
 
 func _tabla_caida() -> void:
 	var ex := Celeste.t_caida(1.0)
-	var ds: Dictionary = _todos[metodo_int]
-	var vs: float = ds["valor"]
-	var t := "[b]Respuesta (%s, n = %d):[/b] la Tierra tardaría [color=#ffd966]%.4f días[/color] en caer al Sol (exacto: %.4f días = T/(4√2)); error %s con %d evaluaciones de f" % [
-		Celeste.METODOS_INT[metodo_int], n_int, vs, ex, _err(vs - ex), int(ds["evals"])]
+	var es_edo := metodo_int == Celeste.EDO_INT
+	var te: float = _edo["t"]
+	var exs: float = _edo["exacto"]
+	var t := ""
+	if es_edo:
+		t = "[b]Respuesta (%s, h = %s días):[/b] la Tierra choca con la superficie del Sol el día [color=#ffd966]%.5f[/color] (exacto: %.5f; hasta el centro, %.4f días = T/(4√2)); error %s con %d pasos (%d evaluaciones de la aceleración) · llega a %s km/s" % [
+			Celeste.METODOS_INT[metodo_int], _num(h_edo), te, exs, ex, _err(te - exs), int(_edo["pasos"]), 4 * int(_edo["pasos"]), _miles(_edo["v_kms"])]
+	else:
+		var ds: Dictionary = _todos[metodo_int]
+		var vs: float = ds["valor"]
+		t = "[b]Respuesta (%s, n = %d):[/b] la Tierra tardaría [color=#ffd966]%.4f días[/color] en caer al Sol (exacto: %.4f días = T/(4√2)); error %s con %d evaluaciones de f" % [
+			Celeste.METODOS_INT[metodo_int], n_int, vs, ex, _err(vs - ex), int(ds["evals"])]
 	var filas := []
 	_csv = [["metodo", "n", "resultado_dias", "error_dias", "evaluaciones"]]
 	for m in _todos.size():
@@ -1424,19 +1452,34 @@ func _tabla_caida() -> void:
 		var v: float = d["valor"]
 		filas.append([CORTO_INT[m], "%.8f" % v, _err(v - ex), str(int(d["evals"]))])
 		_csv.append([Celeste.METODOS_INT[m], n_int, v, absf(v - ex), d["evals"]])
-	t += "\n" + _tabla(["Método (n = %d)" % n_int, "Resultado (días)", "Error (días)", "Evaluaciones de f"], filas, metodo_int)
-	var cab := ["n"]
+	filas.append(["RK4, h = %s días (hasta la superficie)" % _num(h_edo), "%.8f" % te, _err(te - exs), str(4 * int(_edo["pasos"]))])
+	_csv.append([Celeste.METODOS_INT[Celeste.EDO_INT] + " (hasta la superficie, h = %s)" % h_edo, "", te, absf(te - exs), 4 * int(_edo["pasos"])])
+	t += "\n" + _tabla(["Método (n = %d)" % n_int, "Resultado (días)", "Error (días)", "Evaluaciones"], filas, metodo_int)
+	var cab := ["h (días)" if es_edo else "n"]
 	var errs := ["Error (días)"]
 	var ords := ["Orden observado p"]
 	for f in _conv:
 		var po: float = f[3]
-		cab.append(str(f[0]))
+		cab.append(_num(f[0]) if es_edo else str(f[0]))
 		errs.append(_err(f[2]))
 		ords.append("%.2f" % po if is_finite(po) and float(f[2]) > 1e-12 else "—")
-	t += "\n[font_size=12]Convergencia de %s al duplicar n:[/font_size]\n" % CORTO_INT[metodo_int] + _tabla(cab, [errs, ords])
-	t += "\n[font_size=12]EDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
-		_num(h_edo), _edo["t"], _edo["exacto"], int(_edo["pasos"]), _miles(_edo["v_kms"])]
+	t += "\n[font_size=12]Convergencia de %s al %s:[/font_size]\n" % [CORTO_INT[metodo_int], "dividir h entre 2" if es_edo else "duplicar n"] + _tabla(cab, [errs, ords])
+	if not es_edo:
+		t += "\n[font_size=12]EDO con RK4 (h = %s días): choca con la superficie del Sol el día %.5f (exacto %.5f) · %d pasos · llega a %s km/s[/font_size]" % [
+			_num(h_edo), te, exs, int(_edo["pasos"]), _miles(_edo["v_kms"])]
 	_info = t
+	if es_edo:
+		var tr: PackedFloat64Array = _edo["tray"]
+		var pe := []
+		for i in tr.size() / 3:
+			pe.append([str(i), "%.4f" % tr[3 * i], "%.6f" % tr[3 * i + 1], "%.3f" % (absf(tr[3 * i + 2]) * Celeste.KM_UA / 86400.0)])
+		_tabla_puntos("Pasos de RK4 (estado yₖ = (rₖ, vₖ))", ["k", "tₖ (días)", "rₖ (UA)", "|vₖ| (km/s)"], pe)
+		_interp = _interpretar_caida()
+		_csv.append([])
+		_csv.append(["metodo", "h_dias", "error", "orden_observado"])
+		for f in _conv:
+			_csv.append([Celeste.METODOS_INT[metodo_int], f[0], f[2], f[3]])
+		return
 	var pts := []
 	var nodos: Array = _cuad["nodos"].duplicate()
 	nodos.sort_custom(func(a, b): return a[0] < b[0])
@@ -1457,7 +1500,13 @@ func _interpretar_caida() -> String:
 	var m := metodo_int
 	var ex := Celeste.t_caida(1.0)
 	var t := ""
-	if m == 0:
+	if m == Celeste.EDO_INT:
+		var te: float = _edo["t"]
+		var exs: float = _edo["exacto"]
+		t = "RK4 no calcula la integral: resuelve paso a paso la EDO r̈ = −GM/r² desde el reposo y encuentra el día en que la Tierra toca la superficie del Sol, %.5f (exacto %.5f; error %s con h = %s días y %s pasos). Al dividir h entre 2 el error baja con orden observado p ≈ %.2f, camino al 4 teórico: con paso fijo, casi todo el error se hace en las últimas horas, cuando la aceleración del Sol es enorme (h debe ser pequeño frente a ese tiempo). El último paso se acorta con Newton hasta tocar la superficie: si se interpolara en línea recta quedaría un error de orden h² que taparía el orden 4." % [
+			te, exs, _err(te - exs), _num(h_edo), _miles(_edo["pasos"]), float(_conv[-1][3])]
+		t += " Los puntos azules de la escena son los pasos, en (r, t): la curva t(r) sube despacio al principio, cuando la Tierra apenas se mueve, y luego casi en vertical. Esa curva es justamente la integral de dt/dr que calcula el punto medio: los dos caminos (cuadratura y EDO) dan el mismo tiempo."
+	elif m == 0:
 		var p: float = _conv[-1][3]
 		var e64: float = _conv[-1][2]
 		var red := (1.0 - pow(2.0, -p)) * 100.0
@@ -1465,7 +1514,8 @@ func _interpretar_caida() -> String:
 		t = "El integrando dt/dr crece sin límite junto a r = R: la Tierra parte del reposo y al principio apenas avanza. El punto medio no necesita evaluar f(R), pero la región cercana a R, que es la que más aporta, la ve mal: el error baja con orden p ≈ %.2f en vez de 2, y duplicar n solo lo reduce un %d %%. Para acertar 4 cifras (error < 0,005 días) harían falta unos %s puntos." % [p, int(round(red)), _miles(n4)]
 	else:
 		t = "Con r = R·sen²u la singularidad desaparece: dt/du = 2R^(3/2)·sen²u/√(2GM) es suave y periódica, y la misma regla del punto medio la integra sin error apreciable (%s días) incluso con pocos puntos. Elegir bien la variable importa más que el método: sobre dt/dr el punto medio necesitaría millones de puntos." % _err(float(_todos[m]["valor"]) - ex)
-	t += " La EDO resuelta con RK4 (h = %s días) da el choque con la superficie del Sol el día %.4f (exacto %.4f)." % [_num(h_edo), _edo["t"], _edo["exacto"]]
+	if m != Celeste.EDO_INT:
+		t += " La EDO resuelta con RK4 (h = %s días) da el choque con la superficie del Sol el día %.4f (exacto %.4f)." % [_num(h_edo), _edo["t"], _edo["exacto"]]
 	t += "\n64,57 días es el año dividido entre 4√2: la caída recta es una órbita infinitamente estrecha de semieje R/2, que por la tercera ley de Kepler dura (1/2)^(3/2) años, y caer es la mitad de esa vuelta. La Tierra tarda 53 días en recorrer la primera mitad del camino y solo 12 la segunda, y llega al Sol a unos 600 km/s."
 	return t
 
@@ -1486,9 +1536,9 @@ func _paso_caida(dt: float) -> void:
 			var h := minf(h_edo, objetivo - _caida[2] + 1e-12)
 			var s := Celeste.rk4_radial(_caida[0], _caida[1], h)
 			if s[0] <= Celeste.R_SOL or not is_finite(s[0]):
-				var frac := clampf((_caida[0] - Celeste.R_SOL) / (_caida[0] - s[0]), 0.0, 1.0) if is_finite(s[0]) else 0.5
-				_impacto = _caida[2] + h * frac
-				_caida = PackedFloat64Array([Celeste.R_SOL, s[1] if is_finite(s[1]) else _caida[1], _impacto])
+				var c := Celeste.impacto(_caida[0], _caida[1], h, s)
+				_impacto = _caida[2] + c[0]
+				_caida = PackedFloat64Array([Celeste.R_SOL, c[1], _impacto])
 				break
 			_caida = PackedFloat64Array([s[0], s[1], _caida[2] + h])
 	_tierra_mi.position = _W(_caida[0], 0.0)
@@ -1781,7 +1831,7 @@ func _controles() -> void:
 			LabUI.button(p, "⟲ Soltar la Tierra otra vez", func():
 				_caida = PackedFloat64Array([1.0, 0.0, 0.0])
 				_impacto = -1.0)
-			LabUI.note(p, "Cada barra es un punto medio de la cuadratura sobre el camino de la caída; su alto, el integrando. Sobre dt/dr, que se dispara junto a r = R, el punto medio converge con p ≈ ½. Con r = R·sen²u integra la función ya suave (curva verde) y es exacto.")
+			LabUI.note(p, "Cada barra es un punto medio de la cuadratura sobre el camino de la caída; su alto, el integrando. Sobre dt/dr, que se dispara junto a r = R, el punto medio converge con p ≈ ½. Con r = R·sen²u integra la función ya suave (curva verde) y es exacto. «EDO con Runge–Kutta 4» no integra: simula la caída paso a paso (puntos azules en (r, t)) con el paso de abajo.")
 		_:
 			LabUI.option(p, "Integrador", Celeste.INTEGRADORES, integrador, func(i): _cambiar("integrador", i))
 			LabUI.check(p, "Los tres a la vez", tres, func(v): _cambiar("tres", v))
@@ -1851,8 +1901,10 @@ func step(dt: float) -> void:
 		_:
 			_paso_mercurio(dt)
 
-## Para las capturas (mflabshot <png> celeste p3 [nave]): la pregunta y, en la 1, la nave.
+## Para las capturas (mflabshot <png> celeste p3 [nave] [rk4]): la pregunta y, en la 1, la nave.
 func demo(extra: PackedStringArray) -> void:
+	if "rk4" in extra:
+		metodo_int = Celeste.EDO_INT
 	for q in 5:
 		if "p%d" % (q + 1) in extra:
 			pregunta = q
@@ -1939,7 +1991,7 @@ const CAMPOS := ["pregunta", "sistema", "punto", "metodo_raiz", "nave_lp", "nave
 const RANGOS := {"pregunta": [0, 4], "sistema": [0, 2], "punto": [0, 2], "metodo_raiz": [0, 3], "nave_lp": [0, 4], "nave_km": [1.0, 1e6],
 	"arco": [4.0, 5000.0], "ruido": [0.0, 5.0], "hueco": [0.0, 5000.0], "semilla_obs": [0, 1 << 30], "metodo_der": [0, 4],
 	"h_der": [1.0, 100.0], "edo_ceres": [0, 2], "paso_ceres": [0.01, 30.0],
-	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 2], "metodo_int": [0, 1], "n_int": [2, 128],
+	"acercamiento": [0, 1], "paso_tabla": [1.0, 60.0], "metodo_min": [0, 2], "metodo_int": [0, 2], "n_int": [2, 128],
 	"h_edo": [0.0001, 2.0], "integrador": [0, 2], "h_orb": [0.001, 5.0], "lam_exp": [0.0, 7.0], "vueltas": [2.0, 50.0]}
 
 func estado() -> Dictionary:
